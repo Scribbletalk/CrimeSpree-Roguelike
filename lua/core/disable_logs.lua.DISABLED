@@ -1,0 +1,17 @@
+-- TEMPORARY: Disable all CSR logs to fix console spam
+-- Remove this file or comment out the override to re-enable logs
+
+-- Override the global log function for CSR
+local _original_log = log
+
+function log(msg)
+    -- Block only CSR logs
+    if msg and type(msg) == "string" and string.find(msg, "%[CSR") then
+        return  -- Silent block
+    end
+
+    -- Allow all other logs
+    _original_log(msg)
+end
+
+print("[CSR] All CSR logs DISABLED (disable_logs.lua active)")
