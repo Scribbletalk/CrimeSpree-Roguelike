@@ -1,6 +1,7 @@
-{
-    "identifier": "crime_spree_roguelike",
-    "version": "alpha-1.1.2",
-    "hash": "ba1ba1334ef72a98dbe96dbfdfc2be753f3586c1e001a934a6eb554511358786",
-    "download": "https://github.com/Candy0433/CrimeSpree-Roguelike/releases/latest/download/CrimeSpree-Roguelike-1.1.2.zip"
-}
+[
+  {
+    "ident": "crime_spree_roguelike",
+    "hash": "57ee2dd0adda195b875cb47b0019bb5f6fd90ad8071c2340d3eacb83703e93a8",
+    "download_url": "https://github.com/Scribbletalk/CrimeSpree-Roguelike/releases/download/alpha-5.0.1/CrimeSpree-Roguelike-alpha-5.0.1.zip"
+  }
+]
