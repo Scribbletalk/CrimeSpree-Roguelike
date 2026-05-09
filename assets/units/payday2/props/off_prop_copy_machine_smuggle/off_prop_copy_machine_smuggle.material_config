@@ -1,0 +1,18 @@
+<materials version="3">
+    <material version="2" decal_material="sheet_metal" name="copy_machine_03" unique="true" render_template="generic:CONTOUR:DIFFUSE_TEXTURE:VERTEX_COLOR">
+        <diffuse_texture file="units/world/props/office/copy_machine/copy_machine_03_df"/>
+        <variable value="1 0.85 0" type="vector3" name="contour_color"/>
+        <variable value="0" type="scalar" name="contour_opacity"/>
+    </material>
+    <material version="2" decal_material="sheet_metal" name="glow" unique="true" render_template="generic:CONTOUR:DIFFUSE_TEXTURE:VERTEX_COLOR">
+        <variable value="0" type="scalar" name="contour_opacity"/>
+        <variable value="1 0.85 0" type="vector3" name="contour_color"/>
+        <diffuse_texture file="units/world/props/office/copy_machine/copy_machine_03_df"/>
+    </material>
+    <material version="2" decal_material="sheet_metal" render_template="generic:CONTOUR:DIFFUSE_TEXTURE:NORMALMAP" name="drill" unique="true">
+        <bump_normal_texture file="units/equipment/vault_drill/vault_drill_base_nm"/>
+        <diffuse_texture file="units/equipment/vault_drill/vault_drill_base_df"/>
+        <variable value="1 0.85 0" type="vector3" name="contour_color"/>
+        <variable value="0" type="scalar" name="contour_opacity"/>
+    </material>
+</materials>

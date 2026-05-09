@@ -1,0 +1,17 @@
+<materials version="3">
+    <material render_template="generic:DIFFUSE_TEXTURE" name="mat_red_folder" version="2">
+        <diffuse_texture file="units/pd2_dlc_des/props/des_interactable_secret_document/des_interactable_secret_document_df"/>
+    </material>
+    <material name="mtr_shredder" render_template="generic:DIFFUSE_TEXTURE:NORMALMAP" version="2">
+        <diffuse_texture file="units/pd2_dlc_pex/props/pex_prop_evidence_shredder/shredder_df"/>
+        <bump_normal_texture file="units/pd2_dlc_pex/props/pex_prop_evidence_shredder/shredder_nm"/>
+        <variable value="1 0.5 0" type="vector3" name="contour_color"/>
+        <variable value="0" type="scalar" name="contour_opacity"/>
+    </material>
+    <material name="mtr_outline" unique="true" version="2" render_template="generic:ALPHA_MASKED:CONTOUR:DIFFUSE_TEXTURE:OPACITY_TEXTURE">
+        <diffuse_texture file="units/white_df"/>
+        <variable value="1 0.5 0" type="vector3" name="contour_color"/>
+        <variable value="0" type="scalar" name="contour_opacity"/>
+        <opacity_texture file="units/transparent_op"/>
+    </material>
+</materials>
