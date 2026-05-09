@@ -155,21 +155,6 @@ local ITEMS_EN = {
 		desc = "When critically low on health,\nrestores health and grants brief invulnerability.",
 		rarity = "uncommon",
 	},
-	["csr_familiar_friend_desc"] = {
-		name = "FAMILIAR FRIEND",
-		desc = "Press your wildcard key to deal AoE damage around you.\nStealth-blocked.",
-		rarity = "wildcard",
-	},
-	["csr_side_satchel_desc"] = {
-		name = "SIDE SATCHEL",
-		desc = "Doubles the carry cap of mission specials\n(C4, keycards, drill parts).",
-		rarity = "wildcard",
-	},
-	["csr_carrot_stick_desc"] = {
-		name = "CARROT STICK",
-		desc = "Press your wildcard key to heal\nand briefly reduce incoming damage.",
-		rarity = "wildcard",
-	},
 	-- Dummy modifiers (should not appear in popup, but need localization just in case)
 	["csr_base_modifier"] = {
 		name = "",
@@ -794,10 +779,6 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Alpha1_Localization", function(loc
 	)
 	strings["csr_logbook_dead_mans_trigger_notes"] =
 		"LAST WILL AND TESTAMENT\nWritten: November 3rd. Afghanistan.\n\nIf you are reading this - I didn't make it back.\n\nThe house and everything in it - to Sara. The car - to my brother, he's had his eye on it for a while. The money in the account - to my mother. She can spend it however she likes.\n\nTo the guys in the unit - separately. I'm sorry. I didn't want you to get caught in it. You knew what you were getting into, but it was still my idea. Forgive me.\n\nTo Major Heller - nothing. He knows why.\nThe device is on me. Let them take it. Along with me.\n\n(Former) Private First Class D. Ward"
-
-	-- === WILDCARD ITEMS — PARKED ===
-	-- Logbook strings for Side Satchel + Familiar Friend live in
-	-- lua/_later/ pending re-enable.
 
 	-- === BONUS ITEM DROP ===
 	strings["csr_bonus_drop_title"] = "BONUS DROP!"
