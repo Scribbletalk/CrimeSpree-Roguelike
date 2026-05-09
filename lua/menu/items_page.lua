@@ -962,13 +962,22 @@ function CrimeSpreePlayerItemsPage:_setup_items()
 					local grid_y = section_y + header_h
 
 					-- Split wildcards out for the dedicated right-column slot.
+					-- Only reserve slot space + render slot if at least one
+					-- wildcard is owned (tier currently parked on main → empty).
 					local regular, wildcards = split_wildcards(items)
-					local main_w = content:w()
-						- MAIN_GRID_LEFT_PAD
-						- wildcard_slot_size
-						- WILDCARD_SLOT_GAP
-						- WILDCARD_SLOT_RIGHT_PAD
-					local slot_x = MAIN_GRID_LEFT_PAD + main_w + WILDCARD_SLOT_GAP
+					local has_wildcards = #wildcards > 0
+					local main_w
+					local slot_x
+					if has_wildcards then
+						main_w = content:w()
+							- MAIN_GRID_LEFT_PAD
+							- wildcard_slot_size
+							- WILDCARD_SLOT_GAP
+							- WILDCARD_SLOT_RIGHT_PAD
+						slot_x = MAIN_GRID_LEFT_PAD + main_w + WILDCARD_SLOT_GAP
+					else
+						main_w = content:w() - MAIN_GRID_LEFT_PAD
+					end
 
 					if #regular > 0 then
 						local start_cell = math.min(DEFAULT_CELL, grid_h)
@@ -986,7 +995,7 @@ function CrimeSpreePlayerItemsPage:_setup_items()
 							false,
 							true
 						)
-					elseif #wildcards == 0 then
+					elseif not has_wildcards then
 						content:text({
 							text = "No items yet",
 							font = tweak_data.menu.pd2_small_font,
@@ -998,20 +1007,18 @@ function CrimeSpreePlayerItemsPage:_setup_items()
 						})
 					end
 
-					-- Always reserve the right-column slot, even when empty — so layout
-					-- doesn't reflow on first wildcard pickup. Slot is a square
-					-- vertically centered within the player's section so it sits
-					-- visually balanced beside the items grid.
-					local slot_y = section_y + math.floor((section_h - wildcard_slot_size) / 2)
-					self:_render_wildcard_slot(
-						content,
-						wildcards,
-						slot_x,
-						slot_y,
-						wildcard_slot_size,
-						wildcard_slot_size,
-						pid
-					)
+					if has_wildcards then
+						local slot_y = section_y + math.floor((section_h - wildcard_slot_size) / 2)
+						self:_render_wildcard_slot(
+							content,
+							wildcards,
+							slot_x,
+							slot_y,
+							wildcard_slot_size,
+							wildcard_slot_size,
+							pid
+						)
+					end
 				end
 			end
 		end
@@ -1021,18 +1028,22 @@ function CrimeSpreePlayerItemsPage:_setup_items()
 		local items = build_items_for_peer(local_peer_id)
 
 		-- Split wildcards out for the dedicated right-column slot.
+		-- Only reserve slot space + render slot if at least one wildcard is owned.
 		local regular, wildcards = split_wildcards(items)
-		local main_w = content:w()
-			- MAIN_GRID_LEFT_PAD
-			- wildcard_slot_size
-			- WILDCARD_SLOT_GAP
-			- WILDCARD_SLOT_RIGHT_PAD
-		local slot_x = MAIN_GRID_LEFT_PAD + main_w + WILDCARD_SLOT_GAP
+		local has_wildcards = #wildcards > 0
+		local main_w
+		local slot_x
+		if has_wildcards then
+			main_w = content:w() - MAIN_GRID_LEFT_PAD - wildcard_slot_size - WILDCARD_SLOT_GAP - WILDCARD_SLOT_RIGHT_PAD
+			slot_x = MAIN_GRID_LEFT_PAD + main_w + WILDCARD_SLOT_GAP
+		else
+			main_w = content:w() - MAIN_GRID_LEFT_PAD
+		end
 
 		if #regular > 0 then
 			-- left_align=true → row pins to area_x (= LEFT_PAD).
 			self:_render_item_grid(content, regular, 10, local_peer_id, nil, MAIN_GRID_LEFT_PAD, main_w, false, true)
-		elseif #wildcards == 0 then
+		elseif not has_wildcards then
 			local placeholder = managers.localization:text("menu_csr_items_placeholder")
 			content:text({
 				text = placeholder,
@@ -1044,19 +1055,18 @@ function CrimeSpreePlayerItemsPage:_setup_items()
 			})
 		end
 
-		-- Always reserve the right-column slot, even when empty. Slot is a
-		-- square vertically centered within the panel so it sits visually
-		-- balanced beside the items grid.
-		local slot_y = math.floor((content:h() - wildcard_slot_size) / 2)
-		self:_render_wildcard_slot(
-			content,
-			wildcards,
-			slot_x,
-			slot_y,
-			wildcard_slot_size,
-			wildcard_slot_size,
-			local_peer_id
-		)
+		if has_wildcards then
+			local slot_y = math.floor((content:h() - wildcard_slot_size) / 2)
+			self:_render_wildcard_slot(
+				content,
+				wildcards,
+				slot_x,
+				slot_y,
+				wildcard_slot_size,
+				wildcard_slot_size,
+				local_peer_id
+			)
+		end
 	end
 
 	-- Create tooltip panel on fullscreen_panel so it can overflow tab boundaries
