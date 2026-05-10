@@ -217,10 +217,10 @@ local ITEMS_DATA = {
 		effect_en = "Passive wildcard (carry-1). Doubles the carry cap of mission specials (C4 4 → 8, keycards 1 → 2, drill parts 1 → 2, etc.).",
 	},
 	{
-		id = "carrot_stick",
-		icon = "csr_carrot_stick",
+		id = "turron",
+		icon = "csr_turron",
 		rarity = "wildcard",
-		name_en = "CARROT STICK",
+		name_en = "TURRON",
 		effect_en = "Active wildcard (carry-1). Press your wildcard key to instantly heal 33% of max HP and gain 20% damage reduction for 5 seconds. 90-second cooldown. Works in stealth.",
 	},
 	{

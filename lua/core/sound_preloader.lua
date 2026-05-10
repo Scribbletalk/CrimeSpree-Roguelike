@@ -58,6 +58,8 @@ local CSR_SOUND_REGISTRY = {
 	gup_charge = { path = "assets/sounds/gup/gup_charge_attack.ogg" },
 	gup_attack = { pattern = "assets/sounds/gup/gup_attack_$.ogg", n = 5 },
 	gup_cooldown = { pattern = "assets/sounds/gup/gup_cooldown_$.ogg", n = 9 },
+	turron_activate = { pattern = "assets/sounds/turron/turron_activate_$.ogg", n = 2 },
+	turron_recharge = { path = "assets/sounds/turron/turron_recharge.ogg" },
 }
 
 -- Save ModPath at file-load time. Other mods (BeardLib, ProjectCellBeta) can

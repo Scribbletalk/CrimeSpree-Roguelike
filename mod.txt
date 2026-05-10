@@ -341,6 +341,10 @@
 			"script_path": "lua/modifiers/dearestpossession.lua"
 		},
 		{
+			"hook_id": "lib/managers/hud/hudteammate",
+			"script_path": "lua/menu/hud_wildcard_slot.lua"
+		},
+		{
 			"hook_id": "lib/units/beings/player/playerdamage",
 			"script_path": "lua/modifiers/theedge.lua"
 		},
@@ -706,11 +710,11 @@
 		},
 		{
 			"hook_id": "lib/managers/playermanager",
-			"script_path": "lua/modifiers/carrotstick.lua"
+			"script_path": "lua/modifiers/turron.lua"
 		},
 		{
 			"hook_id": "lib/units/beings/player/playerdamage",
-			"script_path": "lua/modifiers/carrotstick.lua"
+			"script_path": "lua/modifiers/turron.lua"
 		},
 		{
 			"hook_id": "lib/managers/playermanager",

@@ -165,8 +165,8 @@ local ITEMS_EN = {
 		desc = "Doubles the carry cap of mission specials\n(C4, keycards, drill parts).",
 		rarity = "wildcard",
 	},
-	["csr_carrot_stick_desc"] = {
-		name = "CARROT STICK",
+	["csr_turron_desc"] = {
+		name = "TURRON",
 		desc = "Press your wildcard key to heal\nand briefly reduce incoming damage.",
 		rarity = "wildcard",
 	},
@@ -805,7 +805,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Alpha1_Localization", function(loc
 	-- Logbook effect/notes flavor is user-authored later.
 	strings["csr_logbook_familiar_friend_name"] = "FAMILIAR FRIEND"
 	strings["csr_logbook_side_satchel_name"] = "SIDE SATCHEL"
-	strings["csr_logbook_carrot_stick_name"] = "CARROT STICK"
+	strings["csr_logbook_turron_name"] = "TURRON"
 	strings["csr_logbook_hippocratic_oath_name"] = "HIPPOCRATIC OATH"
 
 	-- === SCRAP (printer fodder) ===
