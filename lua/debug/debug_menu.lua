@@ -141,6 +141,25 @@ local function grant_item(prefix, display_name)
 		chat_or_log("[CSR DEBUG] CSR_AddItem missing - store not loaded")
 		return
 	end
+	-- Carry-1 rule: granting a wildcard drops any other wildcard already owned,
+	-- so debug-menu testing matches the in-game pickup popup behaviour.
+	local prefix_key = prefix:sub(1, -2)
+	local def = _G.CSR_ITEM_BY_PREFIX and _G.CSR_ITEM_BY_PREFIX[prefix_key]
+	if def and def.rarity == "wildcard" and _G.CSR_GetLocalItems and _G.CSR_RemoveItem then
+		local items = CSR_GetLocalItems()
+		for i = #items, 1, -1 do
+			local item = items[i]
+			if item and item.id then
+				for k, d in pairs(_G.CSR_ITEM_BY_PREFIX) do
+					if d.rarity == "wildcard" and string.find(item.id, k .. "_", 1, true) == 1 then
+						CSR_RemoveItem(item.id)
+						chat_or_log("[CSR DEBUG] Replaced previous wildcard: " .. tostring(item.id))
+						break
+					end
+				end
+			end
+		end
+	end
 	local new_id = CSR_AddItem(prefix)
 	-- persist_items relies on CSR_CurrentSeed / a real spree state, so it
 	-- only runs when CS is actually active. Outside CS the grant lives in

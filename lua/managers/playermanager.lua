@@ -470,6 +470,7 @@ Hooks:PostHook(PlayerManager, "spawned_player", "CSR_ApplyBuffs", function(self,
 				["player_familiar_friend_"] = "familiar_friend",
 				["player_side_satchel_"] = "side_satchel",
 				["player_carrot_stick_"] = "carrot_stick",
+				["player_hippocratic_oath_"] = "hippocratic_oath",
 			}
 			local already_marked = {}
 			for _, item_data in ipairs(my_items) do

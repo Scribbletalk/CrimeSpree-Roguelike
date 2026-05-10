@@ -257,17 +257,16 @@ _G.CSR_ITEM_REGISTRY = {
 	},
 
 	-- @WILDCARD-START (build script strips this entire block when --no-wildcards)
-	-- ============ WILDCARD (weight 0.17, magenta tier) ============
+	-- ============ WILDCARD (weight 0.13, magenta tier) ============
 	-- Own bucket (not a tier-up). Carry-1 per-tier. Never printer-spawned.
-	-- Per-popup tier rate ~16% with 3 wildcards at 0.17. If a 4th wildcard
-	-- ships (e.g. Hippocratic Oath), drop all four to 0.13 to hold 16%.
+	-- Per-popup tier rate ~16% with 4 wildcards at 0.13.
 	{
 		type = "side_satchel",
 		class = "ModifierSideSatchel",
 		icon = "csr_side_satchel",
 		id_prefix = "player_side_satchel_",
 		rarity = "wildcard",
-		weight = 0.17,
+		weight = 0.13,
 		loc_key = "csr_side_satchel_desc",
 		needs_stub = true,
 	},
@@ -277,7 +276,7 @@ _G.CSR_ITEM_REGISTRY = {
 		icon = "csr_familiar_friend",
 		id_prefix = "player_familiar_friend_",
 		rarity = "wildcard",
-		weight = 0.17,
+		weight = 0.13,
 		loc_key = "csr_familiar_friend_desc",
 		needs_stub = true,
 	},
@@ -287,8 +286,18 @@ _G.CSR_ITEM_REGISTRY = {
 		icon = "csr_carrot_stick",
 		id_prefix = "player_carrot_stick_",
 		rarity = "wildcard",
-		weight = 0.17,
+		weight = 0.13,
 		loc_key = "csr_carrot_stick_desc",
+		needs_stub = true,
+	},
+	{
+		type = "hippocratic_oath",
+		class = "ModifierHippocraticOath",
+		icon = "csr_hippocratic_oath",
+		id_prefix = "player_hippocratic_oath_",
+		rarity = "wildcard",
+		weight = 0.13,
+		loc_key = "csr_hippocratic_oath_desc",
 		needs_stub = true,
 	},
 	-- @WILDCARD-END
