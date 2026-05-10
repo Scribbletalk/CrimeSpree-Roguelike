@@ -56,6 +56,13 @@ local cup_of_joe_file = mod_path .. "assets/guis/textures/icons/items/cup_of_joe
 local cup_of_joe_path = "guis/textures/pd2/crime_spree/csr_cup_of_joe"
 local lockes_beret_file = mod_path .. "assets/guis/textures/icons/items/locke_beret.dds"
 local lockes_beret_path = "guis/textures/pd2/crime_spree/csr_lockes_beret"
+-- Wildcard icons
+local familiar_friend_file = mod_path .. "assets/guis/textures/icons/items/familiar_friend.dds"
+local familiar_friend_path = "guis/textures/pd2/crime_spree/csr_familiar_friend"
+local side_satchel_file = mod_path .. "assets/guis/textures/icons/items/satchel.dds"
+local side_satchel_path = "guis/textures/pd2/crime_spree/csr_side_satchel"
+local carrot_stick_file = mod_path .. "assets/guis/textures/icons/items/carrot_stick.dds"
+local carrot_stick_path = "guis/textures/pd2/crime_spree/csr_carrot_stick"
 -- Modifier icons (located in icons/modifiers/ folder)
 local guilty_conscience_file = mod_path .. "assets/guis/textures/icons/modifiers/guilty_conscience.dds"
 local guilty_conscience_path = "guis/textures/pd2/crime_spree/csr_guilty_conscience"
@@ -146,6 +153,11 @@ if DB and DB.create_entry then
 	DB:create_entry(Idstring("texture"), Idstring(cup_of_joe_path), cup_of_joe_file)
 
 	DB:create_entry(Idstring("texture"), Idstring(lockes_beret_path), lockes_beret_file)
+
+	-- Wildcard items
+	DB:create_entry(Idstring("texture"), Idstring(familiar_friend_path), familiar_friend_file)
+	DB:create_entry(Idstring("texture"), Idstring(side_satchel_path), side_satchel_file)
+	DB:create_entry(Idstring("texture"), Idstring(carrot_stick_path), carrot_stick_file)
 
 	-- Modifier icons
 	DB:create_entry(Idstring("texture"), Idstring(guilty_conscience_path), guilty_conscience_file)
@@ -305,6 +317,22 @@ function HudIconsTweakData:init()
 
 	self.csr_lockes_beret = {
 		texture = lockes_beret_path,
+		texture_rect = { 0, 0, 128, 128 },
+	}
+
+	-- Wildcard items
+	self.csr_familiar_friend = {
+		texture = familiar_friend_path,
+		texture_rect = { 0, 0, 128, 128 },
+	}
+
+	self.csr_side_satchel = {
+		texture = side_satchel_path,
+		texture_rect = { 0, 0, 128, 128 },
+	}
+
+	self.csr_carrot_stick = {
+		texture = carrot_stick_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 

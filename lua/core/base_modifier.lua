@@ -189,6 +189,21 @@ _G.CSR_ItemConstants = {
 	lockes_beret_max_pct = 0.50, -- Hyperbolic asymptote: 50% of max HP
 	lockes_beret_interval = 30, -- Pulse interval (seconds)
 
+	-- === WILDCARD ITEMS ===
+
+	-- FAMILIAR FRIEND — Spike Nova: 360° AoE damage on key press
+	familiar_friend_radius = 600, -- AoE radius (cm, 6m)
+	familiar_friend_damage = 2000, -- internal damage at rank 0 (= 400 display HP)
+	familiar_friend_level_pct = 0.0035, -- +0.35% damage per CS rank (additive linear)
+	familiar_friend_cooldown = 60, -- seconds between activations
+	familiar_friend_charge_delay = 0.6, -- wind-up time before nova fires (matches charge SFX)
+
+	-- CARROT STICK — instant heal + 5s damage reduction window
+	carrot_stick_heal_pct = 0.33, -- +33% of max HP, instant on press
+	carrot_stick_dr_pct = 0.20, -- 20% damage reduction during window
+	carrot_stick_dr_duration = 5, -- seconds of DR after press
+	carrot_stick_cooldown = 90, -- seconds between presses
+
 	-- === FORCED MODIFIERS ===
 
 	-- EXPLOSIVE RESISTANCE (Bulldozer explosion immunity override)
