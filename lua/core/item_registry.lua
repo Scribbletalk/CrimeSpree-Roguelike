@@ -281,13 +281,13 @@ _G.CSR_ITEM_REGISTRY = {
 		needs_stub = true,
 	},
 	{
-		type = "carrot_stick",
-		class = "ModifierCarrotStick",
-		icon = "csr_carrot_stick",
-		id_prefix = "player_carrot_stick_",
+		type = "turron",
+		class = "ModifierTurron",
+		icon = "csr_turron",
+		id_prefix = "player_turron_",
 		rarity = "wildcard",
 		weight = 0.13,
-		loc_key = "csr_carrot_stick_desc",
+		loc_key = "csr_turron_desc",
 		needs_stub = true,
 	},
 	{

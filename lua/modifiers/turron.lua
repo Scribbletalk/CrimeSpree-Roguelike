@@ -1,4 +1,4 @@
--- CARROT STICK — Wildcard active item.
+-- TURRON — Wildcard active item.
 -- On key press: instant +33% max HP heal + 5s 20% damage reduction window.
 -- 90s cooldown. Stealth-allowed (no whisper-mode break — heal/DR aren't loud).
 -- Carry-1 wildcard. Registered with the wildcard dispatcher.
@@ -12,9 +12,9 @@ if not RequiredScript then
 	return
 end
 
-ModifierCarrotStick = ModifierCarrotStick or class(CSRBaseModifier)
-ModifierCarrotStick.desc_id = "csr_carrot_stick_desc"
-ModifierCarrotStick.icon = "csr_carrot_stick"
+ModifierTurron = ModifierTurron or class(CSRBaseModifier)
+ModifierTurron.desc_id = "csr_turron_desc"
+ModifierTurron.icon = "csr_turron"
 
 local function const(key, default)
 	-- Re-read each call so live tweaks via base_modifier.lua reload pick up.
@@ -26,7 +26,7 @@ local function const(key, default)
 end
 
 -- Per-player active state. Reset on spawn / new heist via spawned_player.
-_G.CSR_CarrotStick = _G.CSR_CarrotStick
+_G.CSR_Turron = _G.CSR_Turron
 	or {
 		cooldown_end = 0, -- game time when the next press is allowed
 		dr_end = 0, -- game time when the DR window closes
@@ -63,17 +63,17 @@ local function play_cooldown_ready()
 			return
 		end
 	end
-	if not _G.CSR_CountStacks or CSR_CountStacks("player_carrot_stick_") <= 0 then
+	if not _G.CSR_CountStacks or CSR_CountStacks("player_turron_") <= 0 then
 		return
 	end
 	-- 2D so the player always hears it regardless of camera position.
-	pcall(_G.CSR_PlaySound, "carrot_stick_ready")
+	pcall(_G.CSR_PlaySound, "turron_recharge")
 end
 
-local function activate_carrot_stick(player_unit)
+local function activate_turron(player_unit)
 	-- Cooldown gate.
 	local now = TimerManager:game():time()
-	if now < (_G.CSR_CarrotStick.cooldown_end or 0) then
+	if now < (_G.CSR_Turron.cooldown_end or 0) then
 		return
 	end
 
@@ -87,7 +87,7 @@ local function activate_carrot_stick(player_unit)
 	end
 	-- Down / arrested / dead are filtered by the dispatcher already, but the
 	-- 0.6s charge delay in FF means re-checks are cheap insurance against
-	-- state changes between dispatch and execution. Carrot has no charge
+	-- state changes between dispatch and execution. Turron has no charge
 	-- delay, but keep the guard for symmetry.
 	if cdmg.dead and cdmg:dead() then
 		return
@@ -99,13 +99,13 @@ local function activate_carrot_stick(player_unit)
 		return
 	end
 
-	local heal_pct = const("carrot_stick_heal_pct", 0.33)
-	local dr_duration = const("carrot_stick_dr_duration", 5)
-	local cooldown = const("carrot_stick_cooldown", 90)
+	local heal_pct = const("turron_heal_pct", 0.33)
+	local dr_duration = const("turron_dr_duration", 5)
+	local cooldown = const("turron_cooldown", 90)
 
 	-- Activation SFX.
 	if _G.CSR_PlaySound then
-		pcall(_G.CSR_PlaySound, "carrot_stick_activate", { unit = player_unit })
+		pcall(_G.CSR_PlaySound, "turron_activate", { unit = player_unit })
 	end
 
 	-- Instant heal: percent-of-max via restore_health(pct, is_static=false).
@@ -115,27 +115,27 @@ local function activate_carrot_stick(player_unit)
 	end
 
 	-- Open the DR window. The PreHook below reads dr_end on every damage tick.
-	_G.CSR_CarrotStick.dr_end = now + dr_duration
-	_G.CSR_CarrotStick.cooldown_end = now + cooldown
+	_G.CSR_Turron.dr_end = now + dr_duration
+	_G.CSR_Turron.cooldown_end = now + cooldown
 
-	fire_hud_buff_event("csr_carrot_stick_dr", dr_duration)
-	fire_hud_buff_event("csr_carrot_stick_cd", cooldown)
+	fire_hud_buff_event("csr_turron_dr", dr_duration)
+	fire_hud_buff_event("csr_turron_cd", cooldown)
 
 	-- Schedule the cooldown-ready chime to match the cooldown end timestamp.
-	DelayedCalls:Add("CSR_CarrotStick_CooldownReady", cooldown, play_cooldown_ready)
+	DelayedCalls:Add("CSR_Turron_CooldownReady", cooldown, play_cooldown_ready)
 end
 
 -- DR PreHook: scale incoming damage by (1 - dr_pct) while the window is open.
 -- Hooks PlayerDamage:_calc_armor_damage — the funnel for all damage variants.
 -- Per pd2_calc_armor_damage_funnel.md, ONE PreHook covers every variant.
-if PlayerDamage and not _G._CSR_CARROT_STICK_DR_HOOKED then
-	_G._CSR_CARROT_STICK_DR_HOOKED = true
+if PlayerDamage and not _G._CSR_TURRON_DR_HOOKED then
+	_G._CSR_TURRON_DR_HOOKED = true
 
-	Hooks:PreHook(PlayerDamage, "_calc_armor_damage", "CSR_CarrotStick_DR", function(self, attack_data)
+	Hooks:PreHook(PlayerDamage, "_calc_armor_damage", "CSR_Turron_DR", function(self, attack_data)
 		if not attack_data or not attack_data.damage then
 			return
 		end
-		-- Local-player only — _G.CSR_CarrotStick state is per-machine, not per-unit.
+		-- Local-player only — _G.CSR_Turron state is per-machine, not per-unit.
 		local player_unit = self._unit
 		if not player_unit or not alive(player_unit) then
 			return
@@ -149,29 +149,29 @@ if PlayerDamage and not _G._CSR_CARROT_STICK_DR_HOOKED then
 			return
 		end
 		-- Owned + window-open gate.
-		if not _G.CSR_CountStacks or CSR_CountStacks("player_carrot_stick_") <= 0 then
+		if not _G.CSR_CountStacks or CSR_CountStacks("player_turron_") <= 0 then
 			return
 		end
 		local now = TimerManager:game():time()
-		if now > (_G.CSR_CarrotStick.dr_end or 0) then
+		if now > (_G.CSR_Turron.dr_end or 0) then
 			return
 		end
-		local dr_pct = const("carrot_stick_dr_pct", 0.20)
+		local dr_pct = const("turron_dr_pct", 0.20)
 		attack_data.damage = attack_data.damage * (1 - dr_pct)
 	end)
 end
 
 -- Reset cooldown + DR on spawn (per-heist).
-if PlayerManager and not _G._CSR_CARROT_STICK_PM_HOOKED then
-	_G._CSR_CARROT_STICK_PM_HOOKED = true
+if PlayerManager and not _G._CSR_TURRON_PM_HOOKED then
+	_G._CSR_TURRON_PM_HOOKED = true
 
-	Hooks:PostHook(PlayerManager, "spawned_player", "CSR_CarrotStickInit", function(self)
-		_G.CSR_CarrotStick.cooldown_end = 0
-		_G.CSR_CarrotStick.dr_end = 0
+	Hooks:PostHook(PlayerManager, "spawned_player", "CSR_TurronInit", function(self)
+		_G.CSR_Turron.cooldown_end = 0
+		_G.CSR_Turron.dr_end = 0
 	end)
 
 	-- Register with the wildcard dispatcher.
 	if _G.CSR_RegisterWildcardActive then
-		_G.CSR_RegisterWildcardActive("player_carrot_stick_", activate_carrot_stick)
+		_G.CSR_RegisterWildcardActive("player_turron_", activate_turron)
 	end
 end

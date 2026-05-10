@@ -479,14 +479,14 @@ local function build_items_for_peer(peer_id)
 		})
 	end
 
-	-- CARROT STICK
-	if count("player_carrot_stick_") > 0 then
+	-- TURRON
+	if count("player_turron_") > 0 then
 		table.insert(items, {
-			icon = "csr_carrot_stick",
+			icon = "csr_turron",
 			frame = "csr_frame",
 			color = RARITY_COLOR_WILDCARD,
 			is_wildcard = true,
-			name = "CARROT STICK",
+			name = "TURRON",
 			desc = "Press your wildcard key to heal\nand briefly reduce incoming damage.",
 		})
 	end

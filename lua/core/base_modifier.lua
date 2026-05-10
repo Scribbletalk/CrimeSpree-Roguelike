@@ -198,11 +198,11 @@ _G.CSR_ItemConstants = {
 	familiar_friend_cooldown = 60, -- seconds between activations
 	familiar_friend_charge_delay = 0.6, -- wind-up time before nova fires (matches charge SFX)
 
-	-- CARROT STICK — instant heal + 5s damage reduction window
-	carrot_stick_heal_pct = 0.33, -- +33% of max HP, instant on press
-	carrot_stick_dr_pct = 0.20, -- 20% damage reduction during window
-	carrot_stick_dr_duration = 5, -- seconds of DR after press
-	carrot_stick_cooldown = 90, -- seconds between presses
+	-- TURRON — instant heal + 5s damage reduction window
+	turron_heal_pct = 0.33, -- +33% of max HP, instant on press
+	turron_dr_pct = 0.20, -- 20% damage reduction during window
+	turron_dr_duration = 5, -- seconds of DR after press
+	turron_cooldown = 90, -- seconds between presses
 
 	-- HIPPOCRATIC OATH — passive medic joker that heals via aura
 	hippocratic_aura_radius = 500, -- 5m heal aura around the medic (PD2 units, 1m = 100)

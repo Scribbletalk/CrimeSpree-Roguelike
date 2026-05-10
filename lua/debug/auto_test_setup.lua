@@ -60,7 +60,7 @@ Hooks:PostHook(CrimeSpreeManager, "_setup", "CSR_AutoTestSetup", function(self)
 		"player_lockes_beret_",
 		"player_familiar_friend_",
 		"player_side_satchel_",
-		"player_carrot_stick_",
+		"player_turron_",
 		"player_hippocratic_oath_",
 	}
 
