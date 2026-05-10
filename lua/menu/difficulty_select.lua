@@ -240,7 +240,7 @@ Hooks:PostHook(
 		-- Generate starting levels at every 20 ranks based on total loud
 		-- modifier count. Each modifier occupies 20 ranks, so max start
 		-- level = count × 20.
-		local total_loud = _G.CSR_TotalLoudModifiers or 22
+		local total_loud = _G.CSR_TotalLoudModifiers or 23
 		local all_start_levels = {}
 		for i = 1, total_loud do
 			table.insert(all_start_levels, i * 20)

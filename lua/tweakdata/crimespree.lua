@@ -89,13 +89,7 @@ Hooks:PostHook(CrimeSpreeTweakData, "init", "CSR_Alpha1_ModifyLoud", function(se
 			requires_difficulty = "hard",
 			requires_enemy = "tasers",
 		},
-		-- DISABLED 2026-05-07 (user kill-switch, awaiting redesign decision):
-		-- vanilla ModifierHeavies replaces all SWATs with Heavy SWATs in the
-		-- spawn pool. Removed from the registry rather than deleted so the
-		-- redesign can either restore this line, swap the class, or replace
-		-- the entry entirely without rewiring callers. To re-enable as-is,
-		-- uncomment the line below.
-		-- { id = "csr_heavies", class = "ModifierHeavies", icon = "crime_spree_heavies", data = {} },
+		{ id = "csr_heavies", class = "ModifierHeavies", icon = "crime_spree_heavies", data = {} },
 		{
 			id = "csr_dozer_rage",
 			class = "ModifierDozerRage",
