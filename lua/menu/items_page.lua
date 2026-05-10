@@ -451,6 +451,46 @@ local function build_items_for_peer(peer_id)
 		})
 	end
 
+	-- WILDCARD items
+	-- Tagged with is_wildcard=true so both surfaces (briefing items page +
+	-- in-mission TAB) can split them out into the dedicated right-column slot.
+	-- No `stacks` field — wildcards are carry-1, the "x1" counter is noise.
+	-- FAMILIAR FRIEND
+	if count("player_familiar_friend_") > 0 then
+		table.insert(items, {
+			icon = "csr_familiar_friend",
+			frame = "csr_frame",
+			color = RARITY_COLOR_WILDCARD,
+			is_wildcard = true,
+			name = "FAMILIAR FRIEND",
+			desc = "Press your wildcard key to deal AoE damage around you.\nStealth-blocked.",
+		})
+	end
+
+	-- SIDE SATCHEL
+	if count("player_side_satchel_") > 0 then
+		table.insert(items, {
+			icon = "csr_side_satchel",
+			frame = "csr_frame",
+			color = RARITY_COLOR_WILDCARD,
+			is_wildcard = true,
+			name = "SIDE SATCHEL",
+			desc = "Doubles the carry cap of mission specials\n(C4, keycards, drill parts).",
+		})
+	end
+
+	-- CARROT STICK
+	if count("player_carrot_stick_") > 0 then
+		table.insert(items, {
+			icon = "csr_carrot_stick",
+			frame = "csr_frame",
+			color = RARITY_COLOR_WILDCARD,
+			is_wildcard = true,
+			name = "CARROT STICK",
+			desc = "Press your wildcard key to heal\nand briefly reduce incoming damage.",
+		})
+	end
+
 	-- COMMON SCRAP (produced by the in-world scrapper; printer fodder)
 	local scrap_common_stacks = count("player_scrap_common_")
 	if scrap_common_stacks > 0 then

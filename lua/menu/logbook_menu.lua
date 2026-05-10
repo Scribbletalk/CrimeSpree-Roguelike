@@ -200,6 +200,29 @@ local ITEMS_DATA = {
 		name_en = "DEAD MAN'S TRIGGER",
 		effect_en = "When going down you explode dealing 480 (+240 per stack, linear) damage in a 3 (+2 per stack, linear) meter radius. Damage scales with Crime Spree rank.",
 	},
+
+	-- WILDCARD
+	{
+		id = "familiar_friend",
+		icon = "csr_familiar_friend",
+		rarity = "wildcard",
+		name_en = "FAMILIAR FRIEND",
+		effect_en = "Active wildcard (carry-1). Press your wildcard key to fire a Spike Nova: 360° AoE damage around you. Damage scales with Crime Spree rank. 60-second cooldown. Stealth-blocked.",
+	},
+	{
+		id = "side_satchel",
+		icon = "csr_side_satchel",
+		rarity = "wildcard",
+		name_en = "SIDE SATCHEL",
+		effect_en = "Passive wildcard (carry-1). Doubles the carry cap of mission specials (C4 4 → 8, keycards 1 → 2, drill parts 1 → 2, etc.).",
+	},
+	{
+		id = "carrot_stick",
+		icon = "csr_carrot_stick",
+		rarity = "wildcard",
+		name_en = "CARROT STICK",
+		effect_en = "Active wildcard (carry-1). Press your wildcard key to instantly heal 33% of max HP and gain 20% damage reduction for 5 seconds. 90-second cooldown. Works in stealth.",
+	},
 }
 
 -- Rarity colours
