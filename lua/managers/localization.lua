@@ -170,6 +170,11 @@ local ITEMS_EN = {
 		desc = "Press your wildcard key to heal\nand briefly reduce incoming damage.",
 		rarity = "wildcard",
 	},
+	["csr_hippocratic_oath_desc"] = {
+		name = "HIPPOCRATIC OATH",
+		desc = "A medic joins your crew in loud heists\nand heals you when nearby.",
+		rarity = "wildcard",
+	},
 	-- Dummy modifiers (should not appear in popup, but need localization just in case)
 	["csr_base_modifier"] = {
 		name = "",
@@ -795,9 +800,18 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Alpha1_Localization", function(loc
 	strings["csr_logbook_dead_mans_trigger_notes"] =
 		"LAST WILL AND TESTAMENT\nWritten: November 3rd. Afghanistan.\n\nIf you are reading this - I didn't make it back.\n\nThe house and everything in it - to Sara. The car - to my brother, he's had his eye on it for a while. The money in the account - to my mother. She can spend it however she likes.\n\nTo the guys in the unit - separately. I'm sorry. I didn't want you to get caught in it. You knew what you were getting into, but it was still my idea. Forgive me.\n\nTo Major Heller - nothing. He knows why.\nThe device is on me. Let them take it. Along with me.\n\n(Former) Private First Class D. Ward"
 
-	-- === WILDCARD ITEMS — PARKED ===
-	-- Logbook strings for Side Satchel + Familiar Friend live in
-	-- lua/_later/ pending re-enable.
+	-- === WILDCARD ITEMS ===
+	-- Name keys only — debug menu reads csr_logbook_<type>_name.
+	-- Logbook effect/notes flavor is user-authored later.
+	strings["csr_logbook_familiar_friend_name"] = "FAMILIAR FRIEND"
+	strings["csr_logbook_side_satchel_name"] = "SIDE SATCHEL"
+	strings["csr_logbook_carrot_stick_name"] = "CARROT STICK"
+	strings["csr_logbook_hippocratic_oath_name"] = "HIPPOCRATIC OATH"
+
+	-- === SCRAP (printer fodder) ===
+	strings["csr_logbook_scrap_common_name"] = "COMMON SCRAP"
+	strings["csr_logbook_scrap_uncommon_name"] = "UNCOMMON SCRAP"
+	strings["csr_logbook_scrap_rare_name"] = "RARE SCRAP"
 
 	-- === BONUS ITEM DROP ===
 	strings["csr_bonus_drop_title"] = "BONUS DROP!"

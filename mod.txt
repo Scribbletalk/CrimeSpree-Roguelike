@@ -711,6 +711,30 @@
 		{
 			"hook_id": "lib/units/beings/player/playerdamage",
 			"script_path": "lua/modifiers/carrotstick.lua"
+		},
+		{
+			"hook_id": "lib/managers/playermanager",
+			"script_path": "lua/modifiers/hippocraticoath.lua"
+		},
+		{
+			"hook_id": "lib/units/beings/player/playerbase",
+			"script_path": "lua/modifiers/hippocraticoath.lua"
+		},
+		{
+			"hook_id": "lib/units/beings/player/huskplayerbase",
+			"script_path": "lua/modifiers/hippocraticoath.lua"
+		},
+		{
+			"hook_id": "lib/managers/group_ai_states/groupaistatebase",
+			"script_path": "lua/modifiers/hippocraticoath.lua"
+		},
+		{
+			"hook_id": "lib/network/base/basenetworksession",
+			"script_path": "lua/modifiers/hippocraticoath.lua"
+		},
+		{
+			"hook_id": "lib/units/enemies/cop/copdamage",
+			"script_path": "lua/modifiers/hippocraticoath.lua"
 		}
 	],
 	"keybinds": [

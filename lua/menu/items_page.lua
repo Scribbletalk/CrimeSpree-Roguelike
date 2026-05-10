@@ -491,6 +491,18 @@ local function build_items_for_peer(peer_id)
 		})
 	end
 
+	-- HIPPOCRATIC OATH
+	if count("player_hippocratic_oath_") > 0 then
+		table.insert(items, {
+			icon = "csr_hippocratic_oath",
+			frame = "csr_frame",
+			color = RARITY_COLOR_WILDCARD,
+			is_wildcard = true,
+			name = "HIPPOCRATIC OATH",
+			desc = "A medic joins your crew in loud heists\nand heals you when nearby.",
+		})
+	end
+
 	-- COMMON SCRAP (produced by the in-world scrapper; printer fodder)
 	local scrap_common_stacks = count("player_scrap_common_")
 	if scrap_common_stacks > 0 then

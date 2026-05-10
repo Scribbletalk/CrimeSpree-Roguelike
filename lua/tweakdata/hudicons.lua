@@ -63,6 +63,8 @@ local side_satchel_file = mod_path .. "assets/guis/textures/icons/items/satchel.
 local side_satchel_path = "guis/textures/pd2/crime_spree/csr_side_satchel"
 local carrot_stick_file = mod_path .. "assets/guis/textures/icons/items/carrot_stick.dds"
 local carrot_stick_path = "guis/textures/pd2/crime_spree/csr_carrot_stick"
+local hippocratic_oath_file = mod_path .. "assets/guis/textures/icons/items/hippocratic_oath.dds"
+local hippocratic_oath_path = "guis/textures/pd2/crime_spree/csr_hippocratic_oath"
 -- Modifier icons (located in icons/modifiers/ folder)
 local guilty_conscience_file = mod_path .. "assets/guis/textures/icons/modifiers/guilty_conscience.dds"
 local guilty_conscience_path = "guis/textures/pd2/crime_spree/csr_guilty_conscience"
@@ -158,6 +160,7 @@ if DB and DB.create_entry then
 	DB:create_entry(Idstring("texture"), Idstring(familiar_friend_path), familiar_friend_file)
 	DB:create_entry(Idstring("texture"), Idstring(side_satchel_path), side_satchel_file)
 	DB:create_entry(Idstring("texture"), Idstring(carrot_stick_path), carrot_stick_file)
+	DB:create_entry(Idstring("texture"), Idstring(hippocratic_oath_path), hippocratic_oath_file)
 
 	-- Modifier icons
 	DB:create_entry(Idstring("texture"), Idstring(guilty_conscience_path), guilty_conscience_file)
@@ -333,6 +336,11 @@ function HudIconsTweakData:init()
 
 	self.csr_carrot_stick = {
 		texture = carrot_stick_path,
+		texture_rect = { 0, 0, 128, 128 },
+	}
+
+	self.csr_hippocratic_oath = {
+		texture = hippocratic_oath_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 

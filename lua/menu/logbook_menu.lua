@@ -223,6 +223,13 @@ local ITEMS_DATA = {
 		name_en = "CARROT STICK",
 		effect_en = "Active wildcard (carry-1). Press your wildcard key to instantly heal 33% of max HP and gain 20% damage reduction for 5 seconds. 90-second cooldown. Works in stealth.",
 	},
+	{
+		id = "hippocratic_oath",
+		icon = "csr_hippocratic_oath",
+		rarity = "wildcard",
+		name_en = "HIPPOCRATIC OATH",
+		effect_en = "Passive wildcard (carry-1). On loud transition, a medic spawns and joins your crew. While within 3 metres of the medic, regenerate 1% max HP per second. After death, the medic respawns 6 minutes later. Loud only.",
+	},
 }
 
 -- Rarity colours
