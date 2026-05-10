@@ -87,20 +87,22 @@ _G.CSR_PendingCopierLastLog = _G.CSR_PendingCopierLastLog or 0
 
 -- === PRINTER SOUND ===
 -- Buffers loaded centrally by lua/core/sound_preloader.lua. Playback uses
--- _G.CSR_PlaySound with `position` for 3D positional output anchored to the
--- unit. Per-call volume passes through directly.
+-- _G.CSR_PlaySound with `unit` (not `position`) so the call routes through
+-- the per-(unit, source_key) close-before-new registry — see
+-- pd2_xaudio_buffer_lifecycle.md addendum. The copier doesn't move, so
+-- UnitSource positioning matches the prior set_position behaviour exactly.
 local function play_printer_sound(unit)
 	if not (_G.CSR_PlaySound and alive(unit)) then
 		return
 	end
-	_G.CSR_PlaySound("printer_working", { position = unit:position(), volume = 0.5 })
+	_G.CSR_PlaySound("printer_working", { unit = unit, volume = 0.5 })
 end
 
 local function play_printer_starting(unit)
 	if not (_G.CSR_PlaySound and alive(unit)) then
 		return
 	end
-	_G.CSR_PlaySound("printer_starting", { position = unit:position(), volume = 0.5 })
+	_G.CSR_PlaySound("printer_starting", { unit = unit, volume = 0.5 })
 end
 
 local function hint(text, time)
