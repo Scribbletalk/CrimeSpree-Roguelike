@@ -205,14 +205,17 @@ _G.CSR_ItemConstants = {
 	carrot_stick_cooldown = 90, -- seconds between presses
 
 	-- HIPPOCRATIC OATH — passive medic joker that heals via aura
-	hippocratic_aura_radius = 300, -- 3m heal aura around the medic (PD2 units, 1m = 100)
+	hippocratic_aura_radius = 500, -- 5m heal aura around the medic (PD2 units, 1m = 100)
 	hippocratic_aura_tick = 5.0, -- heal pulse cadence (seconds)
 	hippocratic_heal_pct_per_tick = 0.05, -- 5% max HP per pulse (1%/sec sustained)
 	hippocratic_respawn_delay = 360, -- 6 minutes between deaths (cooldown only, no per-heist cap)
 	hippocratic_spawn_min_distance = 1500, -- spawn medic at least 15m from owner (offscreen feel)
 	hippocratic_spawn_max_distance = 4000, -- but no farther than 40m (so they actually arrive)
 	hippocratic_medic_dr = 0.80, -- 80% damage reduction on incoming damage to the medic
-	hippocratic_pulse_duration = 0.7, -- expanding-ring visual lifetime per heal pulse (seconds)
+	hippocratic_pulse_duration = 0.5, -- expanding-ring visual lifetime per heal pulse (seconds)
+	hippocratic_pulse_alpha = 0.08, -- peak opacity of the expanding ring (0..1, fades linearly to 0 over duration)
+	hippocratic_voice_event = "f47", -- Wwise event the medic shouts on heal (vanilla medic priority_shout)
+	hippocratic_voice_throttle = 30, -- minimum seconds between heal voicelines per machine
 
 	-- === FORCED MODIFIERS ===
 

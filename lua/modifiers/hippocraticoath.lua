@@ -93,6 +93,31 @@ function _G.CSR_HippocraticOath_StartPulse(medic_unit)
 	_G.CSR_HippocraticOath.pulse_state.medic_unit = medic_unit
 end
 
+-- Play the medic's heal voiceline if (a) the heal actually restored HP, AND
+-- (b) the per-machine throttle has elapsed. Each peer tracks its own
+-- _last_voice_t in CSR_HippocraticOath.last_voice_t so the throttle is local
+-- to the player who got healed (no cross-peer interference).
+-- Sync flag = true so the say event replicates to all peers seeing the medic.
+function _G.CSR_HippocraticOath_TryPlayVoice(medic_unit, hp_before, hp_after)
+	if not alive(medic_unit) then
+		return
+	end
+	if not (hp_before and hp_after) or hp_after <= hp_before then
+		return -- no actual heal happened (full HP, or healing failed)
+	end
+	local now = TimerManager:game():time()
+	local last = _G.CSR_HippocraticOath.last_voice_t or 0
+	local throttle = const("hippocratic_voice_throttle", 30)
+	if now - last < throttle then
+		return
+	end
+	_G.CSR_HippocraticOath.last_voice_t = now
+	local event = const("hippocratic_voice_event", "f47")
+	pcall(function()
+		medic_unit:sound():say(event, true)
+	end)
+end
+
 -- Returns whether the given peer_id owns at least one Hippocratic Oath.
 -- Wraps CSR_CountStacksForPeer (array iteration with prefix match — see
 -- player_items_store.lua:cached_count for the canonical implementation).
@@ -127,10 +152,16 @@ local function get_peer_player_unit(peer_id)
 	return nil
 end
 
--- Pick a spawn position 15-40m from the owner. Strategy:
---   1. Try a random nav segment that's far enough but not unreachable.
---   2. Fall back to picking an existing enemy's position (already nav-tracked).
---   3. Last resort: offset from owner's own position by min_distance in random dir.
+-- Pick a spawn position 15-40m from the owner using the level's registered
+-- cop spawn points. Iterates BOTH:
+--   * `area.spawn_points[i].pos`   — SpawnEnemyDummy mission elements
+--   * `area.spawn_groups[i].spawn_pts[j].pos` — SpawnEnemyGroup elements
+-- Modern heists use spawn_groups almost exclusively; older or auxiliary
+-- routes can still use spawn_points. Both paths' positions were validated
+-- against the navmesh at registration time (groupaistatebase.lua:4271 and
+-- :4321), so anything returned here is engine-validated for cop spawns.
+-- Returns nil if nothing is in the desired distance band — caller's
+-- spawn-check tick retries every ~2s.
 local function pick_spawn_position(owner_unit)
 	local min_d = const("hippocratic_spawn_min_distance", 1500)
 	local max_d = const("hippocratic_spawn_max_distance", 4000)
@@ -140,28 +171,43 @@ local function pick_spawn_position(owner_unit)
 	end
 	local owner_pos = owner_unit:movement():m_pos()
 
-	-- Strategy 2 (cheapest, most reliable): scan existing enemies for one in range.
-	if managers.enemy and managers.enemy.all_enemies then
-		local candidates = {}
-		for _, e_data in pairs(managers.enemy:all_enemies()) do
-			local u = e_data.unit
-			if alive(u) and u:movement() then
-				local d = mvector3.distance(owner_pos, u:movement():m_pos())
-				if d >= min_d and d <= max_d then
-					table.insert(candidates, u:movement():m_pos())
-				end
-			end
+	local groupai = managers.groupai and managers.groupai:state()
+	if not groupai or not groupai._area_data then
+		return nil
+	end
+
+	local candidates = {}
+	local function consider(pos)
+		if not pos then
+			return
 		end
-		if #candidates > 0 then
-			return candidates[math.random(#candidates)]
+		local d = mvector3.distance(owner_pos, pos)
+		if d >= min_d and d <= max_d then
+			table.insert(candidates, pos)
 		end
 	end
 
-	-- Strategy 3 fallback: offset from owner. Random angle, fixed distance.
-	local angle = math.random() * 2 * math.pi
-	local dx = math.cos(angle) * min_d
-	local dy = math.sin(angle) * min_d
-	return Vector3(owner_pos.x + dx, owner_pos.y + dy, owner_pos.z)
+	for _, area in pairs(groupai._area_data) do
+		if area.spawn_points then
+			for _, sp_data in ipairs(area.spawn_points) do
+				consider(sp_data and sp_data.pos)
+			end
+		end
+		if area.spawn_groups then
+			for _, group_data in ipairs(area.spawn_groups) do
+				if group_data and group_data.spawn_pts then
+					for _, sp_data in ipairs(group_data.spawn_pts) do
+						consider(sp_data and sp_data.pos)
+					end
+				end
+			end
+		end
+	end
+
+	if #candidates > 0 then
+		return candidates[math.random(#candidates)]
+	end
+	return nil
 end
 
 local function send_oath_heal(peer_id)
@@ -188,25 +234,36 @@ local function fire_hud_event_for(peer_id, event_name, payload)
 	end
 end
 
+-- True only when the player is in actual heist gameplay (not pre-planning,
+-- not loading, not menus, not end screens). Required for any code that calls
+-- World:spawn_unit, character_damage:restore_health, etc. — those primitives
+-- can deadlock or no-op if the level isn't fully loaded.
+local function is_actually_playing()
+	if not (managers.player and alive(managers.player:player_unit())) then
+		return false
+	end
+	if not (managers.crime_spree and managers.crime_spree:is_active()) then
+		return false
+	end
+	if not game_state_machine then
+		return false
+	end
+	local s = game_state_machine:current_state_name()
+	return s == "ingame_standard" or s == "ingame_waiting_for_players"
+end
+
 -- Host-only: spawn one medic for the given peer and convert to joker.
 -- Returns the spawned unit or nil on failure.
 local function spawn_medic_for(peer_id)
 	if not Network:is_server() then
 		return nil
 	end
-	if not (managers.crime_spree and managers.crime_spree:is_active()) then
+	if not is_actually_playing() then
 		return nil
 	end
 	-- Stealth gate: never spawn during whisper_mode.
 	if managers.groupai and managers.groupai:state() and managers.groupai:state():whisper_mode() then
 		return nil
-	end
-	-- Don't spawn during end screens.
-	if game_state_machine then
-		local s = game_state_machine:current_state_name()
-		if s == "victoryscreen" or s == "gameoverscreen" then
-			return nil
-		end
 	end
 
 	local owner_unit = get_peer_player_unit(peer_id)
@@ -287,7 +344,7 @@ local function host_check_spawns()
 	if not Network:is_server() then
 		return
 	end
-	if not (managers.crime_spree and managers.crime_spree:is_active()) then
+	if not is_actually_playing() then
 		return
 	end
 
@@ -326,7 +383,10 @@ local function host_aura_tick()
 	if not Network:is_server() then
 		return
 	end
-	local radius = const("hippocratic_aura_radius", 300)
+	if not is_actually_playing() then
+		return
+	end
+	local radius = const("hippocratic_aura_radius", 500)
 	local heal_pct = const("hippocratic_heal_pct_per_tick", 0.005)
 
 	for peer_id, s in pairs(_G.CSR_HippocraticOath.state) do
@@ -338,7 +398,12 @@ local function host_aura_tick()
 					if peer_id == local_peer_id() then
 						local cdmg = owner_unit:character_damage()
 						if cdmg and cdmg.restore_health then
+							-- Snapshot HP so we can detect whether the heal
+							-- actually restored anything (no voiceline at full HP).
+							local hp_before = cdmg.get_real_health and cdmg:get_real_health() or nil
 							pcall(cdmg.restore_health, cdmg, heal_pct, false)
+							local hp_after = cdmg.get_real_health and cdmg:get_real_health() or nil
+							_G.CSR_HippocraticOath_TryPlayVoice(s.medic_unit, hp_before, hp_after)
 						end
 						-- Local pulse visual at the medic.
 						_G.CSR_HippocraticOath_StartPulse(s.medic_unit)
@@ -355,6 +420,10 @@ end
 local function reset_state()
 	_G.CSR_HippocraticOath.state = {}
 	_G.CSR_HippocraticOath.last_tick = 0
+	-- Clear pulse state too — stale medic_unit references from a prior heist
+	-- would otherwise sit in the table until a new pulse fires.
+	_G.CSR_HippocraticOath.pulse_state = { active = false, start_t = 0, medic_unit = nil }
+	_G.CSR_HippocraticOath.last_voice_t = 0
 end
 
 -- Called when a minion dies. Identify if it was an Oath medic and start cooldown.
@@ -427,10 +496,14 @@ if not _G._CSR_HIPPOCRATIC_PULSE_DRAW_HOOKED then
 			return
 		end
 		local progress = elapsed / duration
-		local radius = const("hippocratic_aura_radius", 300) * progress
-		local alpha = 0.45 * (1 - progress)
+		local radius = const("hippocratic_aura_radius", 500) * progress
+		-- Peak alpha lives in CSR_ItemConstants for live tuning. `add` blend
+		-- already brightens the ground, so values around 0.05-0.15 read as a
+		-- soft glow rather than a hard overlay. m_pos is read fresh every
+		-- frame so the cylinder tracks the medic as they move.
+		local alpha = const("hippocratic_pulse_alpha", 0.08) * (1 - progress)
 		local pos = ps.medic_unit:movement():m_pos()
-		local color = Color(alpha, 0.35, 1.0, 0.55) -- soft green-cyan, fades as it expands
+		local color = Color(alpha, 0.35, 1.0, 0.55)
 		local brush = Draw:brush(color)
 		brush:set_blend_mode("add")
 		brush:cylinder(pos, pos + Vector3(0, 0, 6), radius)
