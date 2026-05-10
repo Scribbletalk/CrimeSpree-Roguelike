@@ -1,6 +1,6 @@
 -- Crime Spree Roguelike - Settings Manager
 
-_G.CSR_MOD_VERSION = "6.1.1"
+_G.CSR_MOD_VERSION = "6.1.2"
 
 CSR_Settings = CSR_Settings or {}
 
