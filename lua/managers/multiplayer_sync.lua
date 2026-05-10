@@ -390,6 +390,22 @@ function CSR_MP._handle_handshake_ok(data)
 	_G.CSR_MP_HostDifficulty = payload.difficulty
 	_G.CSR_CurrentDifficulty = payload.difficulty or "overkill"
 
+	-- Auto-create minimal CS state for clients without their own CS run, now
+	-- that HANDSHAKE_OK has confirmed the host is running CSR. Previously the
+	-- in_progress() override did this speculatively for any client in any MP
+	-- session, which leaked CSR state into vanilla heists. By moving it here,
+	-- we only mutate state once we KNOW we're in a CSR session.
+	-- TaheyaKinnie 2026-05-10.
+	local cs_mgr = managers.crime_spree
+	if cs_mgr and cs_mgr._global and not cs_mgr._global.in_progress then
+		CSR_log("HANDSHAKE_OK: client has no own CS — auto-creating minimal state")
+		cs_mgr._global.in_progress = true
+		cs_mgr._global.spree_level = 0
+		cs_mgr._global.reward_level = 0
+		cs_mgr._global.modifiers = cs_mgr._global.modifiers or {}
+		_G.CSR_MP_NeedsAutoCreate = true
+	end
+
 	-- Force client's engine difficulty to match host's CSR-mapped difficulty.
 	-- Vanilla's load-level handshake sets Global.game_settings.difficulty on first
 	-- join, but on REJOIN after a crash the client's prior cached value can survive
@@ -1169,11 +1185,18 @@ end
 -- AUTO-CREATE CS FOR CLIENTS WITHOUT ONE (lazy init via in_progress override)
 ----------------------------------------------
 
--- When a client joins a CS lobby without their own active Crime Spree,
--- vanilla UI checks in_progress() during init and shows "No Crime Spree in Progress".
--- This override ensures in_progress() returns true for clients in a CSR MP session,
--- setting up minimal CS state on first call so the UI renders correctly.
--- The full seed generation happens later in _handle_handshake_ok.
+-- When a client joins a CSR-confirmed MP session without their own active CS,
+-- minimal CS state is set up so vanilla UI checks of in_progress() see a sane
+-- value. The auto-create now happens directly in _handle_handshake_ok (which
+-- is the moment we KNOW the host is running CSR). This override is a defensive
+-- passthrough for any later in_progress() callers — the real state mutation
+-- has already been done by the time we get here.
+--
+-- Gate must require CSR_MP.is_mp_session, not just is_client(). is_mp_session
+-- is set only in _handle_handshake_ok and the session-file recovery path —
+-- both legitimate "we are in a CSR session" signals. The previous gate fired
+-- for ANY client in ANY MP session, which leaked CSR state into vanilla
+-- heists. TaheyaKinnie 2026-05-10.
 local _orig_in_progress = CrimeSpreeManager.in_progress
 function CrimeSpreeManager:in_progress()
 	local result = _orig_in_progress(self)
@@ -1181,14 +1204,12 @@ function CrimeSpreeManager:in_progress()
 		return true
 	end
 
-	-- Only for clients in an active network session
-	if not (_G.CSR_MP and CSR_MP.is_client and CSR_MP.is_client()) then
+	if not (_G.CSR_MP and CSR_MP.is_mp_session and Network:is_client()) then
 		return false
 	end
 
-	-- Set minimal CS state so spree_level() returns 0 instead of -1 (once only)
 	if self._global and not self._global.in_progress then
-		CSR_log("in_progress override: client has no CS — setting in_progress=true, spree_level=0")
+		CSR_log("in_progress override: defensive auto-set after handshake confirm")
 		self._global.in_progress = true
 		self._global.spree_level = 0
 		self._global.reward_level = 0
@@ -1244,6 +1265,14 @@ end
 -- warning immediately (server_spree_level() < spree_level()). Clamp it synchronously here
 -- so the detail pages never see the wrong value.
 Hooks:PostHook(CrimeSpreeManager, "on_entered_lobby", "CSR_MP_SuppressSuspendedWarning", function(self)
+	-- Mirror vanilla's gate (lib/managers/crimespreemanager.lua:1415) so this
+	-- PostHook only fires for CS-gamemode lobbies. Without this gate, joining
+	-- ANY MP lobby (including plain vanilla heists) would set is_mp_session and
+	-- schedule a handshake, and the in_progress() override below would then
+	-- mutate CS state on the client. TaheyaKinnie 2026-05-10.
+	if not self:is_active() then
+		return
+	end
 	if not Network:is_client() then
 		return
 	end
