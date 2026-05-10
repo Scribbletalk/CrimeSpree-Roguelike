@@ -291,33 +291,25 @@ local function build_items(content, positions)
 		local local_id = local_pid()
 		local items = CSR_BuildItemsForPeer(local_id)
 		local regular, wildcards = split_wildcards(items)
-		local has_wildcards = #wildcards > 0
-		local main_w
+		local main_w = panel_w
+			- 20
+			- TAB_MAIN_GRID_LEFT_PAD
+			- TAB_WILDCARD_SLOT_WIDTH
+			- TAB_WILDCARD_SLOT_GAP
+			- TAB_WILDCARD_SLOT_RIGHT_PAD
 		local grid_x = 10 + TAB_MAIN_GRID_LEFT_PAD
-		local slot_x
+		local slot_x = grid_x + main_w + TAB_WILDCARD_SLOT_GAP
 		local slot_h = panel_h - 20
-		if has_wildcards then
-			main_w = panel_w
-				- 20
-				- TAB_MAIN_GRID_LEFT_PAD
-				- TAB_WILDCARD_SLOT_WIDTH
-				- TAB_WILDCARD_SLOT_GAP
-				- TAB_WILDCARD_SLOT_RIGHT_PAD
-			slot_x = grid_x + main_w + TAB_WILDCARD_SLOT_GAP
-		else
-			main_w = panel_w - 20 - TAB_MAIN_GRID_LEFT_PAD
-		end
 
 		if #regular > 0 then
 			local cell = calc_cell_size(#regular, main_w, panel_h - 10, 72, 24)
 			render_grid(content, regular, grid_x, 10, cell, main_w, positions, local_id)
-		elseif not has_wildcards then
+		elseif #wildcards == 0 then
 			placeholder_text(content, managers.localization:text("menu_csr_items_placeholder"))
 		end
 
-		if has_wildcards then
-			render_wildcard_cell(content, wildcards, slot_x, 10, TAB_WILDCARD_SLOT_WIDTH, slot_h, positions, local_id)
-		end
+		-- Always reserve the right-column slot, even when empty.
+		render_wildcard_cell(content, wildcards, slot_x, 10, TAB_WILDCARD_SLOT_WIDTH, slot_h, positions, local_id)
 		return
 	end
 
@@ -394,26 +386,19 @@ local function build_items(content, positions)
 
 			-- Split wildcards out for the dedicated right-column slot.
 			local regular, wildcards = split_wildcards(items)
-			local has_wildcards = #wildcards > 0
-			local main_w
+			local main_w = panel_w
+				- 20
+				- TAB_MAIN_GRID_LEFT_PAD
+				- TAB_WILDCARD_SLOT_WIDTH
+				- TAB_WILDCARD_SLOT_GAP
+				- TAB_WILDCARD_SLOT_RIGHT_PAD
 			local grid_x = 10 + TAB_MAIN_GRID_LEFT_PAD
-			local slot_x
-			if has_wildcards then
-				main_w = panel_w
-					- 20
-					- TAB_MAIN_GRID_LEFT_PAD
-					- TAB_WILDCARD_SLOT_WIDTH
-					- TAB_WILDCARD_SLOT_GAP
-					- TAB_WILDCARD_SLOT_RIGHT_PAD
-				slot_x = grid_x + main_w + TAB_WILDCARD_SLOT_GAP
-			else
-				main_w = panel_w - 20 - TAB_MAIN_GRID_LEFT_PAD
-			end
+			local slot_x = grid_x + main_w + TAB_WILDCARD_SLOT_GAP
 
 			if #regular > 0 then
 				local cell = calc_cell_size(#regular, main_w, grid_h, math.min(72, grid_h), 24)
 				render_grid(content, regular, grid_x, grid_y, cell, main_w, positions, pid)
-			elseif not has_wildcards then
+			elseif #wildcards == 0 then
 				content:text({
 					text = "No items",
 					font = tweak_data.menu.pd2_small_font,
@@ -425,18 +410,8 @@ local function build_items(content, positions)
 				})
 			end
 
-			if has_wildcards then
-				render_wildcard_cell(
-					content,
-					wildcards,
-					slot_x,
-					grid_y,
-					TAB_WILDCARD_SLOT_WIDTH,
-					grid_h,
-					positions,
-					pid
-				)
-			end
+			-- Always reserve the right-column slot, even when empty.
+			render_wildcard_cell(content, wildcards, slot_x, grid_y, TAB_WILDCARD_SLOT_WIDTH, grid_h, positions, pid)
 		end
 	end
 end
