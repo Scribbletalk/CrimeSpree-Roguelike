@@ -1,98 +1,151 @@
 -- Crime Spree Roguelike - Options Menu using MenuHelper
 
+local CSR_OPT_EN = {
+	csr_menu_title = "Crime Spree Roguelike",
+	csr_menu_desc = "Settings for Crime Spree Roguelike mod",
+	csr_language_title = "Language",
+	csr_language_desc = "Requires game restart to apply.",
+	csr_skip_blackscreen_title = "Skip Intro Blackscreen",
+	csr_skip_blackscreen_desc = "Automatically skip the heist intro briefing (black screen with dialogue). Host only.",
+	csr_block_item_healing_title = "Block Item Healing (Berserker)",
+	csr_block_item_healing_desc = "Disables healing from Worn Band-Aid and Pink Slip. Use this if you run a Berserker/Frenzy build.",
+	csr_lobby_filter_title = "CSR-Only Lobby Filter",
+	csr_lobby_filter_desc = "Hides non-CSR Crime Spree lobbies in Crime.Net and auto-kicks players without the mod. Enable if you only want to play with other CSR players.",
+	csr_item_settings_title = "Items Settings",
+	csr_item_settings_desc = "Per-item sound volume and other item-specific options.",
+	csr_bonnie_chip_sound_title = "Bonnie's Lucky Chip: Activation Volume",
+	csr_bonnie_chip_sound_desc = "",
+	csr_plush_shark_sound_title = "Plush Shark: Activation Volume",
+	csr_plush_shark_sound_desc = "",
+	csr_the_edge_sound_title = "The Edge: Activation Volume",
+	csr_the_edge_sound_desc = "",
+	csr_debug_mode_title = "Verbose Logging",
+	csr_debug_mode_desc = "Enables verbose logging to the BLT log file.",
+	csr_heist_settings_title = "Heist Specific Settings",
+	csr_heist_settings_desc = "Toggle heist-specific tweaks that improve Crime Spree gameplay.",
+	csr_heist_diamond_bile_title = "The Diamond: Bile Stays",
+	csr_heist_diamond_bile_desc = "Prevents Bile's helicopter from leaving after collecting 4 bags. Host only.",
+	csr_custom_huds_title = "Custom HUDs",
+	csr_custom_huds_desc = "Compatibility options for custom HUD mods.",
+	csr_vhudplus_settings_title = "VanillaHUD Plus Cooldowns",
+	csr_vhudplus_settings_desc = "Toggle cooldown timers for each item on the VanillaHUD Plus buff bar. Requires VanillaHUD Plus.",
+	csr_vhudplus_the_edge_title = "The Edge",
+	csr_vhudplus_the_edge_desc = "Show cooldown and invulnerability timers for The Edge.",
+	csr_vhudplus_overkill_rush_title = "Overkill Rush",
+	csr_vhudplus_overkill_rush_desc = "Show kill streak timer and stacks for Overkill Rush.",
+	csr_vhudplus_bonnie_chip_title = "Bonnie's Lucky Chip",
+	csr_vhudplus_bonnie_chip_desc = "Show cooldown timer for Bonnie's Chip (fires on every hit attempt).",
+	csr_vhudplus_plush_shark_title = "Plush Shark",
+	csr_vhudplus_plush_shark_desc = "Show invulnerability duration for Plush Shark.",
+	csr_vhudplus_dmt_title = "Dead Man's Trigger",
+	csr_vhudplus_dmt_desc = "Show cooldown timer for Dead Man's Trigger explosion.",
+	csr_vhudplus_bandaid_title = "Worn Band-Aid",
+	csr_vhudplus_bandaid_desc = "Show regen cycle timer for Worn Band-Aid.",
+	csr_wfhud_settings_title = "Warframe HUD Cooldowns",
+	csr_wfhud_settings_desc = "Toggle cooldown timers for each item on the Warframe HUD buff bar. Requires Warframe HUD.",
+	csr_wfhud_the_edge_title = "The Edge",
+	csr_wfhud_the_edge_desc = "Show cooldown and invulnerability timers for The Edge.",
+	csr_wfhud_overkill_rush_title = "Overkill Rush",
+	csr_wfhud_overkill_rush_desc = "Show kill streak timer and bonus percentage for Overkill Rush.",
+	csr_wfhud_bonnie_chip_title = "Bonnie's Lucky Chip",
+	csr_wfhud_bonnie_chip_desc = "Show cooldown timer for Bonnie's Chip (fires on every hit attempt).",
+	csr_wfhud_plush_shark_title = "Plush Shark",
+	csr_wfhud_plush_shark_desc = "Show invulnerability duration for Plush Shark.",
+	csr_wfhud_dmt_title = "Dead Man's Trigger",
+	csr_wfhud_dmt_desc = "Show cooldown timer for Dead Man's Trigger explosion.",
+	csr_wfhud_bandaid_title = "Worn Band-Aid",
+	csr_wfhud_bandaid_desc = "Show regen cycle timer for Worn Band-Aid.",
+	csr_pocohud_settings_title = "PocoHud3 Cooldowns",
+	csr_pocohud_settings_desc = "Toggle cooldown timers for each item on the PocoHud3 buff bar. Requires PocoHud3.",
+	csr_pocohud_the_edge_title = "The Edge",
+	csr_pocohud_the_edge_desc = "Show cooldown and invulnerability timers for The Edge.",
+	csr_pocohud_overkill_rush_title = "Overkill Rush",
+	csr_pocohud_overkill_rush_desc = "Show kill streak timer and bonus percentage for Overkill Rush.",
+	csr_pocohud_bonnie_chip_title = "Bonnie's Lucky Chip",
+	csr_pocohud_bonnie_chip_desc = "Show cooldown timer for Bonnie's Chip (fires on every hit attempt).",
+	csr_pocohud_plush_shark_title = "Plush Shark",
+	csr_pocohud_plush_shark_desc = "Show invulnerability duration for Plush Shark.",
+	csr_pocohud_dmt_title = "Dead Man's Trigger",
+	csr_pocohud_dmt_desc = "Show cooldown timer for Dead Man's Trigger explosion.",
+	csr_pocohud_bandaid_title = "Worn Band-Aid",
+	csr_pocohud_bandaid_desc = "Show regen cycle timer for Worn Band-Aid.",
+}
+
+local CSR_OPT_RU = {
+	csr_menu_title = "Crime Spree Roguelike",
+	csr_menu_desc = "\208\157\208\176\209\129\209\130\209\128\208\190\208\185\208\186\208\184 \208\188\208\190\208\180\208\176 Crime Spree Roguelike",
+	csr_language_title = "\208\175\208\183\209\139\208\186",
+	csr_language_desc = "\208\162\209\128\208\181\208\177\209\131\208\181\209\130 \208\191\208\181\209\128\208\181\208\183\208\176\208\191\209\131\209\129\208\186\208\176 \208\184\208\179\209\128\209\139.",
+	csr_skip_blackscreen_title = "\208\159\209\128\208\190\208\191\209\131\209\129\209\130\208\184\209\130\209\140 \208\178\209\129\209\130\209\131\208\191\208\184\209\130\208\181\208\187\209\140\208\189\209\139\208\185 \209\215\208\186\209\128\208\176\208\189",
+	csr_skip_blackscreen_desc = "\208\144\208\178\209\130\208\190\208\188\208\176\209\130\208\184\209\135\208\181\209\129\208\186\208\184 \208\191\209\128\208\190\208\191\209\131\209\129\208\186\208\176\208\181\209\130 \209\207\209\215\209\128\208\189\209\213\208\185 \209\215\208\186\209\128\208\176\208\189 \209\129\208\190 \208\178\209\129\209\130\209\131\208\191\208\184\209\130\208\181\208\187\209\140\208\189\209\213\208\188 \208\180\208\184\208\176\208\187\208\190\208\179\208\190\208\188. \208\162\208\190\208\187\209\140\208\186\208\190 \208\180\208\187\209\143 \209\205\208\190\209\129\209\130\208\176.",
+	csr_block_item_healing_title = "\208\145\208\187\208\190\208\186\208\184\209\128\208\190\208\178\208\176\209\130\209\140 \208\187\208\181\209\135\208\181\208\189\208\184\208\181 \208\190\209\130 \208\191\209\128\208\181\208\180\208\188\208\181\209\130\208\190\208\178 (\208\145\208\181\209\128\209\129\208\181\209\128\208\186)",
+	csr_block_item_healing_desc = "\208\158\209\130\208\186\208\187\209\142\209\135\208\176\208\181\209\130 \208\187\208\181\209\135\208\181\208\189\208\184\208\181 \208\190\209\130 \208\159\208\190\209\130\209\128\209\221\208\191\208\176\208\189\208\189\208\190\208\179\208\190 \208\191\208\187\208\176\209\129\209\130\209\139\209\128\209\143 \208\184 \208\158\209\130\209\129\209\130\208\176\208\178\208\189\208\190\208\185 \208\186\208\178\208\184\209\130\208\176\208\189\209\206\208\184\208\184. \208\148\208\187\209\143 \208\177\208\184\208\187\208\180\208\190\208\178 \208\145\208\181\209\128\209\129\208\181\209\128\208\186\208\176 \208\184\208\187\208\184 \208\175\209\128\208\190\209\129\209\130\208\184.",
+	csr_lobby_filter_title = "\208\164\208\184\208\187\209\140\209\130\209\128 \208\187\208\190\208\177\208\177\208\184 \209\202\208\190\208\187\209\140\208\186\208\190 CSR",
+	csr_lobby_filter_desc = "\208\161\208\186\209\128\209\139\208\178\208\176\208\181\209\130 \208\187\208\190\208\177\208\177\208\184 Crime Spree \208\177\208\181\208\183 \208\188\208\190\208\180\208\176 \208\184 \208\176\208\178\209\130\208\190\208\186\208\184\208\186\208\190\208\186\208\190\208\188 \208\178\209\213\208\186\208\184\208\180\209\139\208\178\208\176\208\181\209\130 \208\184\208\179\209\128\208\190\208\186\208\190\208\178 \208\177\208\181\208\183 CSR. \208\146\208\186\208\187\209\142\209\135\208\184\209\130\208\181, \208\181\209\129\208\187\208\184 \209\205\208\190\209\130\208\184\209\130\208\181 \208\184\208\179\209\128\208\176\209\130\209\140 \209\202\208\190\208\187\209\140\208\186\208\190 \209\129 \208\184\208\179\209\128\208\190\208\186\208\176\208\188\208\184 CSR.",
+	csr_item_settings_title = "\208\157\208\176\209\129\209\130\209\128\208\190\208\185\208\186\208\184 \208\191\209\128\208\181\208\180\208\188\208\181\209\130\208\190\208\178",
+	csr_item_settings_desc = "\208\147\209\128\208\190\208\188\208\186\208\190\209\129\209\130\209\140 \208\183\208\178\209\131\208\186\208\190\208\178 \208\184 \208\191\209\128\208\190\209\135\208\184\208\181 \208\189\208\176\209\129\209\130\209\128\208\190\208\185\208\186\208\184 \208\191\209\128\208\181\208\180\208\188\208\181\209\130\208\190\208\178.",
+	csr_bonnie_chip_sound_title = "\208\167\208\184\208\191 \208\145\208\190\208\189\208\189\208\184: \208\179\209\128\208\190\208\188\208\186\208\190\209\129\209\130\209\140 \208\176\208\186\209\130\208\184\208\178\208\176\209\206\208\184\208\184",
+	csr_bonnie_chip_sound_desc = "",
+	csr_plush_shark_sound_title = "\208\159\208\187\209\142\209\210\208\181\208\178\208\176\209\143 \208\176\208\186\209\131\208\187\208\176: \208\179\209\128\208\190\208\188\208\186\208\190\209\129\209\130\209\140 \208\176\208\186\209\130\208\184\208\178\208\176\209\206\208\184\208\184",
+	csr_plush_shark_sound_desc = "",
+	csr_the_edge_sound_title = "\208\157\208\176 \208\179\209\128\208\176\208\189\208\184: \208\179\209\128\208\190\208\188\208\186\208\190\209\129\209\130\209\140 \208\176\208\186\209\130\208\184\208\178\208\176\209\206\208\184\208\184",
+	csr_the_edge_sound_desc = "",
+	csr_debug_mode_title = "Verbose Logging",
+	csr_debug_mode_desc = "Enables verbose logging to the BLT log file.",
+	csr_heist_settings_title = "\208\157\208\176\209\129\209\130\209\128\208\190\208\185\208\186\208\184 \208\183\208\176\208\180\208\176\208\189\208\184\208\185",
+	csr_heist_settings_desc = "\208\159\208\176\209\128\208\176\208\188\208\181\209\130\209\128\209\213, \209\131\208\187\209\131\209\135\209\210\208\176\209\142\209\211\208\184\208\181 \208\179\208\181\208\185\208\188\208\191\208\187\208\181\208\185 \208\184\208\179\209\128\209\213 Crime Spree \208\189\208\176 \208\186\208\190\208\189\208\186\209\128\208\181\209\130\208\189\209\213\209\205 \208\183\208\176\208\180\208\176\208\189\208\184\209\217.",
+	csr_heist_diamond_bile_title = "\208\145\209\128\208\184\208\187\208\187\208\184\208\176\208\189\209\130: \208\145\208\176\208\185\208\187 \208\190\209\129\209\130\208\176\209\221\209\202\209\129\209\143",
+	csr_heist_diamond_bile_desc = "\208\159\209\128\208\181\208\180\208\190\209\130\208\178\209\128\208\176\209\211\208\176\208\181\209\130 \208\190\209\130\208\187\209\221\209\202 \208\178\208\181\209\128\209\202\208\190\208\187\209\221\209\202\208\176 \208\145\208\176\208\185\208\187\208\176 \208\191\208\190\209\129\208\187\208\181 \209\129\208\177\208\190\209\128\208\176 4 \208\191\208\176\208\186\208\181\209\130\208\190\208\178. \208\162\208\190\208\187\209\140\208\186\208\190 \208\180\208\187\209\143 \209\205\208\190\209\129\209\130\208\176.",
+	csr_custom_huds_title = "\208\161\209\202\208\190\209\128\208\190\208\189\208\189\208\184\208\181 HUD",
+	csr_custom_huds_desc = "\208\157\208\176\209\129\209\130\209\128\208\190\208\185\208\186\208\184 \209\129\208\190\208\178\208\188\208\181\209\129\209\130\208\184\208\188\208\190\209\129\209\130\208\184 \209\129 \208\188\208\190\208\180\208\176\208\188\208\184 \208\184\208\189\209\202\208\181\209\128\209\204\208\181\208\185\209\129\208\176.",
+	csr_vhudplus_settings_title = "VanillaHUD Plus: \209\202\208\176\208\185\208\188\208\181\209\128\209\213 \208\191\208\181\209\128\208\181\208\183\208\176\209\128\209\217\208\176\208\180\208\186\208\184",
+	csr_vhudplus_settings_desc = "\208\162\208\176\208\185\208\188\208\181\209\128\209\213 \208\191\208\181\209\128\208\181\208\183\208\176\209\128\209\217\208\176\208\180\208\186\208\184 \208\180\208\187\209\143 \208\186\208\176\208\182\208\180\208\190\208\179\208\190 \208\191\209\128\208\181\208\180\208\188\208\181\209\130\208\176. \208\162\209\128\208\181\208\177\209\131\208\181\209\130\209\129\209\143 VanillaHUD Plus.",
+	csr_vhudplus_the_edge_title = "\208\157\208\176 \208\179\209\128\208\176\208\189\208\184",
+	csr_vhudplus_the_edge_desc = "\208\159\208\190\208\186\208\176\208\183\209\213\208\178\208\176\209\130\209\140 \209\202\208\176\208\185\208\188\208\181\209\128\209\213 \208\191\208\181\209\128\208\181\208\183\208\176\209\128\209\217\208\176\208\180\208\186\208\184 \208\184 \208\189\208\181\209\131\209\143\208\183\208\178\208\184\208\188\208\190\209\129\209\130\208\184.",
+	csr_vhudplus_overkill_rush_title = "\208\145\208\181\208\183\208\182\208\176\208\187\208\190\209\129\209\130\208\189\209\213\208\185 \208\189\208\176\208\191\208\190\209\128",
+	csr_vhudplus_overkill_rush_desc = "\208\159\208\190\208\186\208\176\208\183\209\213\208\178\208\176\209\130\209\140 \209\202\208\176\208\185\208\188\208\181\209\128 \209\129\208\181\209\128\208\184\208\184 \209\131\208\177\208\184\208\185\209\129\209\130\208\178 \208\184 \208\177\208\190\208\189\209\131\209\129.",
+	csr_vhudplus_bonnie_chip_title = "\208\167\208\184\208\191 \208\145\208\190\208\189\208\189\208\184",
+	csr_vhudplus_bonnie_chip_desc = "\208\159\208\190\208\186\208\176\208\183\209\213\208\178\208\176\209\130\209\140 \209\202\208\176\208\185\208\188\208\181\209\128 \208\191\208\181\209\128\208\181\208\183\208\176\209\128\209\217\208\176\208\180\208\186\208\184.",
+	csr_vhudplus_plush_shark_title = "\208\159\208\187\209\142\209\210\208\181\208\178\208\176\209\143 \208\176\208\186\209\131\208\187\208\176",
+	csr_vhudplus_plush_shark_desc = "\208\159\208\190\208\186\208\176\208\183\209\213\208\178\208\176\209\130\209\140 \208\180\208\187\208\184\209\202\208\181\208\187\209\140\208\189\208\190\209\129\209\130\209\140 \208\189\208\181\209\131\209\143\208\183\208\178\208\184\208\188\208\190\209\129\209\130\208\184.",
+	csr_vhudplus_dmt_title = "\208\159\209\128\208\181\208\180\209\129\208\188\208\181\209\128\209\202\208\189\209\213\208\185 \208\186\209\131\209\128\208\190\208\186",
+	csr_vhudplus_dmt_desc = "\208\159\208\190\208\186\208\176\208\183\209\213\208\178\208\176\209\130\209\140 \209\202\208\176\208\185\208\188\208\181\209\128 \208\191\208\181\209\128\208\181\208\183\208\176\209\128\209\217\208\176\208\180\208\186\208\184 \208\178\208\183\209\128\209\213\208\178\208\176.",
+	csr_vhudplus_bandaid_title = "\208\159\208\190\209\130\209\128\209\221\208\191\208\176\208\189\208\189\209\213\208\185 \208\191\208\187\208\176\209\129\209\130\209\213\209\128\209\140",
+	csr_vhudplus_bandaid_desc = "\208\159\208\190\208\186\208\176\208\183\209\213\208\178\208\176\209\130\209\140 \209\202\208\176\208\185\208\188\208\181\209\128 \209\200\208\184\208\186\208\187\208\176 \209\128\208\181\208\179\208\181\208\189\208\181\209\128\208\176\209\206\208\184\208\184.",
+	csr_wfhud_settings_title = "Warframe HUD: \209\202\208\176\208\185\208\188\208\181\209\128\209\213 \208\191\208\181\209\128\208\181\208\183\208\176\209\128\209\217\208\176\208\180\208\186\208\184",
+	csr_wfhud_settings_desc = "\208\162\208\176\208\185\208\188\208\181\209\128\209\213 \208\191\208\181\209\128\208\181\208\183\208\176\209\128\209\217\208\176\208\180\208\186\208\184 \208\180\208\187\209\143 \208\186\208\176\208\182\208\180\208\190\208\179\208\190 \208\191\209\128\208\181\208\180\208\188\208\181\209\130\208\176. \208\162\209\128\208\181\208\177\209\131\208\181\209\130\209\129\209\143 Warframe HUD.",
+	csr_wfhud_the_edge_title = "\208\157\208\176 \208\179\209\128\208\176\208\189\208\184",
+	csr_wfhud_the_edge_desc = "\208\159\208\190\208\186\208\176\208\183\209\213\208\178\208\176\209\130\209\140 \209\202\208\176\208\185\208\188\208\181\209\128\209\213 \208\191\208\181\209\128\208\181\208\183\208\176\209\128\209\217\208\176\208\180\208\186\208\184 \208\184 \208\189\208\181\209\131\209\143\208\183\208\178\208\184\208\188\208\190\209\129\209\130\208\184.",
+	csr_wfhud_overkill_rush_title = "\208\145\208\181\208\183\208\182\208\176\208\187\208\190\209\129\209\130\208\189\209\213\208\185 \208\189\208\176\208\191\208\190\209\128",
+	csr_wfhud_overkill_rush_desc = "\208\159\208\190\208\186\208\176\208\183\209\213\208\178\208\176\209\130\209\140 \209\202\208\176\208\185\208\188\208\181\209\128 \209\129\208\181\209\128\208\184\208\184 \209\131\208\177\208\184\208\185\209\129\209\130\208\178 \208\184 \208\177\208\190\208\189\209\131\209\129.",
+	csr_wfhud_bonnie_chip_title = "\208\167\208\184\208\191 \208\145\208\190\208\189\208\189\208\184",
+	csr_wfhud_bonnie_chip_desc = "\208\159\208\190\208\186\208\176\208\183\209\213\208\178\208\176\209\130\209\140 \209\202\208\176\208\185\208\188\208\181\209\128 \208\191\208\181\209\128\208\181\208\183\208\176\209\128\209\217\208\176\208\180\208\186\208\184.",
+	csr_wfhud_plush_shark_title = "\208\159\208\187\209\142\209\210\208\181\208\178\208\176\209\143 \208\176\208\186\209\131\208\187\208\176",
+	csr_wfhud_plush_shark_desc = "\208\159\208\190\208\186\208\176\208\183\209\213\208\178\208\176\209\130\209\140 \208\180\208\187\208\184\209\202\208\181\208\187\209\140\208\189\208\190\209\129\209\130\209\140 \208\189\208\181\209\131\209\143\208\183\208\178\208\184\208\188\208\190\209\129\209\130\208\184.",
+	csr_wfhud_dmt_title = "\208\159\209\128\208\181\208\180\209\129\208\188\208\181\209\128\209\202\208\189\209\213\208\185 \208\186\209\131\209\128\208\190\208\186",
+	csr_wfhud_dmt_desc = "\208\159\208\190\208\186\208\176\208\183\209\213\208\178\208\176\209\130\209\140 \209\202\208\176\208\185\208\188\208\181\209\128 \208\191\208\181\209\128\208\181\208\183\208\176\209\128\209\217\208\176\208\180\208\186\208\184 \208\178\208\183\209\128\209\213\208\178\208\176.",
+	csr_wfhud_bandaid_title = "\208\159\208\190\209\130\209\128\209\221\208\191\208\176\208\189\208\189\209\213\208\185 \208\191\208\187\208\176\209\129\209\130\209\213\209\128\209\140",
+	csr_wfhud_bandaid_desc = "\208\159\208\190\208\186\208\176\208\183\209\213\208\178\208\176\209\130\209\140 \209\202\208\176\208\185\208\188\208\181\209\128 \209\200\208\184\208\186\208\187\208\176 \209\128\208\181\208\179\208\181\208\189\208\181\209\128\208\176\209\206\208\184\208\184.",
+	csr_pocohud_settings_title = "PocoHud3: \209\202\208\176\208\185\208\188\208\181\209\128\209\213 \208\191\208\181\209\128\208\181\208\183\208\176\209\128\209\217\208\176\208\180\208\186\208\184",
+	csr_pocohud_settings_desc = "\208\162\208\176\208\185\208\188\208\181\209\128\209\213 \208\191\208\181\209\128\208\181\208\183\208\176\209\128\209\217\208\176\208\180\208\186\208\184 \208\180\208\187\209\143 \208\186\208\176\208\182\208\180\208\190\208\179\208\190 \208\191\209\128\208\181\208\180\208\188\208\181\209\130\208\176. \208\162\209\128\208\181\208\177\209\131\208\181\209\130\209\129\209\143 PocoHud3.",
+	csr_pocohud_the_edge_title = "\208\157\208\176 \208\179\209\128\208\176\208\189\208\184",
+	csr_pocohud_the_edge_desc = "\208\159\208\190\208\186\208\176\208\183\209\213\208\178\208\176\209\130\209\140 \209\202\208\176\208\185\208\188\208\181\209\128\209\213 \208\191\208\181\209\128\208\181\208\183\208\176\209\128\209\217\208\176\208\180\208\186\208\184 \208\184 \208\189\208\181\209\131\209\143\208\183\208\178\208\184\208\188\208\190\209\129\209\130\208\184.",
+	csr_pocohud_overkill_rush_title = "\208\145\208\181\208\183\208\182\208\176\208\187\208\190\209\129\209\130\208\189\209\213\208\185 \208\189\208\176\208\191\208\190\209\128",
+	csr_pocohud_overkill_rush_desc = "\208\159\208\190\208\186\208\176\208\183\209\213\208\178\208\176\209\130\209\140 \209\202\208\176\208\185\208\188\208\181\209\128 \209\129\208\181\209\128\208\184\208\184 \209\131\208\177\208\184\208\185\209\129\209\130\208\178 \208\184 \208\177\208\190\208\189\209\131\209\129.",
+	csr_pocohud_bonnie_chip_title = "\208\167\208\184\208\191 \208\145\208\190\208\189\208\189\208\184",
+	csr_pocohud_bonnie_chip_desc = "\208\159\208\190\208\186\208\176\208\183\209\213\208\178\208\176\209\130\209\140 \209\202\208\176\208\185\208\188\208\181\209\128 \208\191\208\181\209\128\208\181\208\183\208\176\209\128\209\217\208\176\208\180\208\186\208\184.",
+	csr_pocohud_plush_shark_title = "\208\159\208\187\209\142\209\210\208\181\208\178\208\176\209\143 \208\176\208\186\209\131\208\187\208\176",
+	csr_pocohud_plush_shark_desc = "\208\159\208\190\208\186\208\176\208\183\209\213\208\178\208\176\209\130\209\140 \208\180\208\187\208\184\209\202\208\181\208\187\209\140\208\189\208\190\209\129\209\130\209\140 \208\189\208\181\209\131\209\143\208\183\208\178\208\184\208\188\208\190\209\129\209\130\208\184.",
+	csr_pocohud_dmt_title = "\208\159\209\128\208\181\208\180\209\129\208\188\208\181\209\128\209\202\208\189\209\213\208\185 \208\186\209\131\209\128\208\190\208\186",
+	csr_pocohud_dmt_desc = "\208\159\208\190\208\186\208\176\208\183\209\213\208\178\208\176\209\130\209\140 \209\202\208\176\208\185\208\188\208\181\209\128 \208\191\208\181\209\128\208\181\208\183\208\176\209\128\209\217\208\176\208\180\208\186\208\184 \208\178\208\183\209\128\209\213\208\178\208\176.",
+	csr_pocohud_bandaid_title = "\208\159\208\190\209\130\209\128\209\221\208\191\208\176\208\189\208\189\209\213\208\185 \208\191\208\187\208\176\209\129\209\130\209\213\209\128\209\140",
+	csr_pocohud_bandaid_desc = "\208\159\208\190\208\186\208\176\208\183\209\213\208\178\208\176\209\130\209\140 \209\202\208\176\208\185\208\188\208\181\209\128 \209\200\208\184\208\186\208\187\208\176 \209\128\208\181\208\179\208\181\208\189\208\181\209\128\208\176\209\206\208\184\208\184.",
+}
+
 -- Menu localization
 Hooks:Add("LocalizationManagerPostInit", "CSR_OptionsLocalization", function(loc)
-	local strings = {
-		-- Main Menu
-		csr_menu_title = "Crime Spree Roguelike",
-		csr_menu_desc = "Settings for Crime Spree Roguelike mod",
-
-		-- Skip Blackscreen
-		csr_skip_blackscreen_title = "Skip Intro Blackscreen",
-		csr_skip_blackscreen_desc = "Automatically skip the heist intro briefing (black screen with dialogue). Host only.",
-
-		-- Block Item Healing
-		csr_block_item_healing_title = "Block Item Healing (Berserker)",
-		csr_block_item_healing_desc = "Disables healing from Worn Band-Aid and Pink Slip. Use this if you run a Berserker/Frenzy build.",
-
-		-- Lobby Filter
-		csr_lobby_filter_title = "CSR-Only Lobby Filter",
-		csr_lobby_filter_desc = "Hides non-CSR Crime Spree lobbies in Crime.Net and auto-kicks players without the mod. Enable if you only want to play with other CSR players.",
-
-		-- Item Settings (sub-menu)
-		csr_item_settings_title = "Items Settings",
-		csr_item_settings_desc = "Per-item sound volume and other item-specific options.",
-		csr_bonnie_chip_sound_title = "Bonnie's Lucky Chip: Activation Volume",
-		csr_bonnie_chip_sound_desc = "",
-		csr_plush_shark_sound_title = "Plush Shark: Activation Volume",
-		csr_plush_shark_sound_desc = "",
-		csr_the_edge_sound_title = "The Edge: Activation Volume",
-		csr_the_edge_sound_desc = "",
-
-		-- Debug Mode
-		csr_debug_mode_title = "Verbose Logging",
-		csr_debug_mode_desc = "Enables verbose logging to the BLT log file.",
-
-		-- Heist Specific Settings (sub-menu)
-		csr_heist_settings_title = "Heist Specific Settings",
-		csr_heist_settings_desc = "Toggle heist-specific tweaks that improve Crime Spree gameplay.",
-		csr_heist_diamond_bile_title = "The Diamond: Bile Stays",
-		csr_heist_diamond_bile_desc = "Prevents Bile's helicopter from leaving after collecting 4 bags. Host only.",
-
-		-- Custom HUDs (sub-menu)
-		csr_custom_huds_title = "Custom HUDs",
-		csr_custom_huds_desc = "Compatibility options for custom HUD mods.",
-
-		-- VanillaHUD Plus Settings (sub-menu inside Custom HUDs)
-		csr_vhudplus_settings_title = "VanillaHUD Plus Cooldowns",
-		csr_vhudplus_settings_desc = "Toggle cooldown timers for each item on the VanillaHUD Plus buff bar. Requires VanillaHUD Plus.",
-		csr_vhudplus_the_edge_title = "The Edge",
-		csr_vhudplus_the_edge_desc = "Show cooldown and invulnerability timers for The Edge.",
-		csr_vhudplus_overkill_rush_title = "Overkill Rush",
-		csr_vhudplus_overkill_rush_desc = "Show kill streak timer and stacks for Overkill Rush.",
-		csr_vhudplus_bonnie_chip_title = "Bonnie's Lucky Chip",
-		csr_vhudplus_bonnie_chip_desc = "Show cooldown timer for Bonnie's Chip (fires on every hit attempt).",
-		csr_vhudplus_plush_shark_title = "Plush Shark",
-		csr_vhudplus_plush_shark_desc = "Show invulnerability duration for Plush Shark.",
-		csr_vhudplus_dmt_title = "Dead Man's Trigger",
-		csr_vhudplus_dmt_desc = "Show cooldown timer for Dead Man's Trigger explosion.",
-		csr_vhudplus_bandaid_title = "Worn Band-Aid",
-		csr_vhudplus_bandaid_desc = "Show regen cycle timer for Worn Band-Aid.",
-
-		-- Warframe HUD Settings (sub-menu inside Custom HUDs)
-		csr_wfhud_settings_title = "Warframe HUD Cooldowns",
-		csr_wfhud_settings_desc = "Toggle cooldown timers for each item on the Warframe HUD buff bar. Requires Warframe HUD.",
-		csr_wfhud_the_edge_title = "The Edge",
-		csr_wfhud_the_edge_desc = "Show cooldown and invulnerability timers for The Edge.",
-		csr_wfhud_overkill_rush_title = "Overkill Rush",
-		csr_wfhud_overkill_rush_desc = "Show kill streak timer and bonus percentage for Overkill Rush.",
-		csr_wfhud_bonnie_chip_title = "Bonnie's Lucky Chip",
-		csr_wfhud_bonnie_chip_desc = "Show cooldown timer for Bonnie's Chip (fires on every hit attempt).",
-		csr_wfhud_plush_shark_title = "Plush Shark",
-		csr_wfhud_plush_shark_desc = "Show invulnerability duration for Plush Shark.",
-		csr_wfhud_dmt_title = "Dead Man's Trigger",
-		csr_wfhud_dmt_desc = "Show cooldown timer for Dead Man's Trigger explosion.",
-		csr_wfhud_bandaid_title = "Worn Band-Aid",
-		csr_wfhud_bandaid_desc = "Show regen cycle timer for Worn Band-Aid.",
-
-		-- PocoHud3 Settings (sub-menu inside Custom HUDs)
-		csr_pocohud_settings_title = "PocoHud3 Cooldowns",
-		csr_pocohud_settings_desc = "Toggle cooldown timers for each item on the PocoHud3 buff bar. Requires PocoHud3.",
-		csr_pocohud_the_edge_title = "The Edge",
-		csr_pocohud_the_edge_desc = "Show cooldown and invulnerability timers for The Edge.",
-		csr_pocohud_overkill_rush_title = "Overkill Rush",
-		csr_pocohud_overkill_rush_desc = "Show kill streak timer and bonus percentage for Overkill Rush.",
-		csr_pocohud_bonnie_chip_title = "Bonnie's Lucky Chip",
-		csr_pocohud_bonnie_chip_desc = "Show cooldown timer for Bonnie's Chip (fires on every hit attempt).",
-		csr_pocohud_plush_shark_title = "Plush Shark",
-		csr_pocohud_plush_shark_desc = "Show invulnerability duration for Plush Shark.",
-		csr_pocohud_dmt_title = "Dead Man's Trigger",
-		csr_pocohud_dmt_desc = "Show cooldown timer for Dead Man's Trigger explosion.",
-		csr_pocohud_bandaid_title = "Worn Band-Aid",
-		csr_pocohud_bandaid_desc = "Show regen cycle timer for Worn Band-Aid.",
-	}
-
-	loc:add_localized_strings(strings)
+	local lang = CSR_Settings and CSR_Settings.values.language or "en"
+	loc:add_localized_strings(lang == "ru" and CSR_OPT_RU or CSR_OPT_EN)
 end)
 
 -- Callbacks
@@ -178,6 +231,12 @@ Hooks:Add("MenuManagerInitialize", "CSR_MenuCallbacks", function(menu_manager)
 		end
 	end
 
+	MenuCallbackHandler.csr_language_changed = function(self, item)
+		if CSR_Settings then
+			CSR_Settings:SetValue("language", item:value())
+		end
+	end
+
 	MenuCallbackHandler.csr_menu_back = function(self, item)
 		-- Nothing special on back
 	end
@@ -258,6 +317,21 @@ end)
 -- Populate menus
 Hooks:Add("MenuManagerPopulateCustomMenus", "CSR_PopulateMenus", function(menu_manager, nodes)
 	local skip_blackscreen_value = CSR_Settings and CSR_Settings:IsSkipBlackscreen() or false
+
+	-- Language selector
+	local current_lang = CSR_Settings and CSR_Settings.values.language or "en"
+	MenuHelper:AddMultipleChoice({
+		id = "csr_language",
+		title = "csr_language_title",
+		desc = "csr_language_desc",
+		callback = "csr_language_changed",
+		value = current_lang,
+		items = { "English", "\208\160\209\131\209\129\209\129\208\186\208\184\208\185" },
+		item_values = { "en", "ru" },
+		localized_items = false,
+		menu_id = "csr_options_menu",
+		priority = 4,
+	})
 
 	-- Lobby Filter toggle
 	local lobby_filter_value = CSR_Settings and CSR_Settings.values.lobby_filter or false

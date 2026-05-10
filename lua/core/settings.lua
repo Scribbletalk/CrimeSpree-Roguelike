@@ -8,6 +8,7 @@ local settings_file = SavePath .. "crime_spree_roguelike.json"
 
 -- Default settings
 CSR_Settings.defaults = {
+	language = "en", -- UI language: "en" or "ru"
 	skip_blackscreen = false, -- Auto-skip heist intro blackscreen
 	block_item_healing = false, -- Block healing from items (for Berserker/Frenzy builds)
 	bonnie_chip_sound_volume = 1.0, -- Volume for Bonnie's Lucky Chip activation sound
