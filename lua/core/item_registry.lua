@@ -256,6 +256,43 @@ _G.CSR_ITEM_REGISTRY = {
 		needs_stub = true,
 	},
 
+	-- @WILDCARD-START (build script strips this entire block when --no-wildcards)
+	-- ============ WILDCARD (weight 0.17, magenta tier) ============
+	-- Own bucket (not a tier-up). Carry-1 per-tier. Never printer-spawned.
+	-- Per-popup tier rate ~16% with 3 wildcards at 0.17. If a 4th wildcard
+	-- ships (e.g. Hippocratic Oath), drop all four to 0.13 to hold 16%.
+	{
+		type = "side_satchel",
+		class = "ModifierSideSatchel",
+		icon = "csr_side_satchel",
+		id_prefix = "player_side_satchel_",
+		rarity = "wildcard",
+		weight = 0.17,
+		loc_key = "csr_side_satchel_desc",
+		needs_stub = true,
+	},
+	{
+		type = "familiar_friend",
+		class = "ModifierFamiliarFriend",
+		icon = "csr_familiar_friend",
+		id_prefix = "player_familiar_friend_",
+		rarity = "wildcard",
+		weight = 0.17,
+		loc_key = "csr_familiar_friend_desc",
+		needs_stub = true,
+	},
+	{
+		type = "carrot_stick",
+		class = "ModifierCarrotStick",
+		icon = "csr_carrot_stick",
+		id_prefix = "player_carrot_stick_",
+		rarity = "wildcard",
+		weight = 0.17,
+		loc_key = "csr_carrot_stick_desc",
+		needs_stub = true,
+	},
+	-- @WILDCARD-END
+
 	-- ============ SCRAP (no effect, printer fodder) ============
 	-- Produced by the in-world scrapper from real items. Has no modifier
 	-- class (no buff, no stat snapshot). is_scrap = true gates filter.lua,
