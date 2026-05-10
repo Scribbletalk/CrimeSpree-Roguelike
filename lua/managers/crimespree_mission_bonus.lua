@@ -60,11 +60,14 @@ end
 -- Snapshot engine cash at mission START so we can compute the delta at mission END.
 -- This avoids the stale-global bug where CSR_ProcessedCash (set at previous heist's END)
 -- is compared against values re-evaluated under a different game context.
--- Gate on is_active() OR in_progress() — is_active() flickers (Golden Grin civ→mask), see
--- pd2_cs_is_active_vs_in_progress memory. A missed snapshot would let on_mission_completed
--- treat the entire CS-cumulative `_global.secured` as new cash, inflating rank by 800+.
+-- Gate strictly on is_active() — vanilla's own on_mission_started early-returns on
+-- not is_active() (PD2 source crimespreemanager.lua:1196), so any heist where vanilla
+-- skips its body is NOT a CS heist and we must not snapshot for it. The previous OR
+-- pattern fired this hook for any player with an in-progress CS run, which combined
+-- with the on_mission_completed OR gate caused rank to tick up in vanilla heists.
+-- TaheyaKinnie 2026-05-10.
 Hooks:PostHook(CrimeSpreeManager, "on_mission_started", "CSR_SnapshotEngineCash", function(self)
-	if not (self:is_active() or self:in_progress()) then
+	if not self:is_active() then
 		return
 	end
 	self._csr_engine_cash_at_start = CSR_CalcEngineCash()
@@ -84,11 +87,15 @@ function CrimeSpreeManager:server_spree_level()
 end
 
 -- PreHook: save current level and raw mission gain BEFORE vanilla runs.
--- Same is_active()/in_progress() flicker concern as the SnapshotEngineCash hook above —
--- if this PreHook is skipped, _csr_old_level is nil and the PostHook's revert path is
--- skipped on the client, leaving vanilla catchup/penalty applied (separate inflation path).
+-- Snapshot is_active() here (BEFORE vanilla's heist→endscreen transition can
+-- cause is_active() to flicker on clients) and stash it on the manager. The
+-- PostHook below reads the snapshot instead of calling is_active() directly,
+-- which preserves the flicker protection without using the OR-with-in_progress()
+-- pattern that leaked rank progression into vanilla heists for any player with
+-- a CS run going. TaheyaKinnie 2026-05-10.
 Hooks:PreHook(CrimeSpreeManager, "on_mission_completed", "CSR_SaveOldLevel", function(self, mission_id)
-	if not (self:is_active() or self:in_progress()) then
+	self._csr_completed_was_cs = self:is_active() and true or false
+	if not self._csr_completed_was_cs then
 		return
 	end
 
@@ -103,11 +110,12 @@ end)
 
 -- PostHook: add bonus levels for bags and kills AFTER vanilla runs
 Hooks:PostHook(CrimeSpreeManager, "on_mission_completed", "CSR_BagsKillsBonus", function(self, mission_id)
-	-- Use is_active() OR in_progress() — is_active() flickers on clients during
-	-- the heist→endscreen transition. A missed gate here leaves _csr_bonus_bags
-	-- and _csr_total_cash unset, which then suppresses the cash-convert animation
-	-- in cash_convert_animation.lua for that client.
-	if not (self:is_active() or self:in_progress()) or self:has_failed() then
+	-- Read the is_active() snapshot taken in the PreHook above. This preserves
+	-- the original flicker protection (PreHook fires before any heist→endscreen
+	-- transition flicker) without falling back to in_progress(), which used to
+	-- let rank tick up in vanilla heists for any player with an in-progress CS
+	-- run from before. TaheyaKinnie 2026-05-10.
+	if not self._csr_completed_was_cs or self:has_failed() then
 		return
 	end
 
