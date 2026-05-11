@@ -763,13 +763,14 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Alpha1_Localization", function(loc
 	-- EQUALIZER
 	local eq_bonus = C.equalizer_bonus or 0.5
 	local eq_penalty = C.equalizer_penalty or 0.5
+	local eq_penalty_mult = 1 - eq_penalty
 	strings["csr_logbook_equalizer_name"] = "EQUALIZER"
 	strings["csr_logbook_equalizer_effect"] = string.format(
-		"Increases damage against special enemies by {g}%g%%{/} (+%g%% per stack, linear).\nBut reduces damage against regular enemies by {r}%g%%{/} (-%g%% per stack, linear).",
+		"Increases damage against special enemies by {g}%g%%{/} (+%g%% per stack, linear).\nBut multiplies damage against regular enemies by {r}x%g{/} (x%g per stack, multiplicative).",
 		eq_bonus * 100,
 		eq_bonus * 100,
-		eq_penalty * 100,
-		eq_penalty * 100
+		eq_penalty_mult,
+		eq_penalty_mult
 	)
 	strings["csr_logbook_equalizer_notes"] =
 		"You all keep sending me messages like \"how do I make my music sound like yours?\", \"why does it sound like that\", \"what headphones do I need\" and all that stuff. Look, you don't need any expensive headphones. That's all nonsense. You just need an Equalizer! It's simple. You buy this thing, plug it into whatever you listen to music on, plug your headphones into it, and start tweaking the knobs until it sounds \"cool\". That's it! But to make it easier, here are my settings:\nBass: -12 dB (why do these even exist?)\nMids: -6 dB (boring too)\nHighs: +15 dB (now we're talking!)\nPhone rings.\nOne sec guys.\nMy producer called and said I'm not allowed to advertise products on stream. You know what? Screw him! I'm the one making music here, and they're just cashing in on my work."
