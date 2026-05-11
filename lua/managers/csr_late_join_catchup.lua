@@ -132,24 +132,24 @@ function CSR_LateJoinCatchup.run_for_peer(joiner_peer_id, send_target)
 	end
 	local current_earned = CSR_TokensManager.get_host_earned()
 
-	-- Backfill host_earned for hosts whose CSR_HostTokensEarned was never seeded
-	-- (pre-6.0.0 seed files have no line 12, so it loads as 0; same for hosts
-	-- who haven't completed a mission this Lua session). Without this, the
-	-- delta below is always 0 for high-rank pre-shop hosts and joiners get
-	-- nothing — the catchup is silently a no-op despite a rank-47 spree.
-	-- Formula matches run_for_starting_level so a "ranked-up to N" host and a
-	-- "started at N" host produce the same joiner experience.
+	-- Backfill host_earned ONLY when truly unseeded (pre-6.0.0 seed files have
+	-- no line 12, so it loads as 0). Once the host has completed any heist this
+	-- run, add_host_earned has credited current_earned and we trust it.
+	--
+	-- Earlier this fired whenever rank/2 > current_earned. That broke under
+	-- Streamlined Heisting (which adds secured-bag count to spree_level on top
+	-- of CSR's cash-to-rank conversion): spree_level grew ~2x faster than tokens
+	-- did, so every joiner handshake re-bumped host_earned to spree_level/2 and
+	-- joiners received a wildly inflated catchup grant.
 	local rank = managers.crime_spree and managers.crime_spree.spree_level and managers.crime_spree:spree_level() or 0
 	local rank_baseline = math.floor((rank + 1) / 2)
-	if current_earned < rank_baseline then
+	if current_earned == 0 and rank > 0 then
 		log(
-			"[CSR JOIN] run_for_peer: host_earned="
-				.. tostring(current_earned)
-				.. " < rank_baseline="
-				.. tostring(rank_baseline)
-				.. " (rank="
+			"[CSR JOIN] run_for_peer: host_earned=0 rank="
 				.. tostring(rank)
-				.. ") -- seeding so future joiners get items"
+				.. " -- seeding to rank_baseline="
+				.. tostring(rank_baseline)
+				.. " (legacy unseeded counter)"
 		)
 		CSR_TokensManager.set_host_earned(rank_baseline)
 		current_earned = rank_baseline
