@@ -185,8 +185,11 @@ local function render_wildcard_cell(content, wildcards, slot_x, slot_y, slot_w, 
 	end
 
 	local item = wildcards[1]
-	local DEFAULT_FRAME = 74
-	local icon_size = math.floor(38 * (frame_size / DEFAULT_FRAME))
+	-- Signature-visual ratio: wildcard icons are deliberately oversized vs
+	-- rarity-grid icons (which sit around ~0.51 of their cell). 0.85 here
+	-- matches items_page.lua WILDCARD_ICON_FRAME_RATIO so both surfaces read
+	-- the same.
+	local icon_size = math.floor(frame_size * 0.85)
 	local ICON_SCALE = _G.CSR_IconScale or {}
 
 	if positions then

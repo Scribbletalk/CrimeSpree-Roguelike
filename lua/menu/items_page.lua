@@ -22,7 +22,10 @@ local RARITY_COLOR_WILDCARD = Color(1, 0.3, 0.8) -- Magenta
 local WILDCARD_SLOT_GAP = 8
 local WILDCARD_SLOT_RIGHT_PAD = 8
 local MAIN_GRID_LEFT_PAD = 8
-local WILDCARD_ICON_FRAME_RATIO = 0.5 -- icon size / slot size (matches the ~0.51 rarity-grid default)
+-- Wildcards are deliberately oversized vs rarity-grid icons (signature visual
+-- for the magenta tier). 0.85 × slot makes the wildcard icon ~60% of section
+-- height while rarity-grid icons sit at ~31% of section height.
+local WILDCARD_ICON_FRAME_RATIO = 0.85
 local WILDCARD_PLACEHOLDER_COLOR = Color(0.35, 1, 0.3, 0.8) -- dim magenta (alpha, r, g, b)
 
 -- Split a flat items list into (regular, wildcards). Wildcards are tagged
