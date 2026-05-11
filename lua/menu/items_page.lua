@@ -463,7 +463,7 @@ local function build_items_for_peer(peer_id)
 			color = RARITY_COLOR_WILDCARD,
 			is_wildcard = true,
 			name = "FAMILIAR FRIEND",
-			desc = "Press your wildcard key to deal AoE damage around you.\nStealth-blocked.",
+			desc = "Release spike nova around you.",
 		})
 	end
 
@@ -475,7 +475,7 @@ local function build_items_for_peer(peer_id)
 			color = RARITY_COLOR_WILDCARD,
 			is_wildcard = true,
 			name = "SIDE SATCHEL",
-			desc = "Doubles the carry cap of mission specials\n(C4, keycards, drill parts).",
+			desc = "Doubles the carry amount of mission equipment.",
 		})
 	end
 
@@ -487,7 +487,7 @@ local function build_items_for_peer(peer_id)
 			color = RARITY_COLOR_WILDCARD,
 			is_wildcard = true,
 			name = "TURRON",
-			desc = "Press your wildcard key to heal\nand briefly reduce incoming damage.",
+			desc = "Heals you and reduces incoming damage for few seconds.",
 		})
 	end
 
@@ -499,7 +499,7 @@ local function build_items_for_peer(peer_id)
 			color = RARITY_COLOR_WILDCARD,
 			is_wildcard = true,
 			name = "HIPPOCRATIC OATH",
-			desc = "A medic joins your crew in loud heists\nand heals you when nearby.",
+			desc = "A medic joins your crew in loud and heals you when nearby.",
 		})
 	end
 
