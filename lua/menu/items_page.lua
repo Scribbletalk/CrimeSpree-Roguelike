@@ -22,7 +22,10 @@ local RARITY_COLOR_WILDCARD = Color(1, 0.3, 0.8) -- Magenta
 local WILDCARD_SLOT_GAP = 8
 local WILDCARD_SLOT_RIGHT_PAD = 8
 local MAIN_GRID_LEFT_PAD = 8
-local WILDCARD_ICON_FRAME_RATIO = 0.5 -- icon size / slot size (matches the ~0.51 rarity-grid default)
+-- Wildcards are deliberately oversized vs rarity-grid icons (signature visual
+-- for the magenta tier). 0.85 × slot makes the wildcard icon ~60% of section
+-- height while rarity-grid icons sit at ~31% of section height.
+local WILDCARD_ICON_FRAME_RATIO = 0.85
 local WILDCARD_PLACEHOLDER_COLOR = Color(0.35, 1, 0.3, 0.8) -- dim magenta (alpha, r, g, b)
 
 -- Split a flat items list into (regular, wildcards). Wildcards are tagged
@@ -463,7 +466,7 @@ local function build_items_for_peer(peer_id)
 			color = RARITY_COLOR_WILDCARD,
 			is_wildcard = true,
 			name = "FAMILIAR FRIEND",
-			desc = "Press your wildcard key to deal AoE damage around you.\nStealth-blocked.",
+			desc = "Release spike nova around you.",
 		})
 	end
 
@@ -475,7 +478,7 @@ local function build_items_for_peer(peer_id)
 			color = RARITY_COLOR_WILDCARD,
 			is_wildcard = true,
 			name = "SIDE SATCHEL",
-			desc = "Doubles the carry cap of mission specials\n(C4, keycards, drill parts).",
+			desc = "Doubles the carry amount of mission equipment.",
 		})
 	end
 
@@ -487,7 +490,7 @@ local function build_items_for_peer(peer_id)
 			color = RARITY_COLOR_WILDCARD,
 			is_wildcard = true,
 			name = "TURRON",
-			desc = "Press your wildcard key to heal\nand briefly reduce incoming damage.",
+			desc = "Heals you and reduces incoming damage for few seconds.",
 		})
 	end
 
@@ -499,7 +502,7 @@ local function build_items_for_peer(peer_id)
 			color = RARITY_COLOR_WILDCARD,
 			is_wildcard = true,
 			name = "HIPPOCRATIC OATH",
-			desc = "A medic joins your crew in loud heists\nand heals you when nearby.",
+			desc = "A medic joins your crew in loud and heals you when nearby.",
 		})
 	end
 

@@ -27,6 +27,7 @@ local MSG = {
 	ASSAULT_END = "CSR_AssaultEnd", -- host -> all peers: assault ended (Crooked Badge revive trigger)
 	LOCKES_HEAL = "CSR_LockesHeal", -- any peer -> all peers: 30s Locke's Beret pulse, payload = sender's stacks
 	OATH_HEAL = "CSR_OathHeal", -- host -> client: Hippocratic Oath aura tick, client heals self locally
+	FF_SPIKES = "CSR_FFSpikes", -- any peer -> all peers: Familiar Friend spike-nova VFX trigger, payload = "x,y,z,radius"
 }
 
 -- Max bytes per network payload (conservative; SuperBLT limit is ~237)
@@ -1155,6 +1156,20 @@ Hooks:Add("NetworkReceivedData", "CSR_MultiplayerSync", function(sender, id, dat
 		log("[CSR][Beret] received LOCKES_HEAL from peer=" .. tostring(sender) .. " stacks=" .. tostring(stacks))
 		if stacks and stacks > 0 and _G.CSR_LockesBeret_ApplyTeamHeal then
 			_G.CSR_LockesBeret_ApplyTeamHeal(stacks)
+		end
+		return
+	end
+
+	-- === Familiar Friend spike-nova VFX trigger ===
+	-- Pure visual broadcast; damage runs through the standard damage_bullet
+	-- pipeline on the casting peer (which is already MP-networked). Each
+	-- receiver re-queries its own nearby enemies and renders spike units
+	-- locally — see familiarfriend.lua:CSR_FF_OnRemoteCast.
+	if id == MSG.FF_SPIKES then
+		local x_str, y_str, z_str, r_str = string.match(data, "^(%-?[%d%.]+),(%-?[%d%.]+),(%-?[%d%.]+),(%-?[%d%.]+)$")
+		local x, y, z, r = tonumber(x_str), tonumber(y_str), tonumber(z_str), tonumber(r_str)
+		if x and y and z and r and _G.CSR_FF_OnRemoteCast then
+			pcall(_G.CSR_FF_OnRemoteCast, Vector3(x, y, z), r)
 		end
 		return
 	end

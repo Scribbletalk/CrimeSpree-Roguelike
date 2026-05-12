@@ -192,7 +192,7 @@ _G.CSR_ItemConstants = {
 	-- === WILDCARD ITEMS ===
 
 	-- FAMILIAR FRIEND — Spike Nova: 360° AoE damage on key press
-	familiar_friend_radius = 600, -- AoE radius (cm, 6m)
+	familiar_friend_radius = 1000, -- AoE radius (cm, 10m)
 	familiar_friend_damage = 2000, -- internal damage at rank 0 (= 400 display HP)
 	familiar_friend_level_pct = 0.0035, -- +0.35% damage per CS rank (additive linear)
 	familiar_friend_cooldown = 60, -- seconds between activations
@@ -200,9 +200,12 @@ _G.CSR_ItemConstants = {
 
 	-- TURRON — instant heal + 5s damage reduction window
 	turron_heal_pct = 0.33, -- +33% of max HP, instant on press
-	turron_dr_pct = 0.20, -- 20% damage reduction during window
+	turron_dr_pct = 0.33, -- 33% damage reduction during window
 	turron_dr_duration = 5, -- seconds of DR after press
 	turron_cooldown = 90, -- seconds between presses
+
+	-- SIDE SATCHEL — additive movement-speed bump while a loot bag is on the back
+	side_satchel_carry_speed_mult = 1.20, -- 1.20 = +20% (additive vs vanilla baseline)
 
 	-- HIPPOCRATIC OATH — passive medic joker that heals via aura
 	hippocratic_aura_radius = 500, -- 5m heal aura around the medic (PD2 units, 1m = 100)

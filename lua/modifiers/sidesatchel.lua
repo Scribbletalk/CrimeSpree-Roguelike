@@ -222,6 +222,43 @@ if BaseInteractionExt and not _G._CSR_SIDE_SATCHEL_INT_HOOKED then
 	end
 end
 
+-- Passive bag-carry speed bump: while a loot bag is on the player's back,
+-- movement speed gets an additive +20% bonus. Hooks `movement_speed_multiplier`
+-- — the single funnel that sprint/walk/crouch/strafe all read from, so one
+-- override covers every locomotion mode. Runs on the local PlayerManager for
+-- the local player only; husk movement on other peers is sync'd via vanilla
+-- network position updates so the bump propagates automatically. Other Side
+-- Satchel owners on remote machines apply their own bump locally.
+if PlayerManager and not _G._CSR_SIDE_SATCHEL_PM_SPEED_HOOKED then
+	_G._CSR_SIDE_SATCHEL_PM_SPEED_HOOKED = true
+	local original_speed_mul = PlayerManager.movement_speed_multiplier
+	if original_speed_mul and _G.CSR_SafeOverride then
+		CSR_SafeOverride(
+			PlayerManager,
+			"movement_speed_multiplier",
+			"Side Satchel",
+			original_speed_mul,
+			function(self, ...)
+				local mul = original_speed_mul(self, ...)
+				if not owns_side_satchel() then
+					return mul
+				end
+				-- get_my_carry_data() returns a TABLE when actually carrying;
+				-- it returns literal `true` only in the offline/no-network-
+				-- session edge case (vanilla fallback). Type-check guards
+				-- against false positives in non-heist contexts.
+				local carry = self.get_my_carry_data and self:get_my_carry_data()
+				if type(carry) ~= "table" then
+					return mul
+				end
+				local C = _G.CSR_ItemConstants or {}
+				local bonus = (C.side_satchel_carry_speed_mult or 1.20) - 1
+				return mul + bonus
+			end
+		)
+	end
+end
+
 -- Some custom heists grant force-included specials via add_special({name=...})
 -- with no amount or transfer flag. Vanilla then routes through the non-respawn
 -- branch: `math.min(amount + extra, cap + extra)` with `amount = equipment.quantity`

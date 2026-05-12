@@ -36,5 +36,12 @@
 		<file name="units/pd2_dlc_pex/props/pex_prop_evidence_shredder/pex_prop_evidence_shredder.sequence_manager"/>
 		<file name="units/pd2_dlc_pex/props/pex_prop_evidence_shredder/shredder_df.texture"/>
 		<file name="units/pd2_dlc_pex/props/pex_prop_evidence_shredder/shredder_nm.texture"/>
+
+		<!-- Familiar Friend arrow VFX. Custom .unit referencing the vanilla ECP
+			arrow .object (loaded from the ECP DLC package), but with no
+			AmmoClip / ContourExt extensions — prevents the player from being
+			able to pick up our VFX arrows and prevents throwable-outline HUDs
+			from highlighting them. -->
+		<file name="units/payday2_csr/wildcards/ff_arrow/ff_arrow.unit"/>
 	</assets>
 </mod>

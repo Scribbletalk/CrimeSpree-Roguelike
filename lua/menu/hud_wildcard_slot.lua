@@ -1,6 +1,13 @@
 -- HUD Wildcard Slot — shows the player's currently-owned wildcard icon to the
--- left of the health circle, with a counterclockwise radial cooldown overlay
--- (vanilla health-circle reveal pattern: VertexColorTexturedRadial + R channel).
+-- left of the health circle, with a counterclockwise radial cooldown reveal.
+--
+-- Direction trick: Diesel's VertexColorTexturedRadial sweeps clockwise only,
+-- and the trick used by EHI / vanilla detection meter (texture_rect with
+-- negative width to flip UVs) reverses the sweep direction BUT also mirrors
+-- the icon. To get a CCW reveal without a mirrored icon, we point each icon
+-- at a PRE-MIRRORED DDS file and then apply texture_rect={w,0,-w,h} at draw
+-- time. The two mirrors cancel visually, but the UV flip is what reverses
+-- the shader's sweep direction.
 --
 -- Hidden when no wildcard is owned. Active wildcards (Familiar Friend, Turron)
 -- drive the radial mask from their `_G.CSR_<Name>.cooldown_end` state.
@@ -19,21 +26,25 @@ end
 
 -- Active wildcards expose `cooldown_end` (game time) and a CSR_ItemConstants
 -- key for the max duration. Passive wildcards have no CD entry.
+-- Each `icon` here points at a PRE-MIRRORED DDS so the slot's
+-- texture_rect={w,0,-w,h} flip un-mirrors the visual and simultaneously
+-- reverses the radial sweep direction. Hippocratic Oath is parked, so it
+-- still references the unmirrored asset (no mirrored DDS shipped for it).
 local WILDCARD_DEFS = {
 	["player_familiar_friend_"] = {
-		icon = "csr_familiar_friend",
+		icon = "csr_familiar_friend_mirror",
 		state_key = "CSR_FamiliarFriend",
 		const_key = "familiar_friend_cooldown",
 		default_cd = 60,
 	},
 	["player_turron_"] = {
-		icon = "csr_turron",
+		icon = "csr_turron_mirror",
 		state_key = "CSR_Turron",
 		const_key = "turron_cooldown",
 		default_cd = 90,
 	},
 	["player_side_satchel_"] = {
-		icon = "csr_side_satchel",
+		icon = "csr_side_satchel_mirror",
 	},
 	["player_hippocratic_oath_"] = {
 		icon = "csr_hippocratic_oath",
@@ -94,13 +105,14 @@ local function apply_icon_texture(slot_panel, def)
 	if not td then
 		return
 	end
-	-- Both layers share the texture: dim layer always visible underneath,
-	-- bright top layer reveals clockwise via VertexColorTexturedRadial.
+	-- Texture is pre-mirrored on disk; texture_rect with negative width here
+	-- un-mirrors it visually AND flips the VertexColorTexturedRadial sweep
+	-- direction to counterclockwise. Both bitmap layers share the same flip.
 	for _, name in ipairs({ "wildcard_icon", "wildcard_icon_dim" }) do
 		local bm = slot_panel:child(name)
 		if bm then
 			bm:set_image(td.texture)
-			bm:set_texture_rect(0, 0, 128, 128)
+			bm:set_texture_rect(128, 0, -128, 128)
 		end
 	end
 end
@@ -177,23 +189,25 @@ if HUDTeammate and not _G._CSR_WILDCARD_SLOT_HOOKED then
 
 		-- Dim background layer: always-visible faded icon, so the slot stays
 		-- legible during cooldown (player can still see what wildcard they have).
+		-- Initial texture is the pre-mirrored familiar_friend (replaced per
+		-- wildcard by apply_icon_texture); texture_rect un-mirrors it visually.
 		slot_panel:bitmap({
 			name = "wildcard_icon_dim",
-			texture = "guis/textures/pd2/crime_spree/csr_familiar_friend",
-			texture_rect = { 0, 0, 128, 128 },
+			texture = "guis/textures/pd2/crime_spree/csr_familiar_friend_mirror",
+			texture_rect = { 128, 0, -128, 128 },
 			layer = 0,
 			alpha = 0.35,
 			w = size,
 			h = size,
 		})
 
-		-- Bright top layer: radial-revealed clockwise via the R channel.
-		-- Only the "recharged" arc is drawn at full alpha; everything else
-		-- shows through to the dim layer underneath.
+		-- Bright top layer: radial-revealed counterclockwise via the R channel.
+		-- Texture is pre-mirrored; the negative-width texture_rect un-mirrors
+		-- it visually AND reverses the VertexColorTexturedRadial sweep direction.
 		slot_panel:bitmap({
 			name = "wildcard_icon",
-			texture = "guis/textures/pd2/crime_spree/csr_familiar_friend",
-			texture_rect = { 0, 0, 128, 128 },
+			texture = "guis/textures/pd2/crime_spree/csr_familiar_friend_mirror",
+			texture_rect = { 128, 0, -128, 128 },
 			render_template = "VertexColorTexturedRadial",
 			layer = 1,
 			alpha = 1,

@@ -157,22 +157,22 @@ local ITEMS_EN = {
 	},
 	["csr_familiar_friend_desc"] = {
 		name = "FAMILIAR FRIEND",
-		desc = "Press your wildcard key to deal AoE damage around you.\nStealth-blocked.",
+		desc = "Release spike nova around you.",
 		rarity = "wildcard",
 	},
 	["csr_side_satchel_desc"] = {
 		name = "SIDE SATCHEL",
-		desc = "Doubles the carry cap of mission specials\n(C4, keycards, drill parts).",
+		desc = "Doubles the carry amount of mission equipment.",
 		rarity = "wildcard",
 	},
 	["csr_turron_desc"] = {
 		name = "TURRON",
-		desc = "Press your wildcard key to heal\nand briefly reduce incoming damage.",
+		desc = "Heals you and reduces incoming damage for few seconds.",
 		rarity = "wildcard",
 	},
 	["csr_hippocratic_oath_desc"] = {
 		name = "HIPPOCRATIC OATH",
-		desc = "A medic joins your crew in loud heists\nand heals you when nearby.",
+		desc = "A medic joins your crew in loud and heals you when nearby.",
 		rarity = "wildcard",
 	},
 	-- Dummy modifiers (should not appear in popup, but need localization just in case)
@@ -763,13 +763,14 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Alpha1_Localization", function(loc
 	-- EQUALIZER
 	local eq_bonus = C.equalizer_bonus or 0.5
 	local eq_penalty = C.equalizer_penalty or 0.5
+	local eq_penalty_mult = 1 - eq_penalty
 	strings["csr_logbook_equalizer_name"] = "EQUALIZER"
 	strings["csr_logbook_equalizer_effect"] = string.format(
-		"Increases damage against special enemies by {g}%g%%{/} (+%g%% per stack, linear).\nBut reduces damage against regular enemies by {r}%g%%{/} (-%g%% per stack, linear).",
+		"Increases damage against special enemies by {g}%g%%{/} (+%g%% per stack, linear).\nBut multiplies damage against regular enemies by {r}x%g{/} (x%g per stack, multiplicative).",
 		eq_bonus * 100,
 		eq_bonus * 100,
-		eq_penalty * 100,
-		eq_penalty * 100
+		eq_penalty_mult,
+		eq_penalty_mult
 	)
 	strings["csr_logbook_equalizer_notes"] =
 		"You all keep sending me messages like \"how do I make my music sound like yours?\", \"why does it sound like that\", \"what headphones do I need\" and all that stuff. Look, you don't need any expensive headphones. That's all nonsense. You just need an Equalizer! It's simple. You buy this thing, plug it into whatever you listen to music on, plug your headphones into it, and start tweaking the knobs until it sounds \"cool\". That's it! But to make it easier, here are my settings:\nBass: -12 dB (why do these even exist?)\nMids: -6 dB (boring too)\nHighs: +15 dB (now we're talking!)\nPhone rings.\nOne sec guys.\nMy producer called and said I'm not allowed to advertise products on stream. You know what? Screw him! I'm the one making music here, and they're just cashing in on my work."
@@ -801,19 +802,55 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Alpha1_Localization", function(loc
 		"LAST WILL AND TESTAMENT\nWritten: November 3rd. Afghanistan.\n\nIf you are reading this - I didn't make it back.\n\nThe house and everything in it - to Sara. The car - to my brother, he's had his eye on it for a while. The money in the account - to my mother. She can spend it however she likes.\n\nTo the guys in the unit - separately. I'm sorry. I didn't want you to get caught in it. You knew what you were getting into, but it was still my idea. Forgive me.\n\nTo Major Heller - nothing. He knows why.\nThe device is on me. Let them take it. Along with me.\n\n(Former) Private First Class D. Ward"
 
 	-- === WILDCARD ITEMS ===
+	local ff_radius_m = (C.familiar_friend_radius or 600) / 100
+	local ff_dmg_display = (C.familiar_friend_damage or 2000) / 5
+	local ff_cooldown = C.familiar_friend_cooldown or 60
 	strings["csr_logbook_familiar_friend_name"] = "FAMILIAR FRIEND"
+	strings["csr_logbook_familiar_friend_effect"] = string.format(
+		"Release spike nova around you in {g}%gm{/} that deals {g}%g{/} damage. Damage scales with CS rank. Cooldown {b}%gs{/}.",
+		ff_radius_m,
+		ff_dmg_display,
+		ff_cooldown
+	)
 	strings["csr_logbook_familiar_friend_notes"] =
 		"It's 11th of August, 2020. Field Report #57. Subject: unidentified gelatinous organism, designated UGO-1 for documentation purposes. Behavior appears non-aggressive. Further observation requ- it just looked at me. Oh-oh... I think I am spotted. I need to run. How to turn off this thing...?! *leaves noises* *panic breathing* Is it still recording? I think it is. I got away. The subject appears to 'hop' around like some kind of bunny or rabbit. It's orange with yellow tint. It has some sort of horns..? I didn't quite catch what they were, but... *away from microphone* What the hell? Oh god... *into the mic again* The subject just duplicated itself. It became smaller, but now there's two of them. I... I've never seen anything like this. This is so... Beautiful. Maybe they are not bad. I will try to reason with it. *more noises* Hello, buddy. *strange alien noises* Whoa. Subject can produce sounds, but they are unlike anything I've heard from animals. Can I touch you? Ew... You're so sticky. But, at the same time, kinda cute? *petting* *strange loud alien noise* Ow! It just spiked me! It appears that its gelatinous body can reshape into spikes. I... Uh... *recording stops*"
 
+	local ss_speed_pct = ((C.side_satchel_carry_speed_mult or 1.20) - 1) * 100
 	strings["csr_logbook_side_satchel_name"] = "SIDE SATCHEL"
+	strings["csr_logbook_side_satchel_effect"] = string.format(
+		"{g} Doubles the amount of mission equipment you can carry{/} (ex. C4, keycards, planks, etc.). Increases movement speed while you carry a bag by {g}%g%%{/}",
+		ss_speed_pct
+	)
 	strings["csr_logbook_side_satchel_notes"] =
 		"- Son, listen carefully. I want you to buy: 8 c4 charges, 2 planks, 2 keycards and\226\128\166\n- Wait-wait-wait. Why do you need all that stuff?\n- For escape room..?\n- What kind of escape room need all of this?!\n- Prison\226\128\166\n- \226\128\166sigh. I hate you so much. I will be there in 10."
 
+	local turron_heal_pct_disp = (C.turron_heal_pct or 0.33) * 100
+	local turron_dr_pct_disp = (C.turron_dr_pct or 0.33) * 100
+	local turron_dr_dur = C.turron_dr_duration or 5
+	local turron_cd = C.turron_cooldown or 90
 	strings["csr_logbook_turron_name"] = "TURRON"
+	strings["csr_logbook_turron_effect"] = string.format(
+		"Instantly heal {g}%g%% of your max health{/} and gain {g}%g%% damage reduction{/} for {b}%g{/} seconds. Cooldown {b}%g{/} seconds.",
+		turron_heal_pct_disp,
+		turron_dr_pct_disp,
+		turron_dr_dur,
+		turron_cd
+	)
 	strings["csr_logbook_turron_notes"] =
 		"- Arghh... another *redacted* troublemaker. Go away. Our *redacted* is no longer giving out horoscopes!\n- Dare I ask you for some private time with the famous entity?\n- YOU - SSH - INSOLENT - SSH - BRAT - SSH!\n  None shall pass! The *redacted* would be real angry if some simpleton like you showed up to its favorite plac-\n  Eh?.... Is that a... Turron?\n- Turron.\n- Turron! | Turron!\n- Turron! | Turron!\n- Turron! | Turron!\n- You may have won this war, but you've lost the battle! Take this blood ID, it says you'll collect generous offerings for us.\n  To proceed, head straight and enter the holy code. Then, look for the blue door."
 
+	local hippo_aura_tick = C.hippocratic_aura_tick or 5.0
+	local hippo_aura_radius_m = (C.hippocratic_aura_radius or 500) / 100
+	local hippo_heal_pct_disp = (C.hippocratic_heal_pct_per_tick or 0.05) * 100
+	local hippo_respawn_min = (C.hippocratic_respawn_delay or 360) / 60
 	strings["csr_logbook_hippocratic_oath_name"] = "HIPPOCRATIC OATH"
+	strings["csr_logbook_hippocratic_oath_effect"] = string.format(
+		"On loud transition, spawns a {g}medic that fights on your side{/}. Every {b}%g{/} seconds medic releases aura with {g}%gm{/} radius, that heals {g}%g%% of health{/}. After death, the medic respawns {b}%g{/} minutes later.",
+		hippo_aura_tick,
+		hippo_aura_radius_m,
+		hippo_heal_pct_disp,
+		hippo_respawn_min
+	)
 	strings["csr_logbook_hippocratic_oath_notes"] =
 		'Article 4, Section 2: I shall render aid to any person in need of medical assistance, regardless of personal characteristics or circumstances. This includes, but is not limited to: political affiliation, nationality, religious beliefs, prior criminal record, individuals currently under active arrest, persons evading law enforcement on foot, individuals in possession of unlicensed firearms, persons wearing masks for non-medical purposes, individuals who have recently discharged an explosive device, anyone currently in the process of drilling through a vault, left-handed accountants, persons with outstanding parking fines exceeding $7, anyone who has insulted a notary public, individuals operating a vehicle without a valid license, persons who have exited a moving vehicle in the past 24 hours, anyone found in possession of more than three sets of handcuffs, individuals wearing body armor of non-regulation color, persons carrying currency in denominations exceeding $500, anyone who has rerouted a ventilation system for non-ventilation purposes, individuals who have rappelled from a building within the last 72 hours, persons who have disabled a security camera intentionally or otherwise, anyone currently in possession of a bag labeled "not a bomb", individuals who have zip-tied a security guard, persons who have ordered a helicopter for non-transportation purposes, anyone who has welded a door shut from the inside, individuals whose fingerprints do not appear in any federal database, persons who have filed a false floor plan with the city, anyone currently on a first-name basis with a criminal attorney\226\128\166'
 

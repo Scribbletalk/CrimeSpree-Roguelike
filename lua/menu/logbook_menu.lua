@@ -1152,18 +1152,19 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 		layer = 5,
 	})
 
-	-- Apply color tags: {g}text{/} = green, {r}text{/} = red
+	-- Apply color tags: {g}text{/} = green, {r}text{/} = red, {b}text{/} = blue
 	-- Tags are stripped from display text, colors applied via set_range_color
 	local COLOR_POS = Color(0.7, 1, 0.7)
 	local COLOR_NEG = Color(1, 0.5, 0.5)
-	local TAG_COLORS = { g = COLOR_POS, r = COLOR_NEG }
+	local COLOR_INFO = Color(0.6, 0.8, 1.0)
+	local TAG_COLORS = { g = COLOR_POS, r = COLOR_NEG, b = COLOR_INFO }
 	local ranges = {}
 	local clean = ""
 	local i = 1
 	local current_color = nil
 	local color_start = nil
 	while i <= #effect_text do
-		local tag = effect_text:match("^{(/?[gr]?)}", i)
+		local tag = effect_text:match("^{(/?[grb]?)}", i)
 		if tag then
 			if tag == "/" then
 				if current_color and color_start then

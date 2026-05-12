@@ -1,7 +1,7 @@
 -- FAMILIAR FRIEND - Wildcard active item
 -- "Spike Nova": on key press, deal a 360° AoE around the player.
--- Carry-1 wildcard. Activation gated by cooldown; SFX/VFX wired but empty
--- until assets ship (TODO marker below). Stealth-blocked.
+-- Carry-1 wildcard. Activation gated by cooldown. Visual: ECP-arrow units
+-- spawn at player chest and fly outward to each damaged enemy. Stealth-blocked.
 
 if not RequiredScript then
 	return
@@ -27,6 +27,105 @@ local math_up = math.UP or Vector3(0, 0, 1)
 _G.CSR_FamiliarFriend = _G.CSR_FamiliarFriend or {
 	cooldown_end = 0,
 }
+
+-- === SPIKE VFX (vanilla ECP arrow projectile) ===
+-- Uses PD2's ProjectileBase.throw_projectile API to fire real arrows with
+-- physics + sticking + natural despawn. ecp_arrow has client_authoritative=true
+-- so each peer fires locally and the engine handles MP sync. This replaces
+-- the previous custom-unit spawning path that exhausted the unit pool.
+local SPIKE_ORIGIN_Z_OFFSET = 80 -- chest height above player feet (caster anchor)
+local SPIKE_TARGET_Z_OFFSET = 80 -- enemy chest height (aim point)
+-- Custom projectile entry registered in lua/tweakdata/csr_ff_projectile.lua.
+-- Unlike vanilla ecp_arrow, this points at our own .unit (no AmmoClip pickup,
+-- no ContourExt outline) and schedules auto-despawn via an ArrowBase init hook.
+local SPIKE_PROJECTILE_ENTRY = "csr_ff_arrow"
+
+local function fire_arrow_at(spawn_pos, target_pos)
+	if not ProjectileBase or not ProjectileBase.throw_projectile then
+		return
+	end
+	if not (managers and managers.network and managers.network:session()) then
+		return
+	end
+	local local_peer = managers.network:session():local_peer()
+	if not local_peer then
+		return
+	end
+	local dx = target_pos.x - spawn_pos.x
+	local dy = target_pos.y - spawn_pos.y
+	local dz = target_pos.z - spawn_pos.z
+	local len = math.sqrt(dx * dx + dy * dy + dz * dz)
+	if len < 1 then
+		return
+	end
+	local dir = Vector3(dx / len, dy / len, dz / len)
+	pcall(function()
+		ProjectileBase.throw_projectile(SPIKE_PROJECTILE_ENTRY, spawn_pos, dir, local_peer:id())
+	end)
+end
+
+-- Fire one arrow per enemy in `targets`. Used by both the local caster path
+-- and the MP receive path so the spawn logic stays in one place.
+local function spawn_spikes_to_targets(caster_chest_pos, targets)
+	if not targets or #targets == 0 then
+		return
+	end
+	for _, target_pos in ipairs(targets) do
+		fire_arrow_at(caster_chest_pos, target_pos)
+	end
+end
+
+-- MP receive: triggered by multiplayer_sync.lua handler when a remote peer
+-- activates Familiar Friend. We re-run the enemy lookup locally so each
+-- client renders arrows toward its own view of nearby enemies (avoids
+-- packet bloat and stays robust to small position desyncs).
+_G.CSR_FF_OnRemoteCast = function(caster_pos, radius)
+	if not caster_pos or not radius or radius <= 0 then
+		return
+	end
+	if not (managers and managers.slot) then
+		return
+	end
+	local chest = Vector3(caster_pos.x, caster_pos.y, caster_pos.z + SPIKE_ORIGIN_Z_OFFSET)
+	-- Play the attack SFX locally so this peer hears the casting player's
+	-- nova at the right 3D position. Each peer's local playback uses its own
+	-- XAudio.Source — no MP source-key collision possible.
+	if _G.CSR_PlaySound then
+		pcall(_G.CSR_PlaySound, "gup_attack", { position = chest })
+	end
+	local enemy_mask = managers.slot:get_mask("enemies")
+	if not enemy_mask then
+		return
+	end
+	local enemies = World:find_units_quick("sphere", caster_pos, radius, enemy_mask)
+	if not enemies or #enemies == 0 then
+		return
+	end
+	local targets = {}
+	for _, unit in ipairs(enemies) do
+		if alive(unit) and unit:movement() then
+			local cdmg = unit:character_damage()
+			if not cdmg or not cdmg:dead() then
+				local upos = unit:movement():m_pos()
+				table.insert(targets, Vector3(upos.x, upos.y, upos.z + SPIKE_TARGET_Z_OFFSET))
+			end
+		end
+	end
+	spawn_spikes_to_targets(chest, targets)
+end
+
+local function broadcast_remote_cast(caster_pos, radius)
+	if not (managers and managers.network and managers.network:session()) then
+		return
+	end
+	if not LuaNetworking then
+		return
+	end
+	local payload = string.format("%.2f,%.2f,%.2f,%.1f", caster_pos.x, caster_pos.y, caster_pos.z, radius)
+	pcall(function()
+		LuaNetworking:SendToPeers("CSR_FFSpikes", payload)
+	end)
+end
 
 local function fire_hud_buff_event(name, duration)
 	if CSR_VHUDPlusEvent then
@@ -118,12 +217,13 @@ local function fire_spike_nova(player_unit)
 	-- (mirrors how vanilla enemy HP scales): base * (1 + rank * pct).
 	local max_damage = base_damage * (1 + cs_level * level_pct) * 5
 
-	-- Attack SFX (random pick from gup_attack_1..5), 3D-attached to the player.
+	-- Attack SFX (random pick from gup_attack_1..5). Position-based playback
+	-- (XAudio.Source + set_position, no unit binding) instead of unit-attached
+	-- — each call gets a fresh XAudio.Source so there's no per-(unit, source_key)
+	-- collision with the gup_charge that fired 0.6s earlier on the same player.
 	if _G.CSR_PlaySound then
-		pcall(_G.CSR_PlaySound, "gup_attack", { unit = player_unit })
+		pcall(_G.CSR_PlaySound, "gup_attack", { position = player_pos + Vector3(0, 0, SPIKE_ORIGIN_Z_OFFSET) })
 	end
-
-	-- TODO: VFX — placeholder. Once a particle effect ships, fire it here.
 
 	local weapon_unit = nil
 	pcall(function()
@@ -139,21 +239,27 @@ local function fire_spike_nova(player_unit)
 	pcall(function()
 		geometry_mask = managers.slot:get_mask("world_geometry")
 	end)
-	local player_check_pos = player_pos + Vector3(0, 0, 80)
+	local player_check_pos = player_pos + Vector3(0, 0, SPIKE_ORIGIN_Z_OFFSET)
 
 	local enemy_mask = managers.slot:get_mask("enemies")
 	local enemies = World:find_units_quick("sphere", player_pos, radius, enemy_mask)
+
+	-- Collect target chest positions for the spike VFX (purely cosmetic).
+	-- Captured before damage_bullet because dead units' movement() may return
+	-- stale positions after the kill animation kicks in.
+	local spike_targets = {}
 
 	for _, unit in ipairs(enemies) do
 		if alive(unit) and unit:movement() then
 			local cdmg = unit:character_damage()
 			if cdmg and not cdmg:dead() then
-				local unit_pos = unit:movement():m_pos() + Vector3(0, 0, 80)
+				local unit_pos = unit:movement():m_pos() + Vector3(0, 0, SPIKE_TARGET_Z_OFFSET)
 				if has_line_of_sight(geometry_mask, player_check_pos, unit_pos) then
 					local dist = pos_dist(player_pos, unit:movement():m_pos())
 					local falloff = math.max(0, 1 - dist / radius)
 					local dmg = max_damage * falloff
 					if dmg > 0 then
+						table.insert(spike_targets, Vector3(unit_pos.x, unit_pos.y, unit_pos.z))
 						local was_dead = cdmg:dead()
 						local col_ray = make_fake_col_ray(unit)
 						if col_ray.body then
@@ -184,6 +290,11 @@ local function fire_spike_nova(player_unit)
 			end
 		end
 	end
+
+	-- Local arrows + MP broadcast. Each peer fires its own arrows toward its
+	-- own view of nearby enemies (client_authoritative ecp_arrow).
+	spawn_spikes_to_targets(player_check_pos, spike_targets)
+	broadcast_remote_cast(player_pos, radius)
 end
 
 -- Cooldown-ready chime. Fired by DelayedCalls when the cooldown finishes.
@@ -231,10 +342,17 @@ local function activate_spike_nova(player_unit)
 	_G.CSR_FamiliarFriend.cooldown_end = now + cooldown
 	fire_hud_buff_event("csr_familiar_friend_cd", cooldown)
 
-	-- Charge SFX plays immediately on key press as the wind-up. The actual
-	-- nova fires after `charge_delay` seconds to match the audio.
+	-- Charge SFX plays immediately on key press as the wind-up. Position-based
+	-- playback for the same reason as gup_attack — avoids per-unit source
+	-- collisions when gup_attack fires 0.6s later on the same player.
 	if _G.CSR_PlaySound then
-		pcall(_G.CSR_PlaySound, "gup_charge", { unit = player_unit })
+		local move = player_unit:movement()
+		local sfx_pos = move and (move:m_pos() + Vector3(0, 0, SPIKE_ORIGIN_Z_OFFSET)) or nil
+		if sfx_pos then
+			pcall(_G.CSR_PlaySound, "gup_charge", { position = sfx_pos })
+		else
+			pcall(_G.CSR_PlaySound, "gup_charge", { unit = player_unit })
+		end
 	end
 
 	DelayedCalls:Add("CSR_FamiliarFriend_Fire", charge_delay, function()
@@ -245,15 +363,16 @@ local function activate_spike_nova(player_unit)
 	DelayedCalls:Add("CSR_FamiliarFriend_CooldownReady", cooldown, play_cooldown_ready)
 end
 
-if PlayerManager and not _G._CSR_FAMILIAR_FRIEND_HOOKED then
-	_G._CSR_FAMILIAR_FRIEND_HOOKED = true
-
+-- Hook registration. PostHook with unique IDs is idempotent (re-registration
+-- overwrites in place, no double-fire).
+if PlayerManager then
 	-- Reset cooldown on spawn (per-heist).
 	Hooks:PostHook(PlayerManager, "spawned_player", "CSR_FamiliarFriendInit", function(self)
 		_G.CSR_FamiliarFriend.cooldown_end = 0
 	end)
 
-	-- Register with the wildcard dispatcher. Guarded so reloads don't re-register.
+	-- Register with the wildcard dispatcher. RegisterWildcardActive is keyed
+	-- by prefix, so repeated calls are idempotent.
 	if _G.CSR_RegisterWildcardActive then
 		_G.CSR_RegisterWildcardActive("player_familiar_friend_", activate_spike_nova)
 	end

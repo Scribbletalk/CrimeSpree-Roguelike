@@ -47,6 +47,90 @@ local function fire_hud_buff_event(name, duration)
 	end
 end
 
+-- Subtle green DR vignette. Reuses the existing `csr/guilt_vignette` texture
+-- (alpha-mask vignette shape, colour applied via bitmap), tinted green and
+-- held for the 5s DR window. Fades in fast, holds, then fades out smoothly
+-- so the player gets a clear "protection ending" cue.
+local VIGNETTE_TEX_PATH = "csr/guilt_vignette"
+local VIGNETTE_NAME = "csr_turron_dr_vignette"
+local VIGNETTE_COLOR = Color(1, 0.2, 1.0, 0.4) -- soft green-cyan; subtle, not neon
+local VIGNETTE_ALPHA_PEAK = 0.22
+local VIGNETTE_FADE_IN = 0.2
+local VIGNETTE_FADE_OUT = 0.6
+
+-- ModPath can be overwritten by later-loading mods (ProjectCellBeta, BeardLib)
+-- between file load and DelayedCalls — capture now per plush_shark_guardian.lua
+-- pattern. Registration is idempotent under pcall; same Idstring is also
+-- registered by plush_shark_guardian.lua / civilian_damage_hook.lua.
+local SAVED_MOD_PATH = ModPath
+pcall(function()
+	local file = SAVED_MOD_PATH .. "assets/csr/guilt_vignette.texture"
+	DB:create_entry(Idstring("texture"), Idstring(VIGNETTE_TEX_PATH), file)
+end)
+
+local function show_dr_vignette(duration)
+	pcall(function()
+		local hud_script = managers.hud and managers.hud:script(PlayerBase.PLAYER_INFO_HUD_FULLSCREEN_PD2)
+		if not hud_script or not hud_script.panel then
+			return
+		end
+		local panel = hud_script.panel
+		local existing = panel:child(VIGNETTE_NAME)
+		if existing then
+			panel:remove(existing)
+		end
+		local bm = panel:bitmap({
+			name = VIGNETTE_NAME,
+			texture = VIGNETTE_TEX_PATH,
+			blend_mode = "add",
+			color = VIGNETTE_COLOR,
+			alpha = 0,
+			x = 0,
+			y = 0,
+			w = panel:w(),
+			h = panel:h(),
+			layer = 200,
+		})
+		bm:animate(function(o)
+			local fade_in_t = 0
+			while fade_in_t < VIGNETTE_FADE_IN do
+				local dt = coroutine.yield()
+				fade_in_t = fade_in_t + dt
+				o:set_alpha(VIGNETTE_ALPHA_PEAK * (fade_in_t / VIGNETTE_FADE_IN))
+			end
+			o:set_alpha(VIGNETTE_ALPHA_PEAK)
+			local hold = duration - VIGNETTE_FADE_IN - VIGNETTE_FADE_OUT
+			if hold > 0 then
+				local h = 0
+				while h < hold do
+					local dt = coroutine.yield()
+					h = h + dt
+				end
+			end
+			local fade_out_t = 0
+			while fade_out_t < VIGNETTE_FADE_OUT do
+				local dt = coroutine.yield()
+				fade_out_t = fade_out_t + dt
+				o:set_alpha(VIGNETTE_ALPHA_PEAK * (1 - fade_out_t / VIGNETTE_FADE_OUT))
+			end
+			o:set_alpha(0)
+		end)
+		-- Belt-and-suspenders cleanup: remove the bitmap shortly after the
+		-- animation finishes, in case the coroutine was interrupted.
+		DelayedCalls:Add("CSR_Turron_VignetteRemove", duration + 0.2, function()
+			pcall(function()
+				local s = managers.hud and managers.hud:script(PlayerBase.PLAYER_INFO_HUD_FULLSCREEN_PD2)
+				if s and s.panel then
+					local p = s.panel:child(VIGNETTE_NAME)
+					if p then
+						s.panel:remove(p)
+					end
+				end
+			end)
+		end)
+	end)
+end
+
 -- Cooldown-ready chime. Suppressed if the player has left the heist or no
 -- longer owns the item (mirrors the FF pattern).
 local function play_cooldown_ready()
@@ -120,6 +204,9 @@ local function activate_turron(player_unit)
 
 	fire_hud_buff_event("csr_turron_dr", dr_duration)
 	fire_hud_buff_event("csr_turron_cd", cooldown)
+
+	-- Visual feedback: subtle green vignette for the DR window with fade-out.
+	show_dr_vignette(dr_duration)
 
 	-- Schedule the cooldown-ready chime to match the cooldown end timestamp.
 	DelayedCalls:Add("CSR_Turron_CooldownReady", cooldown, play_cooldown_ready)

@@ -106,3 +106,50 @@ function _G.CSR_TriggerWildcard()
 
 	log("[CSR Wildcard] no owned wildcard actives — no-op")
 end
+
+-- Workaround for "Full Speed Swarm" mod, which replaces BLTKeybindsManager:update
+-- with a cached-list version. FSS captures `state = Global.load_level and StateGame
+-- or StateMenu` at file-scope when its lib/managers/menumanager hook fires (at main
+-- menu → state=StateMenu) and excludes any keybind whose CanExecuteInState(state)
+-- returns false. Our csr_activate_wildcard is run_in_game only, so FSS permanently
+-- filters it out — until a Lua reload mid-heist re-runs FSS with state=StateGame.
+-- Symptom: rebinding the wildcard key mid-heist does nothing until heist restart.
+local function ensure_wildcard_in_fss_list()
+	if not _G.BLT or not BLT.Keybinds or not BLT.Keybinds.fs_filtered_keybinds then
+		return
+	end
+	local bind = BLT.Keybinds:get_keybind("csr_activate_wildcard")
+	if not bind then
+		return
+	end
+	-- FSS's _SetKey override populates _key.idstring and _key.input. If our key
+	-- was restored from save before FSS bootstrap and FSS skipped us in its
+	-- initial sweep, idstring stays nil. Re-call SetKey so the override runs.
+	local key_str = bind._key and bind._key.pc
+	if key_str and key_str ~= "" and not bind._key.idstring and bind.SetKey then
+		bind:SetKey(key_str)
+	end
+	for _, b in ipairs(BLT.Keybinds.fs_filtered_keybinds) do
+		if b == bind then
+			return
+		end
+	end
+	table.insert(BLT.Keybinds.fs_filtered_keybinds, bind)
+	log("[CSR Wildcard] FSS workaround: added csr_activate_wildcard to fs_filtered_keybinds")
+end
+
+if Hooks then
+	-- Re-attach when the user binds the key from the menu (covers mid-heist rebind).
+	Hooks:Add("CustomizeControllerOnKeySet", "CSR_FSSFix_WildcardOnKeySet", function(connection_name, _)
+		if connection_name == "csr_activate_wildcard" then
+			ensure_wildcard_in_fss_list()
+		end
+	end)
+
+	-- Cover the case where the key was already bound from a previous session:
+	-- FSS's bootstrap (which runs after lib/entry but before LocalizationManagerPostInit)
+	-- skipped our bind because state==StateMenu at main menu. Re-attach here.
+	Hooks:Add("LocalizationManagerPostInit", "CSR_FSSFix_WildcardOnLocPost", function()
+		ensure_wildcard_in_fss_list()
+	end)
+end

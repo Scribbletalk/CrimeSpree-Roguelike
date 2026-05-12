@@ -78,6 +78,7 @@ _G.CSR_Sounds = _G.CSR_Sounds or {}
 -- live in CSR_UnitSources, see below.
 _G.CSR_SoundSources = _G.CSR_SoundSources or {}
 local _next_source_id = 0
+local _next_ramp_id = 0
 
 -- Per-unit source registry. Mirrors Restoration's _active_sources[unit_key]
 -- pattern — lets us close a stale source on a unit before spawning a new one
@@ -322,7 +323,9 @@ function _G.CSR_PlaySound(name, opts)
 		end
 	end
 
-	-- Pick source type
+	-- Pick source type. Volume starts at 0 and is bumped to target on the next
+	-- frame — masks the "click at sample start" artifact some OGGs produce when
+	-- the waveform's first sample is non-zero (gup_attack_*.ogg is the motivator).
 	local src
 	local ok, err = pcall(function()
 		if opts.unit and alive(opts.unit) then
@@ -334,13 +337,26 @@ function _G.CSR_PlaySound(name, opts)
 			src = XAudio.Source:new(buf)
 			src:set_relative(true)
 		end
-		src:set_volume(vol)
+		src:set_volume(0)
 		src:play()
 	end)
 
 	if not ok then
 		CSR_log_force("PlaySound FAILED for '" .. tostring(name) .. "': " .. tostring(err))
 		return nil
+	end
+
+	if src then
+		_next_ramp_id = _next_ramp_id + 1
+		local ramp_src = src
+		local target_vol = vol
+		DelayedCalls:Add("CSR_VolRamp_" .. _next_ramp_id, 0.016, function()
+			pcall(function()
+				if not ramp_src:is_closed() then
+					ramp_src:set_volume(target_vol)
+				end
+			end)
+		end)
 	end
 
 	if unit_key then
