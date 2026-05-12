@@ -108,6 +108,30 @@ Hooks:PreHook(CrimeSpreeManager, "on_mission_completed", "CSR_SaveOldLevel", fun
 	self._csr_raw_mission_add = mission_data and mission_data.add or 0
 end)
 
+-- Streamlined Heisting compat. SH overrides on_mission_completed and adds
+-- math.min(get_secured_bags_amount(), 20) to spree_add — bags-as-ranks on top
+-- of vanilla mission gain. CSR already converts secured cash (which includes
+-- bag value) to rank via cash_per_rank; SH's addition double-counts the bags
+-- portion and inflates spree_level relative to host_earned, which fed the
+-- late-join catchup bug (joiners receiving way too many items).
+--
+-- Neutralize by stubbing managers.loot:get_secured_bags_amount to 0 for the
+-- duration of on_mission_completed. Vanilla's body of this function never
+-- calls it (vanilla uses mission_data.add only), so this is a true no-op
+-- without SH and a clean cancel of SH's bag-rank bonus when SH is present.
+-- Restored unconditionally in the matching PostHook below.
+Hooks:PreHook(CrimeSpreeManager, "on_mission_completed", "CSR_StripSHBagRankBonus", function(self)
+	if not self._csr_completed_was_cs then
+		return
+	end
+	if managers.loot and managers.loot.get_secured_bags_amount then
+		self._csr_orig_get_secured_bags_amount = managers.loot.get_secured_bags_amount
+		managers.loot.get_secured_bags_amount = function()
+			return 0
+		end
+	end
+end)
+
 -- PostHook: add bonus levels for bags and kills AFTER vanilla runs
 Hooks:PostHook(CrimeSpreeManager, "on_mission_completed", "CSR_BagsKillsBonus", function(self, mission_id)
 	-- Read the is_active() snapshot taken in the PreHook above. This preserves
@@ -494,6 +518,16 @@ Hooks:PostHook(CrimeSpreeManager, "on_mission_completed", "CSR_UpdateMetaProgres
 		end
 
 		CSR_MetaProgress:Save()
+	end
+end)
+
+-- Pair to CSR_StripSHBagRankBonus PreHook above. Always runs (even if PreHook
+-- bailed) so a swapped-in stub is guaranteed to be reverted before any other
+-- code path could read get_secured_bags_amount.
+Hooks:PostHook(CrimeSpreeManager, "on_mission_completed", "CSR_RestoreSecuredBagsAmount", function(self)
+	if self._csr_orig_get_secured_bags_amount then
+		managers.loot.get_secured_bags_amount = self._csr_orig_get_secured_bags_amount
+		self._csr_orig_get_secured_bags_amount = nil
 	end
 end)
 
