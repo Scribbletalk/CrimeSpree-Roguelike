@@ -42,16 +42,13 @@ local SPIKE_PROJECTILE_ENTRY = "csr_ff_arrow"
 
 local function fire_arrow_at(spawn_pos, target_pos)
 	if not ProjectileBase or not ProjectileBase.throw_projectile then
-		log("[CSR FF] fire_arrow_at: ProjectileBase missing")
 		return
 	end
 	if not (managers and managers.network and managers.network:session()) then
-		log("[CSR FF] fire_arrow_at: no network session")
 		return
 	end
 	local local_peer = managers.network:session():local_peer()
 	if not local_peer then
-		log("[CSR FF] fire_arrow_at: no local_peer")
 		return
 	end
 	local dx = target_pos.x - spawn_pos.x
@@ -59,25 +56,12 @@ local function fire_arrow_at(spawn_pos, target_pos)
 	local dz = target_pos.z - spawn_pos.z
 	local len = math.sqrt(dx * dx + dy * dy + dz * dz)
 	if len < 1 then
-		log("[CSR FF] fire_arrow_at: distance < 1, skipping")
 		return
 	end
 	local dir = Vector3(dx / len, dy / len, dz / len)
-	local ok, err = pcall(function()
+	pcall(function()
 		ProjectileBase.throw_projectile(SPIKE_PROJECTILE_ENTRY, spawn_pos, dir, local_peer:id())
 	end)
-	log(
-		"[CSR FF] fire_arrow_at: throw ok="
-			.. tostring(ok)
-			.. " err="
-			.. tostring(err)
-			.. " spawn="
-			.. tostring(spawn_pos)
-			.. " target="
-			.. tostring(target_pos)
-			.. " peer="
-			.. tostring(local_peer:id())
-	)
 end
 
 -- Fire one arrow per enemy in `targets`. Used by both the local caster path
@@ -199,39 +183,31 @@ end
 -- Re-validates state because the player may have died/cuffed/left whisper mode
 -- during the 0.6s wind-up.
 local function fire_spike_nova(player_unit)
-	log("[CSR FF] fire_spike_nova: entry")
 	if not alive(player_unit) then
-		log("[CSR FF] fire_spike_nova: player_unit not alive, abort")
 		return
 	end
 	-- Stealth gate (re-check): whisper might have re-engaged during charge.
 	if managers.groupai and managers.groupai:state() and managers.groupai:state():whisper_mode() then
-		log("[CSR FF] fire_spike_nova: whisper mode re-engaged, abort")
 		return
 	end
 	local cdmg_self = player_unit:character_damage()
 	if cdmg_self then
 		if cdmg_self.dead and cdmg_self:dead() then
-			log("[CSR FF] fire_spike_nova: player dead, abort")
 			return
 		end
 		if cdmg_self.bleed_out and cdmg_self:bleed_out() then
-			log("[CSR FF] fire_spike_nova: player bleed_out, abort")
 			return
 		end
 		if cdmg_self.arrested and cdmg_self:arrested() then
-			log("[CSR FF] fire_spike_nova: player arrested, abort")
 			return
 		end
 	end
 
 	local move = player_unit:movement()
 	if not move then
-		log("[CSR FF] fire_spike_nova: no movement(), abort")
 		return
 	end
 	local player_pos = move:m_pos()
-	log("[CSR FF] fire_spike_nova: player_pos=" .. tostring(player_pos))
 
 	local radius = const("familiar_friend_radius", 600)
 	local base_damage = const("familiar_friend_damage", 2000)
@@ -317,7 +293,6 @@ local function fire_spike_nova(player_unit)
 
 	-- Local arrows + MP broadcast. Each peer fires its own arrows toward its
 	-- own view of nearby enemies (client_authoritative ecp_arrow).
-	log("[CSR FF] enemies=" .. tostring(#enemies) .. " arrow_targets=" .. tostring(#spike_targets))
 	spawn_spikes_to_targets(player_check_pos, spike_targets)
 	broadcast_remote_cast(player_pos, radius)
 end
@@ -391,11 +366,8 @@ end
 -- Hook registration. PostHook with unique IDs is idempotent (re-registration
 -- overwrites in place, no double-fire).
 if PlayerManager then
-	log("[CSR FF] familiarfriend.lua loading, registering hooks")
-
 	-- Reset cooldown on spawn (per-heist).
 	Hooks:PostHook(PlayerManager, "spawned_player", "CSR_FamiliarFriendInit", function(self)
-		log("[CSR FF] spawned_player hook fired, resetting cooldown")
 		_G.CSR_FamiliarFriend.cooldown_end = 0
 	end)
 
@@ -403,6 +375,5 @@ if PlayerManager then
 	-- by prefix, so repeated calls are idempotent.
 	if _G.CSR_RegisterWildcardActive then
 		_G.CSR_RegisterWildcardActive("player_familiar_friend_", activate_spike_nova)
-		log("[CSR FF] wildcard dispatcher registered for player_familiar_friend_")
 	end
 end
