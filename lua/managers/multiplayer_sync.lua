@@ -28,6 +28,7 @@ local MSG = {
 	LOCKES_HEAL = "CSR_LockesHeal", -- any peer -> all peers: 30s Locke's Beret pulse, payload = sender's stacks
 	OATH_HEAL = "CSR_OathHeal", -- host -> client: Hippocratic Oath aura tick, client heals self locally
 	FF_SPIKES = "CSR_FFSpikes", -- any peer -> all peers: Familiar Friend spike-nova VFX trigger, payload = "x,y,z,radius"
+	CHIP_KILL = "CSR_ChipKill", -- any peer -> all peers: Bonnie's Chip proc kill, payload = "x,y,z" (dead enemy position; receiver plays a random chip SFX locally at that position)
 }
 
 -- Max bytes per network payload (conservative; SuperBLT limit is ~237)
@@ -1170,6 +1171,30 @@ Hooks:Add("NetworkReceivedData", "CSR_MultiplayerSync", function(sender, id, dat
 		local x, y, z, r = tonumber(x_str), tonumber(y_str), tonumber(z_str), tonumber(r_str)
 		if x and y and z and r and _G.CSR_FF_OnRemoteCast then
 			pcall(_G.CSR_FF_OnRemoteCast, Vector3(x, y, z), r)
+		end
+		return
+	end
+
+	-- === Bonnie's Chip proc kill — positional SFX broadcast ===
+	-- The killer broadcasts the dead enemy's world position so every other
+	-- peer plays a random chip SFX locally at that position. Variant pick is
+	-- not synced (short SFX, randomization per-peer is fine).
+	if id == MSG.CHIP_KILL then
+		local x_str, y_str, z_str = string.match(data, "^(%-?[%d%.]+),(%-?[%d%.]+),(%-?[%d%.]+)$")
+		local x, y, z = tonumber(x_str), tonumber(y_str), tonumber(z_str)
+		if x and y and z and _G.CSR_PlaySound then
+			local user_vol = (
+				_G.CSR_Settings
+				and _G.CSR_Settings.values
+				and _G.CSR_Settings.values.bonnie_chip_sound_volume
+			) or 1.0
+			pcall(function()
+				_G.CSR_PlaySound("bonnie_chip", {
+					position = Vector3(x, y, z),
+					falloff_db_per_meter = 1,
+					volume = user_vol * 0.75,
+				})
+			end)
 		end
 		return
 	end

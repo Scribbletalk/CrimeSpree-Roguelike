@@ -15,12 +15,13 @@ local _active_tab = "items" -- module-local; persists across TAB open/close
 local TAB_GAP = 18
 local TAB_TOP_PAD = 8
 
--- Right-column wildcard slot (mirrors the briefing items page). Smaller than
--- the briefing slot because the TAB panel is more compact. Carry-1, so the
--- slot only ever holds one icon (or an empty placeholder). The 10px implicit
--- panel margin on each side stays untouched; LEFT_PAD / RIGHT_PAD stack on
--- top of those for additional inset (symmetric with the briefing model).
-local TAB_WILDCARD_SLOT_WIDTH = 50
+-- Right-column wildcard slot. Mirrors items_page.lua positional logic:
+-- the slot is a square cell derived from per-player section height
+-- (section_h * RATIO), and is vertically centered within its section. In
+-- singleplayer, the same per-section height is used so the wildcard reads
+-- the same physical size in both modes. Carry-1, so the slot only ever
+-- holds one icon (or an empty magenta placeholder).
+local TAB_WILDCARD_SLOT_RATIO = 0.7
 local TAB_WILDCARD_SLOT_GAP = 6
 local TAB_WILDCARD_SLOT_RIGHT_PAD = 4
 local TAB_MAIN_GRID_LEFT_PAD = 4
@@ -185,11 +186,10 @@ local function render_wildcard_cell(content, wildcards, slot_x, slot_y, slot_w, 
 	end
 
 	local item = wildcards[1]
-	-- Signature-visual ratio: wildcard icons are deliberately oversized vs
-	-- rarity-grid icons (which sit around ~0.51 of their cell). 0.85 here
-	-- matches items_page.lua WILDCARD_ICON_FRAME_RATIO so both surfaces read
-	-- the same.
-	local icon_size = math.floor(frame_size * 0.85)
+	-- Icon-to-frame ratio. Mirrors items_page.lua WILDCARD_ICON_FRAME_RATIO so
+	-- the briefing items page and the in-game TAB panel render wildcards at the
+	-- same proportions.
+	local icon_size = math.floor(frame_size * 0.5)
 	local ICON_SCALE = _G.CSR_IconScale or {}
 
 	if positions then
@@ -294,15 +294,19 @@ local function build_items(content, positions)
 		local local_id = local_pid()
 		local items = CSR_BuildItemsForPeer(local_id)
 		local regular, wildcards = split_wildcards(items)
+		-- Use the same per-section formula as the MP path so the wildcard slot
+		-- has the same physical size in SP and MP.
+		local section_gap = 6
+		local section_h = math.floor((panel_h - 3 * section_gap) / 4)
+		local wildcard_slot_size = math.floor(section_h * TAB_WILDCARD_SLOT_RATIO)
 		local main_w = panel_w
 			- 20
 			- TAB_MAIN_GRID_LEFT_PAD
-			- TAB_WILDCARD_SLOT_WIDTH
+			- wildcard_slot_size
 			- TAB_WILDCARD_SLOT_GAP
 			- TAB_WILDCARD_SLOT_RIGHT_PAD
 		local grid_x = 10 + TAB_MAIN_GRID_LEFT_PAD
 		local slot_x = grid_x + main_w + TAB_WILDCARD_SLOT_GAP
-		local slot_h = panel_h - 20
 
 		if #regular > 0 then
 			local cell = calc_cell_size(#regular, main_w, panel_h - 10, 72, 24)
@@ -311,8 +315,19 @@ local function build_items(content, positions)
 			placeholder_text(content, managers.localization:text("menu_csr_items_placeholder"))
 		end
 
-		-- Always reserve the right-column slot, even when empty.
-		render_wildcard_cell(content, wildcards, slot_x, 10, TAB_WILDCARD_SLOT_WIDTH, slot_h, positions, local_id)
+		-- Square wildcard cell, vertically centered in the panel — mirrors the
+		-- briefing items_page.lua SP layout.
+		local slot_y = math.floor((panel_h - wildcard_slot_size) / 2)
+		render_wildcard_cell(
+			content,
+			wildcards,
+			slot_x,
+			slot_y,
+			wildcard_slot_size,
+			wildcard_slot_size,
+			positions,
+			local_id
+		)
 		return
 	end
 
@@ -341,6 +356,7 @@ local function build_items(content, positions)
 	local header_h = 18
 	local section_h = math.floor((panel_h - 3 * section_gap) / 4)
 	local grid_h = section_h - header_h
+	local wildcard_slot_size = math.floor(section_h * TAB_WILDCARD_SLOT_RATIO)
 
 	for idx, pid in ipairs(peer_ids) do
 		local data = _G.CSR_PlayerItems[pid]
@@ -392,7 +408,7 @@ local function build_items(content, positions)
 			local main_w = panel_w
 				- 20
 				- TAB_MAIN_GRID_LEFT_PAD
-				- TAB_WILDCARD_SLOT_WIDTH
+				- wildcard_slot_size
 				- TAB_WILDCARD_SLOT_GAP
 				- TAB_WILDCARD_SLOT_RIGHT_PAD
 			local grid_x = 10 + TAB_MAIN_GRID_LEFT_PAD
@@ -413,8 +429,19 @@ local function build_items(content, positions)
 				})
 			end
 
-			-- Always reserve the right-column slot, even when empty.
-			render_wildcard_cell(content, wildcards, slot_x, grid_y, TAB_WILDCARD_SLOT_WIDTH, grid_h, positions, pid)
+			-- Square wildcard cell, vertically centered within this peer's
+			-- section — mirrors briefing items_page.lua MP layout.
+			local slot_y = section_y + math.floor((section_h - wildcard_slot_size) / 2)
+			render_wildcard_cell(
+				content,
+				wildcards,
+				slot_x,
+				slot_y,
+				wildcard_slot_size,
+				wildcard_slot_size,
+				positions,
+				pid
+			)
 		end
 	end
 end

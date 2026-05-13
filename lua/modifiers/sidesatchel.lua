@@ -46,6 +46,34 @@ local CSR_SIDE_SATCHEL_FORCE_INCLUDE = {
 }
 _G.CSR_SideSatchel_ForceInclude = CSR_SIDE_SATCHEL_FORCE_INCLUDE
 
+-- Per-heist interaction-blocker overrides. The named special_equipment_block
+-- is lifted (during the can_select / can_interact checks) ONLY while the
+-- player is on a listed heist and still under the doubled cap. Used for cases
+-- where a blacklisted "one tool is enough" item is actually needed twice on
+-- a specific map.
+--   crowbar / crowbar_stack → shoutout_raid: Meltdown has 2 separate crowbar
+--   pickups; vanilla has two interaction variants (gen_pku_crowbar with
+--   blocker "crowbar" and gen_pku_crowbar_stack with blocker "crowbar_stack")
+--   so we cover both to handle whichever the level actually places.
+local CSR_SIDE_SATCHEL_HEIST_BLOCK_OVERRIDES = {
+	crowbar = { shoutout_raid = true },
+	crowbar_stack = { shoutout_raid = true },
+}
+
+-- Items whose vanilla equipment.quantity is nil — that makes add_special's
+-- math block (line 4917 in playermanager.lua) be skipped on the 2nd pickup,
+-- so the amount never increments and the HUD never updates. We backfill
+-- quantity=1 at load and normalize params.amount=1 at pickup time so the
+-- math runs correctly. Includes both FORCE_INCLUDE (planks/boards) and
+-- HEIST_BLOCK_OVERRIDES (crowbar variants) — anything we want to actually
+-- increment past 1 in the inventory needs this patch.
+local CSR_SIDE_SATCHEL_QUANTITY_PATCH = {
+	planks = true,
+	boards = true,
+	crowbar = true,
+	crowbar_stack = true,
+}
+
 local _quantity_patched = false
 local function ensure_quantity_patched()
 	if _quantity_patched then
@@ -54,19 +82,13 @@ local function ensure_quantity_patched()
 	if not tweak_data or not tweak_data.equipments or not tweak_data.equipments.specials then
 		return
 	end
-	for name, _ in pairs(CSR_SIDE_SATCHEL_FORCE_INCLUDE) do
+	for name, _ in pairs(CSR_SIDE_SATCHEL_QUANTITY_PATCH) do
 		local eq = tweak_data.equipments.specials[name]
 		if eq and not eq.quantity then
 			eq.quantity = 1
 		end
 	end
 	_quantity_patched = true
-end
-
-local function CSR_log(msg)
-	if _G.CSR_Settings and _G.CSR_Settings.values and _G.CSR_Settings.values.debug_mode then
-		log("[CSR SideSatchel] " .. tostring(msg))
-	end
 end
 
 local function owns_side_satchel()
@@ -168,7 +190,17 @@ if BaseInteractionExt and not _G._CSR_SIDE_SATCHEL_INT_HOOKED then
 		if type(blocker) == "table" then
 			blocker = blocker[1]
 		end
-		if not CSR_SIDE_SATCHEL_FORCE_INCLUDE[blocker] then
+		-- Allow either: (a) blocker in FORCE_INCLUDE, or (b) blocker has a
+		-- heist-scoped override matching the current level_id.
+		local lvl = managers.job and managers.job.current_level_id and managers.job:current_level_id()
+		local allowed = CSR_SIDE_SATCHEL_FORCE_INCLUDE[blocker] == true
+		if not allowed then
+			local overrides = CSR_SIDE_SATCHEL_HEIST_BLOCK_OVERRIDES[blocker]
+			if overrides then
+				allowed = lvl and overrides[lvl] == true or false
+			end
+		end
+		if not allowed then
 			return nil
 		end
 		ensure_quantity_patched()
@@ -220,6 +252,56 @@ if BaseInteractionExt and not _G._CSR_SIDE_SATCHEL_INT_HOOKED then
 			return with_unblock(self, original_mc_can_interact, ...)
 		end
 	end
+
+	-- _interact_blocked is the THIRD gate (can_select and can_interact let the
+	-- prompt appear, but interact_start re-checks via _interact_blocked before
+	-- actually granting the pickup). Vanilla SpecialEquipmentInteractionExt
+	-- gates here on can_pickup_equipment(self._special_equipment). If a heist
+	-- override applies, force-unblock while under the doubled cap.
+	if SpecialEquipmentInteractionExt then
+		local original_intblock = SpecialEquipmentInteractionExt._interact_blocked
+		function SpecialEquipmentInteractionExt:_interact_blocked(player)
+			local blocked, skip_hint, custom_hint = original_intblock(self, player)
+			if not blocked then
+				return blocked, skip_hint, custom_hint
+			end
+			local eq_name = self._special_equipment
+			if not eq_name then
+				return blocked, skip_hint, custom_hint
+			end
+			local overrides = CSR_SIDE_SATCHEL_HEIST_BLOCK_OVERRIDES[eq_name]
+			if not overrides then
+				return blocked, skip_hint, custom_hint
+			end
+			local lvl = managers.job and managers.job.current_level_id and managers.job:current_level_id()
+			if not (lvl and overrides[lvl] == true) then
+				return blocked, skip_hint, custom_hint
+			end
+			if not owns_side_satchel() then
+				return blocked, skip_hint, custom_hint
+			end
+			local eq = tweak_data
+				and tweak_data.equipments
+				and tweak_data.equipments.specials
+				and tweak_data.equipments.specials[eq_name]
+			if not eq then
+				return blocked, skip_hint, custom_hint
+			end
+			local cap = 2 * (eq.max_quantity or eq.quantity or 1)
+			local owned = managers.player
+				and managers.player._equipment
+				and managers.player._equipment.specials
+				and managers.player._equipment.specials[eq_name]
+			local current = 0
+			if owned and owned.amount then
+				current = Application:digest_value(owned.amount, false) or 0
+			end
+			if current < cap then
+				return false, false, nil
+			end
+			return blocked, skip_hint, custom_hint
+		end
+	end
 end
 
 -- Passive bag-carry speed bump: while a loot bag is on the player's back,
@@ -259,18 +341,28 @@ if PlayerManager and not _G._CSR_SIDE_SATCHEL_PM_SPEED_HOOKED then
 	end
 end
 
--- Some custom heists grant force-included specials via add_special({name=...})
--- with no amount or transfer flag. Vanilla then routes through the non-respawn
--- branch: `math.min(amount + extra, cap + extra)` with `amount = equipment.quantity`
--- (= 1 after our patch for planks/boards). With doubling extra=1, that yields
--- min(2, 2) = 2 from a single grant — wrong, the room should fill on the SECOND
--- pickup, not the first. Set params.amount = equipment.quantity here so vanilla
--- treats it as a respawn-style grant: `math.min(params.amount, cap+extra)` =
--- `min(1, 2)` = 1. The transfer path (real stash pickup) is untouched — it has
--- its own clamp via transfer_quantity that respects extra correctly.
--- Non-force-included items (c4, etc.) are NOT touched here: vanilla's no-amount
--- grant for c4 produces min(4+4, 4+4) = 8, which IS the desired "fill to doubled
--- cap" behavior for those grants.
+-- Two distinct vanilla pickup-grant paths produce the same "fill straight to the
+-- doubled cap from one interaction" symptom, both fixed by pinning params.amount
+-- to equipment.quantity (= 1 after our patch for planks/boards/crowbar variants):
+--
+--   1) No-amount grant: vanilla routes through `math.min(amount + extra, cap + extra)`
+--      with amount = equipment.quantity = 1 and extra = +1 (our doubling). That
+--      yields min(2, 2) = 2 from a single grant — wrong, the room should fill on
+--      the SECOND pickup, not the first. Setting params.amount = 1 forces vanilla
+--      into the respawn-style branch `math.min(params.amount, cap+extra)` =
+--      `min(1, 2)` = 1.
+--
+--   2) Amount-set grant: level designers can preset a larger amount on the
+--      pickup unit (Meltdown's crowbar pickups pass amount=2). Without satchel,
+--      vanilla clamps to cap=1 via `math.min(2, 1+extra=1)` = 1. With satchel,
+--      cap rises to 2 and the same min yields 2 — first pickup vaults straight
+--      to the doubled cap, skipping the second one entirely. Clamping
+--      params.amount down to equipment.quantity restores "1 per interaction".
+--
+-- The transfer path (real stash pickup) is untouched — it has its own clamp via
+-- transfer_quantity that respects extra correctly. Non-force-included items
+-- (c4, etc.) are NOT touched here: vanilla's no-amount grant for c4 produces
+-- min(4+4, 4+4) = 8, which IS the desired "fill to doubled cap" behavior.
 if PlayerManager and not _G._CSR_SIDE_SATCHEL_PM_ADD_SPECIAL_HOOKED then
 	_G._CSR_SIDE_SATCHEL_PM_ADD_SPECIAL_HOOKED = true
 	local original_add_special = PlayerManager.add_special
@@ -278,18 +370,17 @@ if PlayerManager and not _G._CSR_SIDE_SATCHEL_PM_ADD_SPECIAL_HOOKED then
 		function PlayerManager:add_special(params)
 			if
 				params
-				and not params.amount
 				and not params.transfer
 				and not params.dropped_out
-				and CSR_SIDE_SATCHEL_FORCE_INCLUDE[params.equipment or params.name or ""]
+				and CSR_SIDE_SATCHEL_QUANTITY_PATCH[params.equipment or params.name or ""]
 				and owns_side_satchel()
 			then
-				-- Force the source amount equal to equipment.quantity so we
-				-- get +cap-room only, not +cap-room AND +cap-room-amount.
 				local name = params.equipment or params.name
 				local eq = tweak_data and tweak_data.equipments and tweak_data.equipments.specials[name]
 				if eq and eq.quantity then
-					params.amount = eq.quantity
+					if not params.amount or params.amount > eq.quantity then
+						params.amount = eq.quantity
+					end
 				end
 			end
 			return original_add_special(self, params)

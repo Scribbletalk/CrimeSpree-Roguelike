@@ -250,6 +250,13 @@ local GRID_ITEMS_PER_ROW = 10
 local GRID_MARGIN_X = 0
 local GRID_MARGIN_Y = 0
 
+-- Logbook-only per-icon scale overrides. Takes precedence over _G.CSR_IconScale
+-- so the items tab / wildcard slot can keep their own sizing.
+local LOGBOOK_ICON_SCALE = {
+	csr_side_satchel = 0.9,
+	csr_hippocratic_oath = 0.9,
+}
+
 -- Rarity frame icons (same textures as items_page and selection popup)
 -- All rarities use the same frame (rare) to avoid icon sizing issues
 local RARITY_FRAMES = {
@@ -969,7 +976,7 @@ function CrimeSpreeLogbookMenuComponent:_create_icons_grid()
 			})
 		end
 
-		local this_icon_size = icon_size * (ICON_SCALE[item_data.icon] or 1)
+		local this_icon_size = icon_size * (LOGBOOK_ICON_SCALE[item_data.icon] or ICON_SCALE[item_data.icon] or 1)
 		local icon_offset = (frame_size - this_icon_size) / 2
 
 		if is_unlocked then

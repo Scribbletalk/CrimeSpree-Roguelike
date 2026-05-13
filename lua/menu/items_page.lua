@@ -22,10 +22,9 @@ local RARITY_COLOR_WILDCARD = Color(1, 0.3, 0.8) -- Magenta
 local WILDCARD_SLOT_GAP = 8
 local WILDCARD_SLOT_RIGHT_PAD = 8
 local MAIN_GRID_LEFT_PAD = 8
--- Wildcards are deliberately oversized vs rarity-grid icons (signature visual
--- for the magenta tier). 0.85 × slot makes the wildcard icon ~60% of section
--- height while rarity-grid icons sit at ~31% of section height.
-local WILDCARD_ICON_FRAME_RATIO = 0.85
+-- Icon size as a fraction of the wildcard slot width. Smaller value leaves more
+-- breathing room inside the magenta hex.
+local WILDCARD_ICON_FRAME_RATIO = 0.5
 local WILDCARD_PLACEHOLDER_COLOR = Color(0.35, 1, 0.3, 0.8) -- dim magenta (alpha, r, g, b)
 
 -- Split a flat items list into (regular, wildcards). Wildcards are tagged
@@ -915,159 +914,118 @@ function CrimeSpreePlayerItemsPage:_setup_items()
 	-- fake_4 / in_mp / peer_ids / num_players were resolved above for sizing.
 	if in_mp then
 		-- === MULTIPLAYER: one section per player, sorted by peer_id ===
+		-- Sections always render. Players with 0 items show only their wildcard
+		-- slot's dim magenta placeholder — empty state is conveyed visually.
+		local local_peer_id = CSR_LocalPeerId and CSR_LocalPeerId() or 1
+		local header_font_size = 16
+		local header_h = header_font_size + 4
+		local DEFAULT_CELL = 72
+		local MIN_CELL = 20
 
-		-- Check if any player has items at all
-		local any_items = fake_4
-		for _, pid in ipairs(peer_ids) do
+		-- Per-section height stays at the 4-player baseline; total panel
+		-- height was already shrunk to fit num_players sections + gaps.
+		local section_h = BASE_SECTION_H
+		local grid_h = section_h - header_h
+
+		local local_pid_for_fake = CSR_LocalPeerId and CSR_LocalPeerId() or 1
+		for idx, pid in ipairs(peer_ids) do
 			local data = _G.CSR_PlayerItems[pid]
-			if data and data.items and #data.items > 0 then
-				any_items = true
-				break
+			if fake_4 and not data then
+				-- Fake-4 mode: fabricate a data shell so the section
+				-- renders even when this peer_id has no real data.
+				data = { items = {}, name = "DEBUG Player " .. pid }
 			end
-		end
+			if data then
+				-- In fake-4 mode, use the local player's items for every
+				-- fake peer so the layout shows real content.
+				local source_pid = (fake_4 and not _G.CSR_PlayerItems[pid]) and local_pid_for_fake or pid
+				local items = build_items_for_peer(source_pid)
+				local section_y = (idx - 1) * (section_h + section_gap)
 
-		if not any_items then
-			local placeholder = managers.localization:text("menu_csr_items_placeholder")
-			content:text({
-				text = placeholder,
-				font = tweak_data.menu.pd2_medium_font,
-				font_size = 20,
-				color = Color(0.5, 0.5, 0.5),
-				x = 20,
-				y = 25,
-			})
-		else
-			local local_peer_id = CSR_LocalPeerId and CSR_LocalPeerId() or 1
-			local header_font_size = 16
-			local header_h = header_font_size + 4
-			local DEFAULT_CELL = 72
-			local MIN_CELL = 20
-
-			-- Per-section height stays at the 4-player baseline; total panel
-			-- height was already shrunk to fit num_players sections + gaps.
-			local section_h = BASE_SECTION_H
-			local grid_h = section_h - header_h
-
-			local local_pid_for_fake = CSR_LocalPeerId and CSR_LocalPeerId() or 1
-			for idx, pid in ipairs(peer_ids) do
-				local data = _G.CSR_PlayerItems[pid]
-				if fake_4 and not data then
-					-- Fake-4 mode: fabricate a data shell so the section
-					-- renders even when this peer_id has no real data.
-					data = { items = {}, name = "DEBUG Player " .. pid }
-				end
-				if data then
-					-- In fake-4 mode, use the local player's items for every
-					-- fake peer so the layout shows real content.
-					local source_pid = (fake_4 and not _G.CSR_PlayerItems[pid]) and local_pid_for_fake or pid
-					local items = build_items_for_peer(source_pid)
-					local section_y = (idx - 1) * (section_h + section_gap)
-
-					-- Separator line between players (not before the first)
-					if idx > 1 then
-						local line_y = section_y - math.floor(section_gap / 2)
-						content:rect({
-							x = 20,
-							y = line_y,
-							w = content:w() - 40,
-							h = 1,
-							color = Color(1, 0.4, 0.4, 0.4),
-							layer = 1,
-						})
-					end
-
-					-- Resolve player name from live session (cached name may be stale/empty)
-					local player_name
-					local session = managers.network and managers.network:session()
-					if session then
-						local peer = (pid == local_peer_id) and session:local_peer() or session:peer(pid)
-						player_name = peer and peer:name()
-					end
-					if not player_name or player_name == "" then
-						player_name = (data.name and data.name ~= "") and data.name or ("Player " .. pid)
-					end
-
-					-- Vanilla peer colors, saturated for contrast on dark background
-					local peer_vec = tweak_data.peer_vector_colors and tweak_data.peer_vector_colors[pid]
-					local header_color
-					if peer_vec then
-						local r, g, b = peer_vec.x, peer_vec.y, peer_vec.z
-						local grey = (r + g + b) / 3
-						local sat = 1.5
-						header_color = Color(
-							1,
-							math.min(math.max(grey + (r - grey) * sat, 0), 1),
-							math.min(math.max(grey + (g - grey) * sat, 0), 1),
-							math.min(math.max(grey + (b - grey) * sat, 0), 1)
-						)
-					else
-						header_color = Color.white
-					end
-
-					content:text({
-						text = player_name,
-						font = tweak_data.menu.pd2_medium_font,
-						font_size = header_font_size,
-						color = header_color,
+				-- Separator line between players (not before the first)
+				if idx > 1 then
+					local line_y = section_y - math.floor(section_gap / 2)
+					content:rect({
 						x = 20,
-						y = section_y,
+						y = line_y,
+						w = content:w() - 40,
+						h = 1,
+						color = Color(1, 0.4, 0.4, 0.4),
 						layer = 1,
 					})
-
-					local grid_y = section_y + header_h
-
-					-- Split wildcards out for the dedicated right-column slot.
-					local regular, wildcards = split_wildcards(items)
-					local main_w = content:w()
-						- MAIN_GRID_LEFT_PAD
-						- wildcard_slot_size
-						- WILDCARD_SLOT_GAP
-						- WILDCARD_SLOT_RIGHT_PAD
-					local slot_x = MAIN_GRID_LEFT_PAD + main_w + WILDCARD_SLOT_GAP
-
-					if #regular > 0 then
-						local start_cell = math.min(DEFAULT_CELL, grid_h)
-						local cell = calc_cell_size(#regular, main_w, grid_h, start_cell, MIN_CELL)
-						-- left_align=true → row pins to area_x (= LEFT_PAD), so it
-						-- doesn't drift right inside main_w when the count shrinks.
-						self:_render_item_grid(
-							content,
-							regular,
-							grid_y,
-							pid,
-							cell,
-							MAIN_GRID_LEFT_PAD,
-							main_w,
-							false,
-							true
-						)
-					elseif #wildcards == 0 then
-						content:text({
-							text = "No items yet",
-							font = tweak_data.menu.pd2_small_font,
-							font_size = 14,
-							color = Color(0.45, 0.45, 0.45),
-							x = 20,
-							y = grid_y,
-							layer = 1,
-						})
-					end
-
-					-- Always reserve the right-column slot, even when empty — so layout
-					-- doesn't reflow on first wildcard pickup. Slot is a square
-					-- vertically centered within the player's section so it sits
-					-- visually balanced beside the items grid.
-					local slot_y = section_y + math.floor((section_h - wildcard_slot_size) / 2)
-					self:_render_wildcard_slot(
-						content,
-						wildcards,
-						slot_x,
-						slot_y,
-						wildcard_slot_size,
-						wildcard_slot_size,
-						pid
-					)
 				end
+
+				-- Resolve player name from live session (cached name may be stale/empty)
+				local player_name
+				local session = managers.network and managers.network:session()
+				if session then
+					local peer = (pid == local_peer_id) and session:local_peer() or session:peer(pid)
+					player_name = peer and peer:name()
+				end
+				if not player_name or player_name == "" then
+					player_name = (data.name and data.name ~= "") and data.name or ("Player " .. pid)
+				end
+
+				-- Vanilla peer colors, saturated for contrast on dark background
+				local peer_vec = tweak_data.peer_vector_colors and tweak_data.peer_vector_colors[pid]
+				local header_color
+				if peer_vec then
+					local r, g, b = peer_vec.x, peer_vec.y, peer_vec.z
+					local grey = (r + g + b) / 3
+					local sat = 1.5
+					header_color = Color(
+						1,
+						math.min(math.max(grey + (r - grey) * sat, 0), 1),
+						math.min(math.max(grey + (g - grey) * sat, 0), 1),
+						math.min(math.max(grey + (b - grey) * sat, 0), 1)
+					)
+				else
+					header_color = Color.white
+				end
+
+				content:text({
+					text = player_name,
+					font = tweak_data.menu.pd2_medium_font,
+					font_size = header_font_size,
+					color = header_color,
+					x = 20,
+					y = section_y,
+					layer = 1,
+				})
+
+				local grid_y = section_y + header_h
+
+				-- Split wildcards out for the dedicated right-column slot.
+				local regular, wildcards = split_wildcards(items)
+				local main_w = content:w()
+					- MAIN_GRID_LEFT_PAD
+					- wildcard_slot_size
+					- WILDCARD_SLOT_GAP
+					- WILDCARD_SLOT_RIGHT_PAD
+				local slot_x = MAIN_GRID_LEFT_PAD + main_w + WILDCARD_SLOT_GAP
+
+				if #regular > 0 then
+					local start_cell = math.min(DEFAULT_CELL, grid_h)
+					local cell = calc_cell_size(#regular, main_w, grid_h, start_cell, MIN_CELL)
+					-- left_align=true → row pins to area_x (= LEFT_PAD), so it
+					-- doesn't drift right inside main_w when the count shrinks.
+					self:_render_item_grid(content, regular, grid_y, pid, cell, MAIN_GRID_LEFT_PAD, main_w, false, true)
+				end
+
+				-- Always reserve the right-column slot, even when empty — so layout
+				-- doesn't reflow on first wildcard pickup. Slot is a square
+				-- vertically centered within the player's section so it sits
+				-- visually balanced beside the items grid.
+				local slot_y = section_y + math.floor((section_h - wildcard_slot_size) / 2)
+				self:_render_wildcard_slot(
+					content,
+					wildcards,
+					slot_x,
+					slot_y,
+					wildcard_slot_size,
+					wildcard_slot_size,
+					pid
+				)
 			end
 		end
 	else
@@ -1087,16 +1045,6 @@ function CrimeSpreePlayerItemsPage:_setup_items()
 		if #regular > 0 then
 			-- left_align=true → row pins to area_x (= LEFT_PAD).
 			self:_render_item_grid(content, regular, 10, local_peer_id, nil, MAIN_GRID_LEFT_PAD, main_w, false, true)
-		elseif #wildcards == 0 then
-			local placeholder = managers.localization:text("menu_csr_items_placeholder")
-			content:text({
-				text = placeholder,
-				font = tweak_data.menu.pd2_medium_font,
-				font_size = 20,
-				color = Color(0.5, 0.5, 0.5),
-				x = 20,
-				y = 25,
-			})
 		end
 
 		-- Always reserve the right-column slot, even when empty. Slot is a

@@ -52,7 +52,7 @@ end
 local CSR_SOUND_REGISTRY = {
 	the_edge_activate = { path = "assets/sounds/the_edge_activate.ogg" },
 	plush_shark_activate = { pattern = "assets/sounds/shark/plush_shark_activate_$.ogg", n = 5 },
-	bonnie_chip = { pattern = "assets/sounds/chip/chip_proc_$.ogg", n = 4 },
+	bonnie_chip = { pattern = "assets/sounds/chip/chip_proc_$.ogg", n = 17 },
 	printer_working = { path = "assets/sounds/printer/printer_working.ogg" },
 	printer_starting = { path = "assets/sounds/printer/printer_starting.ogg" },
 	gup_charge = { path = "assets/sounds/gup/gup_charge_attack.ogg" },
@@ -79,6 +79,16 @@ _G.CSR_Sounds = _G.CSR_Sounds or {}
 _G.CSR_SoundSources = _G.CSR_SoundSources or {}
 local _next_source_id = 0
 local _next_ramp_id = 0
+
+-- Audibility floor for the CSR_PlaySound path: if the computed gain falls
+-- below this linear value, the source is not created at all. OpenAL Soft
+-- still mixes sources at near-zero gain (decoding the OGG, applying the
+-- spatial pan, etc.) which is wasted CPU when the result would be inaudible
+-- anyway. 0.001 = -60 dB linear; well below the noise floor of any typical
+-- listening environment, so silently dropping at this threshold is
+-- imperceptible. Tracks actual audibility rather than a per-call distance
+-- cap — applies uniformly to any sound whose falloff math drops below it.
+local CSR_AUDIBILITY_FLOOR = 0.001
 
 -- Per-unit source registry. Mirrors Restoration's _active_sources[unit_key]
 -- pattern — lets us close a stale source on a unit before spawning a new one
@@ -230,16 +240,39 @@ DelayedCalls:Add("CSR_LoadSounds_Initial", 0.5, _try_load)
 --
 -- name = key in CSR_SOUND_REGISTRY
 -- opts = {
---   unit       = unit ref          -> XAudio.UnitSource (3D, attached to unit)
---   position   = Vector3           -> XAudio.Source + set_position (3D static)
---   relative   = true (default)    -> XAudio.Source + set_relative(true) (2D)
---   volume     = number 0..1       -> overrides settings
---   volume_key = string            -> reads CSR_Settings.values[volume_key]
+--   unit         = unit ref        -> XAudio.UnitSource (3D, source follows
+--                                     the unit; OpenAL provides stereo pan
+--                                     but no distance attenuation — see
+--                                     falloff_max_distance below)
+--   position     = Vector3         -> XAudio.Source + set_position (3D static)
+--   relative     = true (default)  -> XAudio.Source + set_relative(true) (2D)
+--   falloff_db_per_meter = number  -> manual constant-dB distance attenuation
+--                                     computed ONCE at play-time against the
+--                                     player camera. Required if you want the
+--                                     SFX to fade with distance. Curve is
+--                                     linear in dB: at distance d_m metres,
+--                                     attenuation = falloff_db_per_meter * d_m
+--                                     dB below the un-attenuated volume. Eg.
+--                                     a value of 1 gives 0 dB at 0 m, -1 dB
+--                                     at 1 m, -10 dB at 10 m, -30 dB at 30 m,
+--                                     -60 dB (inaudible) at 60 m.
+--                                     gain = 10 ^ (-db_per_meter * d_m / 20)
+--                                     SuperBLT's XAudio:set_min_distance /
+--                                     :set_max_distance API was suspected to
+--                                     be a no-op in the C++ build (see
+--                                     pd2_xaudio_setmindis_noop.md), but the
+--                                     real cause was the gain-push race fixed
+--                                     by force-setgain-before-play. Native
+--                                     OpenAL falloff may now work too; we use
+--                                     the manual approach because it gives
+--                                     predictable, tunable per-call curves.
+--   volume       = number 0..1     -> overrides settings
+--   volume_key   = string          -> reads CSR_Settings.values[volume_key]
 --                                     for the per-sound user volume slider;
 --                                     fallback 1.0
---   cleanup_old = source ref       -> stops + closes the previous source
+--   cleanup_old  = source ref      -> stops + closes the previous source
 --                                     before starting the new one
---   source_key = string            -> per-unit slot identifier; defaults to
+--   source_key   = string          -> per-unit slot identifier; defaults to
 --                                     `name`. Only meaningful when `unit` is
 --                                     set. If a source already exists at the
 --                                     same (unit, source_key), it is stopped
@@ -273,6 +306,30 @@ function _G.CSR_PlaySound(name, opts)
 	end
 	if vol == nil then
 		vol = 1.0
+	end
+
+	-- Manual constant-dB distance attenuation. Computed once at play-time
+	-- against the player camera. Source position is taken from opts.unit
+	-- (if alive) or opts.position. If neither is supplied, the SFX is 2D
+	-- and we skip falloff entirely.
+	if opts.falloff_db_per_meter then
+		local source_pos = nil
+		if opts.unit and alive(opts.unit) then
+			source_pos = opts.unit:position()
+		elseif opts.position then
+			source_pos = opts.position
+		end
+		local pu = managers.player and managers.player:player_unit()
+		if source_pos and pu and alive(pu) then
+			local dist_m = mvector3.distance(pu:position(), source_pos) / 100
+			vol = vol * math.pow(10, -opts.falloff_db_per_meter * dist_m / 20)
+		end
+	end
+	if vol < CSR_AUDIBILITY_FLOOR then
+		if opts.cleanup_old then
+			_close_source_safely(opts.cleanup_old)
+		end
+		return nil
 	end
 
 	-- Cleanup old source if caller passed one (typical for 1-shot effects
@@ -326,6 +383,14 @@ function _G.CSR_PlaySound(name, opts)
 	-- Pick source type. Volume starts at 0 and is bumped to target on the next
 	-- frame — masks the "click at sample start" artifact some OGGs produce when
 	-- the waveform's first sample is non-zero (gup_attack_*.ogg is the motivator).
+	--
+	-- IMPORTANT: XAudio.Source:set_volume only updates the Lua-side _gain; the
+	-- actual OpenAL setgain doesn't fire until the next XAudio update() tick,
+	-- which is ~1 frame later. If we don't force a setgain BEFORE play(), the
+	-- C++ source plays at OpenAL's default gain (1.0) for the first frame —
+	-- which IS the attack transient for short SFX, so any volume reduction
+	-- (falloff_max_distance, user slider) is inaudible because the loudest
+	-- part already played at full volume. Push gain directly to C++ to fix it.
 	local src
 	local ok, err = pcall(function()
 		if opts.unit and alive(opts.unit) then
@@ -338,6 +403,8 @@ function _G.CSR_PlaySound(name, opts)
 			src:set_relative(true)
 		end
 		src:set_volume(0)
+		src:_compute_gains()
+		src._source:setgain(src._raw_gain)
 		src:play()
 	end)
 
