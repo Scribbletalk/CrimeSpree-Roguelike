@@ -22,6 +22,15 @@ local function has_pending_items()
 	if not (managers.crime_spree and managers.crime_spree:is_active()) then
 		return false
 	end
+	-- Belt-and-suspenders: a current job that isn't "crime_spree" means we're on
+	-- the briefing for a vanilla heist regardless of any stale gamemode/state
+	-- the client may have inherited. Bail out before swapping READY -> SELECT ITEM.
+	if managers.job and managers.job.current_job_id then
+		local jid = managers.job:current_job_id()
+		if jid and jid ~= "crime_spree" then
+			return false
+		end
+	end
 	local is_client = _G.CSR_MP and CSR_MP.is_client and CSR_MP.is_client()
 	if not is_client then
 		return false

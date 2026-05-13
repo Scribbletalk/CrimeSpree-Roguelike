@@ -381,6 +381,17 @@ end
 
 -- Handle HANDSHAKE_OK from host (client only)
 function CSR_MP._handle_handshake_ok(data)
+	-- Lobby/gamemode gate. The host's CSR may reply with HANDSHAKE_OK whenever both
+	-- peers have the mod loaded, even on a vanilla heist. If the client's current
+	-- gamemode isn't crime_spree, ignore the payload entirely — accepting it would
+	-- set CSR_MP_HostRank, flip _global.in_progress to true, and leak SELECT ITEM
+	-- UI onto vanilla heists. is_active() is the canonical "client is in a CS
+	-- session right now" check (gamemode-driven, lobby-resettable).
+	if not (managers.crime_spree and managers.crime_spree:is_active()) then
+		CSR_log("_handle_handshake_ok: ignored — client is not in a CS gamemode")
+		return
+	end
+
 	local ok, payload = pcall(json.decode, data)
 	if not ok or not payload then
 		CSR_log("_handle_handshake_ok: failed to decode payload")
@@ -827,6 +838,16 @@ Hooks:Add("NetworkReceivedData", "CSR_MultiplayerSync", function(sender, id, dat
 	-- === HOST receives handshake from client ===
 	if id == MSG.HANDSHAKE and CSR_MP.is_host() then
 		CSR_log("Received HANDSHAKE from peer " .. tostring(sender))
+
+		-- Gamemode gate: only respond with CSR state if the host is actually in
+		-- a Crime Spree session. Without this, a CSR-running host on a vanilla
+		-- heist would send HANDSHAKE_OK with their stale spree_level, causing
+		-- the client to auto-create CSR state and show SELECT ITEM during the
+		-- non-CS briefing / end screen.
+		if not (managers.crime_spree and managers.crime_spree:is_active()) then
+			CSR_log("Skipping HANDSHAKE_OK — host is not in a CS gamemode")
+			return
+		end
 
 		-- Mark peer as verified (cancel auto-kick timer in csr_matchmaking.lua).
 		-- csr_matchmaking writes the table with a numeric key (peer:id()), so
@@ -1432,6 +1453,12 @@ Hooks:PostHook(CrimeSpreeManager, "on_finalize_modifiers", "CSR_MP_ClientHandsha
 	if not CSR_MP.is_client() then
 		return
 	end
+	-- Gamemode gate: PostHooks fire even when the wrapped function's body
+	-- early-returns, so we re-check here to avoid scheduling a handshake from
+	-- a non-CS context.
+	if not self:is_active() then
+		return
+	end
 	CSR_log("Vanilla modifiers finalized — scheduling handshake to host in 1s")
 	CSR_MP._handshake_scheduled = true
 	DelayedCalls:Add("CSR_MP_Handshake", 1, function()
@@ -1514,6 +1541,16 @@ Hooks:PostHook(CrimeSpreeManager, "on_mission_started", "CSR_MP_ResetSyncedPeers
 	CSR_MP._synced_peers = {}
 	-- Register peer-removed hook now (MenuUpdate doesn't fire in briefing)
 	CSR_register_peer_removed_hook()
+
+	-- Vanilla on_mission_started is called from IngameWaitingForPlayersState for
+	-- EVERY mission (the function's body early-returns on non-CS, but PostHooks
+	-- run regardless). Without this gate the client would schedule a handshake
+	-- on every vanilla heist, and a CSR-running host would reply with their
+	-- spree_level — auto-creating CSR state on the client and leaking SELECT ITEM
+	-- into the non-CS briefing / end screen.
+	if not self:is_active() then
+		return
+	end
 
 	-- Fallback for existing lobby peers (on_finalize_modifiers never fires for them).
 	-- Skip if on_finalize_modifiers already scheduled a handshake.

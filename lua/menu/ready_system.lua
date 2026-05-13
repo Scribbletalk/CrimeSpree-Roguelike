@@ -270,10 +270,13 @@ function _G.csr_ready_update(t, dt)
 		local state = game_state_machine:current_state_name()
 		on_end_screen = state == "victoryscreen" or state == "gameoverscreen"
 	end
-	-- is_active() can briefly drop on the heist->endscreen boundary; use the union
-	-- to avoid a one-frame UI flicker on the SELECT ITEM / READY button.
+	-- Gamemode-only gate. The prior union with in_progress() leaked the SELECT ITEM
+	-- overlay into non-CS heists: in_progress() is persisted on _global across saves
+	-- and stays true if a stale auto-created CS run was ever written to disk, so
+	-- a client joining a vanilla heist could trip this guard even with no CS active.
+	-- is_active() is gamemode-derived and resets cleanly when the lobby changes.
 	local cs = managers.crime_spree
-	local cs_active = cs and ((cs.is_active and cs:is_active()) or (cs.in_progress and cs:in_progress()))
+	local cs_active = cs and cs.is_active and cs:is_active()
 	local has_other_players = total > 1
 	local should_show = is_mp
 		and cs_active
