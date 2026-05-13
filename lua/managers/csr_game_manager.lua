@@ -7,8 +7,10 @@
 --   managers.csr._state     (active run, resets between runs)
 --   managers.csr._registry  (static authored content, read-only after init)
 --
--- This file is the alpha skeleton. Methods are stubbed; only save/load and the
--- legacy-save scout are wired. Item logic, MP, and rolling come in later phases.
+-- Alpha skeleton with the first pilot item (Dog Tags) wired in. Items are
+-- stored as { id = "<prefix>N", type = "<type>" } entries under
+-- _state.peer_items[peer_id].items — same shape the legacy player_items_store
+-- used, so the future migrator can map across without reshaping.
 
 CSRGameManager = CSRGameManager or class()
 CSRGameManager.VERSION = "6.6.6-alpha.0"
@@ -44,11 +46,26 @@ local function default_state()
 end
 
 local function default_registry()
+	local items_list = {
+		{
+			type = "dog_tags",
+			id_prefix = "player_health_boost_",
+			rarity = "common",
+		},
+	}
+	local by_type = {}
+	local by_prefix = {}
+	for _, item in ipairs(items_list) do
+		by_type[item.type] = item
+		by_prefix[item.id_prefix:sub(1, -2)] = item -- strip trailing underscore
+	end
 	return {
-		items = {},
-		by_type = {},
-		by_prefix = {},
-		constants = {},
+		items = items_list,
+		by_type = by_type,
+		by_prefix = by_prefix,
+		constants = {
+			dog_tags_hp_bonus = 0.10, -- +10% max HP per stack (additive)
+		},
 	}
 end
 
@@ -63,20 +80,19 @@ function CSRGameManager:init()
 		on_item_removed = {},
 	}
 	self:_migrate_legacy_save()
-	local loaded = self:load()
-	if not loaded then
-		log_csr("init: no prior save; writing initial save to validate roundtrip")
-		self:save()
-	end
+	self:load()
+	self:_pilot_seed_dog_tags()
 	log_csr("CSRGameManager initialised; version=" .. tostring(self._meta.version))
 end
 
 -- =====================================================
--- Run-state queries (replace managers.crime_spree:* reads)
+-- Run-state queries
 -- =====================================================
 
 function CSRGameManager:is_run_active()
-	return self._state.is_active == true
+	-- Alpha pilot stub: always active so item hooks never bail. Real run
+	-- gating lands when we port the mission-state machinery in beta.
+	return true
 end
 
 function CSRGameManager:rank()
@@ -100,8 +116,35 @@ function CSRGameManager:host_rank()
 end
 
 -- =====================================================
--- Items (replace _G.CSR_PlayerItems reads)
+-- Peer ID
 -- =====================================================
+
+function CSRGameManager:local_peer_id()
+	local nm = managers and managers.network
+	if nm and nm.session then
+		local session = nm:session()
+		if session and session.local_peer then
+			local peer = session:local_peer()
+			if peer and peer.id then
+				return peer:id()
+			end
+		end
+	end
+	return 1
+end
+
+-- =====================================================
+-- Items
+-- =====================================================
+
+local function get_or_create_peer_entry(state, peer_id)
+	local entry = state.peer_items[peer_id]
+	if not entry then
+		entry = { items = {} }
+		state.peer_items[peer_id] = entry
+	end
+	return entry
+end
 
 function CSRGameManager:player_items(peer_id)
 	local entry = self._state.peer_items[peer_id]
@@ -109,27 +152,110 @@ function CSRGameManager:player_items(peer_id)
 end
 
 function CSRGameManager:item_count(peer_id, prefix)
-	-- TODO[alpha-port]: count items in player_items(peer_id) whose id starts with prefix.
-	return 0
+	local entry = self._state.peer_items[peer_id]
+	if not entry or not entry.items then
+		return 0
+	end
+	local count = 0
+	for _, item in ipairs(entry.items) do
+		if item.id and string.find(item.id, prefix, 1, true) == 1 then
+			count = count + 1
+		end
+	end
+	return count
 end
 
 function CSRGameManager:has_item(peer_id, item_type)
-	-- TODO[alpha-port]: scan player_items(peer_id) for any entry whose type field matches item_type.
+	local def = self._registry.by_type[item_type]
+	if not def then
+		return false
+	end
+	return self:item_count(peer_id, def.id_prefix) > 0
+end
+
+function CSRGameManager:add_item(peer_id, item_type)
+	local def = self._registry.by_type[item_type]
+	if not def then
+		log_csr("add_item: unknown type '" .. tostring(item_type) .. "' — ignored")
+		return false
+	end
+	local entry = get_or_create_peer_entry(self._state, peer_id)
+	local next_n = self:item_count(peer_id, def.id_prefix) + 1
+	local item = {
+		id = def.id_prefix .. tostring(next_n),
+		type = item_type,
+	}
+	table.insert(entry.items, item)
+	for _, fn in ipairs(self._callbacks.on_item_added) do
+		fn(peer_id, item)
+	end
+	self:save()
+	log_csr("add_item: peer=" .. tostring(peer_id) .. " id=" .. item.id)
+	return true
+end
+
+function CSRGameManager:remove_item(peer_id, item_type)
+	local entry = self._state.peer_items[peer_id]
+	if not entry or not entry.items then
+		return false
+	end
+	for i, item in ipairs(entry.items) do
+		if item.type == item_type then
+			local removed = table.remove(entry.items, i)
+			for _, fn in ipairs(self._callbacks.on_item_removed) do
+				fn(peer_id, removed)
+			end
+			self:save()
+			log_csr("remove_item: peer=" .. tostring(peer_id) .. " id=" .. removed.id)
+			return true
+		end
+	end
 	return false
 end
 
-function CSRGameManager:add_item(peer_id, item_id)
-	-- TODO[alpha-port]: append item_id, fire on_item_added callbacks, save, broadcast (host).
-end
-
-function CSRGameManager:remove_item(peer_id, item_id)
-	-- TODO[alpha-port]: remove first matching entry, fire on_item_removed callbacks, save, broadcast (host).
-end
-
 function CSRGameManager:roll_item_pool(peer_id, count)
-	-- TODO[alpha-port]: replaces crimespree_filter.lua overrides. Roll `count` items from
-	-- _registry.items for peer_id, respecting rarity weights, per-peer caps, and shop exemptions.
+	-- TODO[beta]: replaces crimespree_filter.lua overrides.
 	return {}
+end
+
+-- =====================================================
+-- Run lifecycle (alpha stubs)
+-- =====================================================
+
+function CSRGameManager:start_run()
+	if self._state.is_active then
+		log_csr("start_run: a run is already active (rank=" .. tostring(self._state.rank) .. "); ignored")
+		return false
+	end
+	self._state.is_active = true
+	self._state.rank = 0
+	self._state.difficulty = self._state.difficulty or "overkill"
+	self._state.seed = math.random(1, 2 ^ 30)
+	log_csr(
+		"start_run: new run begun (difficulty="
+			.. tostring(self._state.difficulty)
+			.. ", seed="
+			.. tostring(self._state.seed)
+			.. ")"
+	)
+	for _, fn in ipairs(self._callbacks.on_mission_started) do
+		fn()
+	end
+	self:save()
+	return true
+end
+
+function CSRGameManager:end_run()
+	if not self._state.is_active then
+		return false
+	end
+	self._state.is_active = false
+	log_csr("end_run: run ended at rank=" .. tostring(self._state.rank))
+	for _, fn in ipairs(self._callbacks.on_mission_completed) do
+		fn()
+	end
+	self:save()
+	return true
 end
 
 -- =====================================================
@@ -150,7 +276,7 @@ function CSRGameManager:set_setting(key, value)
 end
 
 -- =====================================================
--- Event registration (replaces PostHook(CrimeSpreeManager, ...) chains)
+-- Event registration
 -- =====================================================
 
 local function register_callback(list, fn)
@@ -235,11 +361,7 @@ function CSRGameManager:load()
 end
 
 -- =====================================================
--- Legacy-save migrator
---
--- Stub. Reports which legacy files are present on disk so we know what to
--- consume in the next session. Does NOT touch the legacy files; meta
--- population happens after the migrator is fleshed out.
+-- Legacy-save migrator (stub — logs only)
 -- =====================================================
 
 local function legacy_file_probe(path)
@@ -270,10 +392,25 @@ function CSRGameManager:_migrate_legacy_save()
 		log_csr("migrator: no legacy MP-sessions at " .. legacy_mp)
 	end
 
-	-- Note: crime_spree_seed.txt lives under <PD2 root>/mods/saves/, not SavePath.
-	-- That probe needs the BLT ModPath helper and is deferred to the full migrator pass.
-
 	log_csr("migrator: stub run complete; legacy files untouched")
+end
+
+-- =====================================================
+-- Pilot test seed (alpha-only)
+--
+-- Adds one Dog Tags item to peer 1 if absent. Idempotent — once the item is
+-- in state and saved, subsequent launches load it from disk and this is a
+-- no-op. Lets the player launch PD2 and verify the +10% max-HP bump in the
+-- HUD without needing a debug keybind or UI plumbing.
+-- =====================================================
+
+function CSRGameManager:_pilot_seed_dog_tags()
+	if self:has_item(1, "dog_tags") then
+		log_csr("pilot seed: dog_tags already present for peer 1; skipping")
+		return
+	end
+	log_csr("pilot seed: adding one dog_tags item to peer 1")
+	self:add_item(1, "dog_tags")
 end
 
 -- =====================================================
