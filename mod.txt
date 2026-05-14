@@ -2,7 +2,7 @@
 	"name": "Crime Spree Roguelike",
 	"description": "Roguelike items and buffs for Crime Spree mode",
 	"author": "Candy",
-	"version": "6.1.4",
+	"version": "6.2.0",
 	"blt_version": 2,
 	"updates": [
 		{
