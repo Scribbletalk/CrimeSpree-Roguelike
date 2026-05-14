@@ -14,6 +14,7 @@ CSR_Settings.defaults = {
 	plush_shark_sound_volume = 1.0, -- Volume for Plush Shark activation sound
 	the_edge_sound_volume = 1.0, -- Volume for The Edge activation sound
 	lobby_filter = false, -- Filter Crime.Net to only show CSR lobbies + auto-kick non-CSR players
+	hud_wildcard_use_bar = false, -- Replace the icon-style wildcard HUD slot with a vertical cooldown bar
 	debug_mode = false, -- Verbose logging to BLT log (no gameplay changes)
 	-- Heist Specific Settings
 	heist_diamond_bile_stay = true, -- Prevent Bile from leaving after 4 bags on The Diamond

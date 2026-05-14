@@ -43,6 +43,7 @@ _G.CSR_SideSatchel_Blacklist = CSR_SIDE_SATCHEL_BLACKLIST
 local CSR_SIDE_SATCHEL_FORCE_INCLUDE = {
 	planks = true,
 	boards = true,
+	gas = true,
 }
 _G.CSR_SideSatchel_ForceInclude = CSR_SIDE_SATCHEL_FORCE_INCLUDE
 
@@ -72,6 +73,7 @@ local CSR_SIDE_SATCHEL_QUANTITY_PATCH = {
 	boards = true,
 	crowbar = true,
 	crowbar_stack = true,
+	gas = true,
 }
 
 local _quantity_patched = false
@@ -341,45 +343,45 @@ if PlayerManager and not _G._CSR_SIDE_SATCHEL_PM_SPEED_HOOKED then
 	end
 end
 
--- Two distinct vanilla pickup-grant paths produce the same "fill straight to the
--- doubled cap from one interaction" symptom, both fixed by pinning params.amount
--- to equipment.quantity (= 1 after our patch for planks/boards/crowbar variants):
+-- Side Satchel's design: STORE double, don't DUPE on pickup. A single pickup
+-- interaction grants vanilla quantity (4 for c4, 3 for c4_x3, etc.); the doubled
+-- cap is reached by picking up TWICE.
 --
---   1) No-amount grant: vanilla routes through `math.min(amount + extra, cap + extra)`
---      with amount = equipment.quantity = 1 and extra = +1 (our doubling). That
---      yields min(2, 2) = 2 from a single grant — wrong, the room should fill on
---      the SECOND pickup, not the first. Setting params.amount = 1 forces vanilla
---      into the respawn-style branch `math.min(params.amount, cap+extra)` =
---      `min(1, 2)` = 1.
+-- Without clamping, vanilla's no-amount branch (playermanager.lua:4690) routes
+-- through `math.min(amount + extra, cap + extra)` with amount = equipment.quantity
+-- (4) and extra = +4 (our doubling) = min(8, 8) = 8 in one pickup — satchel
+-- becomes a duper, not a saddlebag.
 --
---   2) Amount-set grant: level designers can preset a larger amount on the
---      pickup unit (Meltdown's crowbar pickups pass amount=2). Without satchel,
---      vanilla clamps to cap=1 via `math.min(2, 1+extra=1)` = 1. With satchel,
---      cap rises to 2 and the same min yields 2 — first pickup vaults straight
---      to the doubled cap, skipping the second one entirely. Clamping
---      params.amount down to equipment.quantity restores "1 per interaction".
+-- Fix: pin params.amount to equipment.quantity for every eligible special.
+-- That forces the respawn-style branch `math.min(params.amount, cap + extra)`
+-- = `min(4, 8)` = 4 on the first pickup; the special_equipment math branch
+-- tops up to 8 on the second.
 --
--- The transfer path (real stash pickup) is untouched — it has its own clamp via
--- transfer_quantity that respects extra correctly. Non-force-included items
--- (c4, etc.) are NOT touched here: vanilla's no-amount grant for c4 produces
--- min(4+4, 4+4) = 8, which IS the desired "fill to doubled cap" behavior.
+-- Clamping designer-set amounts (e.g. Meltdown crowbar amount=2) down to
+-- equipment.quantity matches vanilla's own clamp-to-cap on those pickups —
+-- the satchel doesn't lift the per-pickup limit, only the storage cap.
+--
+-- Untouched paths: transfer (stash uses transfer_quantity intentionally),
+-- dropped_out (respawn drop). Blacklisted items and items without eq.quantity
+-- (keycards / USBs / blueprints — never enter the math branch) are skipped via
+-- eligible_for_bump + the eq.quantity guard.
 if PlayerManager and not _G._CSR_SIDE_SATCHEL_PM_ADD_SPECIAL_HOOKED then
 	_G._CSR_SIDE_SATCHEL_PM_ADD_SPECIAL_HOOKED = true
 	local original_add_special = PlayerManager.add_special
 	if original_add_special then
 		function PlayerManager:add_special(params)
-			if
-				params
-				and not params.transfer
-				and not params.dropped_out
-				and CSR_SIDE_SATCHEL_QUANTITY_PATCH[params.equipment or params.name or ""]
-				and owns_side_satchel()
-			then
+			if params and not params.transfer and not params.dropped_out and owns_side_satchel() then
 				local name = params.equipment or params.name
-				local eq = tweak_data and tweak_data.equipments and tweak_data.equipments.specials[name]
-				if eq and eq.quantity then
-					if not params.amount or params.amount > eq.quantity then
-						params.amount = eq.quantity
+				if name then
+					ensure_quantity_patched()
+					local eq = tweak_data
+						and tweak_data.equipments
+						and tweak_data.equipments.specials
+						and tweak_data.equipments.specials[name]
+					if eq and eq.quantity and eligible_for_bump(name, eq) then
+						if not params.amount or params.amount > eq.quantity then
+							params.amount = eq.quantity
+						end
 					end
 				end
 			end

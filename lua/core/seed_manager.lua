@@ -457,6 +457,7 @@ function CSR_GenerateNewSeed()
 	_G.CSR_BonusDropCount = 0
 	_G.CSR_ShopItemsBought = {}
 	_G.CSR_CatchupItemsReceived = {}
+	_G.CSR_WildcardReplacements = {}
 	_G.CSR_HostCatchupSnapshots = {}
 	_G.CSR_HostTokensEarned = 0
 	_G.CSR_PrinterUses = {}
@@ -680,6 +681,7 @@ Hooks:PostHook(CrimeSpreeManager, "reset_crime_spree", "CSR_ClearItemsOnReset", 
 	_G.CSR_BonusDropCount = 0
 	_G.CSR_ShopItemsBought = {}
 	_G.CSR_CatchupItemsReceived = {}
+	_G.CSR_WildcardReplacements = {}
 	_G.CSR_HostCatchupSnapshots = {}
 	_G.CSR_CarriedCash = 0
 	_G.CSR_HostTokensEarned = 0

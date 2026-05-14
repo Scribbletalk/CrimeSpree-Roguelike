@@ -424,6 +424,12 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Alpha1_Localization", function(loc
 	strings["csr_auto_fill_confirm_title"] = "Auto-Fill Items"
 	strings["csr_auto_fill_confirm_text"] =
 		"Are you sure you want to auto-fill all remaining item slots with random items? This cannot be undone."
+
+	-- Wildcard carry-1 replacement confirmation (shown in selection popup when
+	-- the player picks a wildcard while already owning a different one).
+	strings["csr_wildcard_replace_title"] = "REPLACE WILDCARD?"
+	strings["csr_wildcard_replace_text"] =
+		"You already own $OLD. Picking $NEW will permanently remove $OLD. Continue?"
 	strings["csr_items_ready"] = "READY"
 	strings["csr_waiting_for_others"] = "Waiting for others to select items"
 	strings["csr_all_players_ready"] = "All players ready"

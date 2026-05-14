@@ -497,15 +497,17 @@ if not _G._CSR_HIPPOCRATIC_PULSE_DRAW_HOOKED then
 		end
 		local progress = elapsed / duration
 		local radius = const("hippocratic_aura_radius", 500) * progress
-		-- Peak alpha lives in CSR_ItemConstants for live tuning. `add` blend
-		-- already brightens the ground, so values around 0.05-0.15 read as a
-		-- soft glow rather than a hard overlay. m_pos is read fresh every
-		-- frame so the cylinder tracks the medic as they move.
-		local alpha = const("hippocratic_pulse_alpha", 0.08) * (1 - progress)
+		-- Blend mode is `opacity_add` (NOT `add`): vanilla in-world glows like
+		-- playerwarp.lua:77 and elementlasertrigger.lua:62 use this so the
+		-- source alpha actually scales the additive contribution
+		-- (out = framebuffer + rgb*alpha). Plain `add` ignores alpha entirely
+		-- and pins the cylinder to full RGB brightness regardless of tuning.
+		-- m_pos is read fresh every frame so the cylinder tracks the medic.
+		local alpha = const("hippocratic_pulse_alpha", 0.06) * (1 - progress)
 		local pos = ps.medic_unit:movement():m_pos()
-		local color = Color(alpha, 0.35, 1.0, 0.55)
+		local color = Color(alpha, 0.4, 0.85, 0.5)
 		local brush = Draw:brush(color)
-		brush:set_blend_mode("add")
+		brush:set_blend_mode("opacity_add")
 		brush:cylinder(pos, pos + Vector3(0, 0, 6), radius)
 	end)
 end

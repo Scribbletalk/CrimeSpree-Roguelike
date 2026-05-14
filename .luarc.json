@@ -218,6 +218,7 @@
     "CSR_PlayerItems",
     "CSR_ShopItemsBought",
     "CSR_CatchupItemsReceived",
+    "CSR_WildcardReplacements",
     "CSR_GetLocalItems",
     "CSR_TransferPlayerItem",
     "CSR_ClearItemsOnReset",

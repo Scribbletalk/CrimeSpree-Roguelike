@@ -75,6 +75,8 @@ local side_satchel_mirror_file = mod_path .. "assets/guis/textures/icons/items/s
 local side_satchel_mirror_path = "guis/textures/pd2/crime_spree/csr_side_satchel_mirror"
 local turron_mirror_file = mod_path .. "assets/guis/textures/icons/items/turron_mirror.dds"
 local turron_mirror_path = "guis/textures/pd2/crime_spree/csr_turron_mirror"
+local hippocratic_oath_mirror_file = mod_path .. "assets/guis/textures/icons/items/hippocratic_oath_mirror.dds"
+local hippocratic_oath_mirror_path = "guis/textures/pd2/crime_spree/csr_hippocratic_oath_mirror"
 -- Modifier icons (located in icons/modifiers/ folder)
 local guilty_conscience_file = mod_path .. "assets/guis/textures/icons/modifiers/guilty_conscience.dds"
 local guilty_conscience_path = "guis/textures/pd2/crime_spree/csr_guilty_conscience"
@@ -176,6 +178,7 @@ if DB and DB.create_entry then
 	DB:create_entry(Idstring("texture"), Idstring(familiar_friend_mirror_path), familiar_friend_mirror_file)
 	DB:create_entry(Idstring("texture"), Idstring(side_satchel_mirror_path), side_satchel_mirror_file)
 	DB:create_entry(Idstring("texture"), Idstring(turron_mirror_path), turron_mirror_file)
+	DB:create_entry(Idstring("texture"), Idstring(hippocratic_oath_mirror_path), hippocratic_oath_mirror_file)
 
 	-- Modifier icons
 	DB:create_entry(Idstring("texture"), Idstring(guilty_conscience_path), guilty_conscience_file)
@@ -374,6 +377,11 @@ function HudIconsTweakData:init()
 
 	self.csr_turron_mirror = {
 		texture = turron_mirror_path,
+		texture_rect = { 0, 0, 128, 128 },
+	}
+
+	self.csr_hippocratic_oath_mirror = {
+		texture = hippocratic_oath_mirror_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 

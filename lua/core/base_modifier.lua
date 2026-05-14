@@ -216,7 +216,7 @@ _G.CSR_ItemConstants = {
 	hippocratic_spawn_max_distance = 4000, -- but no farther than 40m (so they actually arrive)
 	hippocratic_medic_dr = 0.80, -- 80% damage reduction on incoming damage to the medic
 	hippocratic_pulse_duration = 0.5, -- expanding-ring visual lifetime per heal pulse (seconds)
-	hippocratic_pulse_alpha = 0.08, -- peak opacity of the expanding ring (0..1, fades linearly to 0 over duration)
+	hippocratic_pulse_alpha = 0.06, -- peak opacity of the expanding ring (0..1, fades linearly to 0 over duration). Brush uses `opacity_add` blend so this value actually scales contribution; vanilla glows sit in the 0.07-0.15 range, so 0.06 is intentionally on the subtle side.
 	hippocratic_voice_event = "f47", -- Wwise event the medic shouts on heal (vanilla medic priority_shout)
 	hippocratic_voice_throttle = 30, -- minimum seconds between heal voicelines per machine
 

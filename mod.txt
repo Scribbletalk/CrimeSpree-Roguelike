@@ -241,6 +241,10 @@
 			"script_path": "lua/menu/item_frames_in_selection.lua"
 		},
 		{
+			"hook_id": "lib/managers/menu/crimespreemodifiersmenucomponent",
+			"script_path": "lua/menu/wildcard_replace_prompt.lua"
+		},
+		{
 			"hook_id": "lib/managers/crimespreemanager",
 			"script_path": "lua/managers/crimespree_filter.lua"
 		},

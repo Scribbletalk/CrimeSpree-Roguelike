@@ -381,35 +381,15 @@ if CrimeSpreeManager then
 			if _G.CSR_CatchupItemsReceived then
 				catchup_items = _G.CSR_CatchupItemsReceived[pid] or 0
 			end
-			local milestone_selected = math.max(0, selected - bonus_items - shop_items - catchup_items)
+			-- Wildcard replacements (carry-1): the swap leaves #items unchanged,
+			-- but the player did make a selection — add it back so popup advances.
+			local wildcard_replaced = 0
+			if _G.CSR_WildcardReplacements then
+				wildcard_replaced = _G.CSR_WildcardReplacements[pid] or 0
+			end
+			local milestone_selected =
+				math.max(0, selected + wildcard_replaced - bonus_items - shop_items - catchup_items)
 			local result = math.max(expected - milestone_selected, 0)
-
-			-- Diagnostic for milestone-popup-not-firing bug (Zeon report 2026-05-03).
-			-- Unconditional log on every call so we can see which input is wrong
-			-- the instant the bug repros. Strip the unconditional log once the
-			-- root cause is identified — the throttled CSR_log version below stays.
-			log(
-				"[CSR mts] loud level="
-					.. level
-					.. " expected="
-					.. expected
-					.. " items="
-					.. selected
-					.. " bonus="
-					.. bonus_items
-					.. " shop="
-					.. shop_items
-					.. " catchup="
-					.. catchup_items
-					.. " milestone="
-					.. milestone_selected
-					.. " result="
-					.. result
-					.. " in_progress="
-					.. tostring(self:in_progress())
-					.. " host_rank="
-					.. tostring(using_host_rank)
-			)
 			return result
 		end
 		return original_modifiers_to_select(self, table_name, add_repeating)

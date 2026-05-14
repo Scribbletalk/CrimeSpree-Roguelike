@@ -1,17 +1,21 @@
--- HUD Wildcard Slot — shows the player's currently-owned wildcard icon to the
--- left of the health circle, with a counterclockwise radial cooldown reveal.
+-- HUD Wildcard Slot — shows the player's currently-owned wildcard to the
+-- left of the health circle. Two render modes, live-switchable from the
+-- options menu via CSR_Settings.values.hud_wildcard_use_bar:
 --
--- Direction trick: Diesel's VertexColorTexturedRadial sweeps clockwise only,
--- and the trick used by EHI / vanilla detection meter (texture_rect with
--- negative width to flip UVs) reverses the sweep direction BUT also mirrors
--- the icon. To get a CCW reveal without a mirrored icon, we point each icon
--- at a PRE-MIRRORED DDS file and then apply texture_rect={w,0,-w,h} at draw
--- time. The two mirrors cancel visually, but the UV flip is what reverses
--- the shader's sweep direction.
+--  * Icon mode (default) — bitmap with a counterclockwise radial cooldown
+--    reveal. Direction trick: Diesel's VertexColorTexturedRadial sweeps
+--    clockwise only, and the standard texture_rect negative-width UV flip
+--    that reverses the sweep ALSO mirrors the icon. We point each icon at a
+--    PRE-MIRRORED DDS and then apply texture_rect={w,0,-w,h} at draw time —
+--    the two mirrors cancel visually while the UV flip still reverses sweep.
+--  * Bar mode — vertical magenta strip flush against the radial's left side,
+--    filling bottom-to-top as the cooldown depletes. Passive wildcards (no
+--    cooldown) show a permanently full bar.
 --
 -- Hidden when no wildcard is owned. Active wildcards (Familiar Friend, Turron)
--- drive the radial mask from their `_G.CSR_<Name>.cooldown_end` state.
--- Passive wildcards (Side Satchel, Hippocratic Oath) just show the bright icon.
+-- drive the cooldown mask from their `_G.CSR_<Name>.cooldown_end` state.
+-- Passive wildcards (Side Satchel, Hippocratic Oath) report progress=0, which
+-- the icon mode reads as full alpha and the bar mode reads as full height.
 --
 -- Layout note: player_panel and teammates_panel both clip children at their
 -- bounds, AND teammate_panel uses halign="right" for the local player which
@@ -28,8 +32,7 @@ end
 -- key for the max duration. Passive wildcards have no CD entry.
 -- Each `icon` here points at a PRE-MIRRORED DDS so the slot's
 -- texture_rect={w,0,-w,h} flip un-mirrors the visual and simultaneously
--- reverses the radial sweep direction. Hippocratic Oath is parked, so it
--- still references the unmirrored asset (no mirrored DDS shipped for it).
+-- reverses the radial sweep direction.
 local WILDCARD_DEFS = {
 	["player_familiar_friend_"] = {
 		icon = "csr_familiar_friend_mirror",
@@ -47,7 +50,7 @@ local WILDCARD_DEFS = {
 		icon = "csr_side_satchel_mirror",
 	},
 	["player_hippocratic_oath_"] = {
-		icon = "csr_hippocratic_oath",
+		icon = "csr_hippocratic_oath_mirror",
 	},
 }
 
@@ -117,11 +120,22 @@ local function apply_icon_texture(slot_panel, def)
 	end
 end
 
+local function use_bar_mode()
+	return CSR_Settings and CSR_Settings.values and CSR_Settings.values.hud_wildcard_use_bar == true
+end
+
+local function set_layer_visible(slot_panel, name, visible)
+	local child = slot_panel:child(name)
+	if child and child:visible() ~= visible then
+		child:set_visible(visible)
+	end
+end
+
 -- State is held in this Lua table (not on the panel — Diesel panels are
 -- userdata and silently drop arbitrary field assignments per
 -- pd2_diesel_userdata_no_field_assignment.md). Each panel gets its own
 -- `state` closure created at hook time.
-local function update_widget(slot_panel, state)
+local function update_widget(slot_panel, state, dt)
 	if not alive(slot_panel) then
 		return
 	end
@@ -131,6 +145,7 @@ local function update_widget(slot_panel, state)
 			slot_panel:set_visible(false)
 		end
 		state.current = nil
+		state.displayed_progress = nil
 		return
 	end
 
@@ -142,6 +157,7 @@ local function update_widget(slot_panel, state)
 
 	if state.current ~= owned then
 		state.current = owned
+		state.displayed_progress = nil
 		apply_icon_texture(slot_panel, def)
 	end
 
@@ -149,11 +165,53 @@ local function update_widget(slot_panel, state)
 		slot_panel:set_visible(true)
 	end
 
-	-- Radial reveal applied directly to the icon. progress = 1 fresh-press
-	-- (icon empty) → 0 ready (icon fully drawn). Color.r drives how much of
-	-- the icon is rendered counterclockwise via VertexColorTexturedRadial.
-	local progress = cooldown_progress(owned)
-	icon:set_color(Color(1, 1 - progress, 1, 1))
+	local target = cooldown_progress(owned)
+
+	-- Ease displayed_progress toward target so visual changes are never
+	-- one-frame snaps. Activation drains the bar/icon from full to empty
+	-- gradually instead of teleporting; the final approach to "ready"
+	-- softens the otherwise-abrupt frame where target hits 0.
+	-- Exponential smoothing: time-to-90% ≈ ln(10)/8 ≈ 0.29s at any framerate.
+	if state.displayed_progress == nil then
+		state.displayed_progress = target
+	else
+		local k = 1 - math.exp(-8 * (dt or 0.016))
+		local delta = target - state.displayed_progress
+		state.displayed_progress = state.displayed_progress + delta * k
+		if math.abs(target - state.displayed_progress) < 0.001 then
+			state.displayed_progress = target
+		end
+	end
+	local progress = state.displayed_progress
+	local bar_mode = use_bar_mode()
+
+	-- Toggle which mode's layers are drawn. Both layer sets are pre-built;
+	-- swapping is just a visibility flip, so the option takes effect live
+	-- (no rebuild needed when the player toggles the setting mid-heist).
+	set_layer_visible(slot_panel, "wildcard_icon_dim", not bar_mode)
+	set_layer_visible(slot_panel, "wildcard_icon", not bar_mode)
+	set_layer_visible(slot_panel, "wildcard_bar_frame", bar_mode)
+	set_layer_visible(slot_panel, "wildcard_bar_bg", bar_mode)
+	set_layer_visible(slot_panel, "wildcard_bar_fill", bar_mode)
+
+	if bar_mode then
+		-- progress=1 fresh-press (bar empty), progress=0 ready (bar full).
+		-- Diesel's Y axis is top-down, so growing from the bottom means
+		-- shrinking h and raising y together.
+		local fill = slot_panel:child("wildcard_bar_fill")
+		local bg = slot_panel:child("wildcard_bar_bg")
+		if fill and bg then
+			local h_total = bg:h()
+			local fill_h = math.floor(h_total * (1 - progress) + 0.5)
+			fill:set_h(fill_h)
+			fill:set_y(bg:y() + h_total - fill_h)
+		end
+	else
+		-- Radial reveal applied directly to the icon. progress = 1 fresh-press
+		-- (icon empty) → 0 ready (icon fully drawn). Color.r drives how much
+		-- of the icon is rendered counterclockwise via VertexColorTexturedRadial.
+		icon:set_color(Color(1, 1 - progress, 1, 1))
+	end
 end
 
 if HUDTeammate and not _G._CSR_WILDCARD_SLOT_HOOKED then
@@ -216,9 +274,63 @@ if HUDTeammate and not _G._CSR_WILDCARD_SLOT_HOOKED then
 			h = size,
 		})
 
-		local state = { current = nil }
+		-- Bar-mode layers (hidden by default; update_widget shows them when
+		-- CSR_Settings.values.hud_wildcard_use_bar is true). Three-layer
+		-- sandwich mirroring HUDTeammate:_create_radial_health style:
+		--   * frame  — thin gray outline like hud_radialbg ring
+		--   * bg     — dark inner area behind the fill
+		--   * fill   — bright magenta with blend_mode="add" so it glows
+		--              against the dark bg, the same trick the radial uses
+		--              for hud_health (additive blend over a gray ring).
+		-- Width 10px so the 1px frame on each side leaves ~8px of bright
+		-- fill visible. Right-aligned in the slot panel so the bar sits
+		-- flush against the gap-side edge nearest the radial.
+		local bar_w = 10
+		local bar_x = size - bar_w
+		-- RGB scaled ~0.9 from the wildcard hex ff4dcc so the additive fill
+		-- glows a touch less hot against the dark bg — same hue, lower contribution.
+		local magenta = Color(1, 0.9, 0.27, 0.72)
+		local frame_color = Color(1, 0.4, 0.4, 0.4)
+		local bg_color = Color(1, 0.05, 0.05, 0.05)
+		slot_panel:rect({
+			name = "wildcard_bar_frame",
+			color = frame_color,
+			alpha = 1,
+			layer = 0,
+			visible = false,
+			x = bar_x,
+			y = 0,
+			w = bar_w,
+			h = size,
+		})
+		slot_panel:rect({
+			name = "wildcard_bar_bg",
+			color = bg_color,
+			alpha = 0.35,
+			layer = 1,
+			visible = false,
+			x = bar_x + 1,
+			y = 1,
+			w = bar_w - 2,
+			h = size - 2,
+		})
+		slot_panel:rect({
+			name = "wildcard_bar_fill",
+			color = magenta,
+			alpha = 1,
+			blend_mode = "add",
+			layer = 2,
+			visible = false,
+			x = bar_x + 1,
+			y = 1,
+			w = bar_w - 2,
+			h = size - 2,
+		})
+
+		local state = { current = nil, displayed_progress = nil }
 		local radial_ref = radial_health_panel
 		slot_panel:animate(function(o)
+			local dt = 0
 			while alive(o) do
 				-- Re-anchor slot to current radial world position each frame.
 				-- This must run inside animate (not at hook time) because the
@@ -228,8 +340,8 @@ if HUDTeammate and not _G._CSR_WILDCARD_SLOT_HOOKED then
 					o:set_world_x(radial_ref:world_x() - size - gap)
 					o:set_world_y(radial_ref:world_y())
 				end
-				pcall(update_widget, o, state)
-				coroutine.yield()
+				pcall(update_widget, o, state, dt)
+				dt = coroutine.yield()
 			end
 		end)
 	end)

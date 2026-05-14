@@ -110,46 +110,61 @@ local function open_selection_on_briefing()
 			return
 		end
 
-		managers.crime_spree:select_modifier(self._selected_modifier:data().id)
-		managers.menu_component:post_event("item_buy")
+		local mod_id = self._selected_modifier:data().id
 
-		if MenuCallbackHandler and MenuCallbackHandler.save_progress then
-			MenuCallbackHandler:save_progress()
-		end
+		-- Wildcard carry-1 guard: if this pick replaces a different owned
+		-- wildcard, the helper shows a confirmation modal first and runs
+		-- the body below only on YES. Non-wildcard picks fall through
+		-- immediately. Storage-layer cleanup in CSR_AddItem is the data
+		-- backstop — this modal is the user-facing warning.
+		local proceed = function()
+			managers.crime_spree:select_modifier(mod_id)
+			managers.menu_component:post_event("item_buy")
 
-		-- Broadcast updated items to peers and refresh items page
-		if _G.CSR_MP and CSR_MP.broadcast_own_items then
-			CSR_MP.broadcast_own_items()
-		end
-		if _G.CSR_ItemsPageInstance and _G.CSR_ItemsPageInstance._setup_items then
-			pcall(function()
-				_G.CSR_ItemsPageInstance:_setup_items()
-			end)
-		end
-
-		if self:modifiers_to_select() > 0 then
-			-- Refresh buttons for next selection (vanilla pattern)
-			local modifiers, modifiers_name = self:get_modifers()
-			self._text_header:set_text(
-				managers.localization:to_upper_text("menu_cs_modifiers_" .. tostring(modifiers_name))
-			)
-			self._current_num = self._current_num + 1
-			self._number_header:set_text(
-				managers.experience:cash_string(self._current_num, "")
-					.. " / "
-					.. managers.experience:cash_string(self._num_to_select, "")
-			)
-			for i = 1, tweak_data.crime_spree.max_modifiers_displayed do
-				self._buttons[i]:set_modifier(modifiers[i])
-				self._buttons[i]:set_active(false)
+			if MenuCallbackHandler and MenuCallbackHandler.save_progress then
+				MenuCallbackHandler:save_progress()
 			end
-			self:_on_select_modifier(nil)
-			if self._selected_item and not self._selected_item._panel:visible() then
-				self:_move_selection("left")
+
+			-- Broadcast updated items to peers and refresh items page
+			if _G.CSR_MP and CSR_MP.broadcast_own_items then
+				CSR_MP.broadcast_own_items()
 			end
+			if _G.CSR_ItemsPageInstance and _G.CSR_ItemsPageInstance._setup_items then
+				pcall(function()
+					_G.CSR_ItemsPageInstance:_setup_items()
+				end)
+			end
+
+			if self:modifiers_to_select() > 0 then
+				-- Refresh buttons for next selection (vanilla pattern)
+				local modifiers, modifiers_name = self:get_modifers()
+				self._text_header:set_text(
+					managers.localization:to_upper_text("menu_cs_modifiers_" .. tostring(modifiers_name))
+				)
+				self._current_num = self._current_num + 1
+				self._number_header:set_text(
+					managers.experience:cash_string(self._current_num, "")
+						.. " / "
+						.. managers.experience:cash_string(self._num_to_select, "")
+				)
+				for i = 1, tweak_data.crime_spree.max_modifiers_displayed do
+					self._buttons[i]:set_modifier(modifiers[i])
+					self._buttons[i]:set_active(false)
+				end
+				self:_on_select_modifier(nil)
+				if self._selected_item and not self._selected_item._panel:visible() then
+					self:_move_selection("left")
+				end
+			else
+				-- All items selected — close popup
+				close_briefing_selection()
+			end
+		end
+
+		if _G.CSR_PromptWildcardReplace then
+			CSR_PromptWildcardReplace(mod_id, proceed)
 		else
-			-- All items selected — close popup
-			close_briefing_selection()
+			proceed()
 		end
 	end
 
