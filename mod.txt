@@ -14,8 +14,20 @@
 			"script_path": "lua/items/dogtags.lua"
 		},
 		{
+			"hook_id": "lib/managers/menu/menucomponentmanager",
+			"script_path": "lua/menu/csr_lobby_button.lua"
+		},
+		{
+			"hook_id": "lib/managers/menu/menucomponentmanager",
+			"script_path": "lua/menu/csr_contract_menu.lua"
+		},
+		{
 			"hook_id": "lib/managers/menumanager",
-			"script_path": "lua/menu/csr_main_menu.lua"
+			"script_path": "lua/managers/csr_contract_callbacks.lua"
+		},
+		{
+			"hook_id": "lib/managers/menu/menucomponentmanager",
+			"script_path": "lua/menu/csr_contract_wiring.lua"
 		}
 	]
 }
