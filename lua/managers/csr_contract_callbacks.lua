@@ -90,31 +90,27 @@ function MenuCallbackHandler:accept_csr_contract(item, node)
 end
 
 function MenuCallbackHandler:_accept_csr_contract_sp(item, node)
-	if not managers.crime_spree:in_progress() and managers.crime_spree:starting_level() >= 0 then
-		if not managers.crime_spree:can_start_spree(managers.crime_spree:starting_level() or 0) then
-			return
-		end
-
-		managers.crime_spree:start_crime_spree(managers.crime_spree:starting_level())
-	end
-
-	managers.crime_spree:enable_crime_spree_gamemode()
+	-- Slice 6 full-replace: vanilla start_crime_spree + enable_crime_spree_gamemode
+	-- removed. managers.csr:start_run() is now the sole run-state activator.
+	-- The vanilla `crime_spree_lobby` node still receives navigation so the
+	-- forked UI surface keeps its visual flow; lobby contents driven by vanilla
+	-- CS state (mission picks, etc.) will be empty until later slices carve
+	-- their replacements.
+	managers.csr:start_run()
 	MenuCallbackHandler:save_progress()
 	managers.menu:active_menu().logic:select_node("crime_spree_lobby", true, {})
 end
 
 function MenuCallbackHandler:_accept_csr_contract_mp(item, node)
-	if not managers.crime_spree:in_progress() and managers.crime_spree:starting_level() >= 0 then
-		if not managers.crime_spree:can_start_spree(managers.crime_spree:starting_level() or 0) then
-			return
-		end
-
-		managers.crime_spree:start_crime_spree(managers.crime_spree:starting_level())
-	end
+	-- Slice 6 full-replace: vanilla start_crime_spree + enable_crime_spree_gamemode
+	-- removed. Matchmaking + chat-line + save_progress paths kept — they don't
+	-- depend on vanilla CS state directly. Note: get_matchmake_attributes via
+	-- apply_matchmake_attributes will now write lobby_attributes.crime_spree = -1
+	-- because vanilla CS isn't in_progress; lobby will look like a normal one
+	-- to other clients until MP carve-out lands.
+	managers.csr:start_run()
 
 	local matchmake_attributes = self:get_matchmake_attributes()
-
-	managers.crime_spree:enable_crime_spree_gamemode()
 
 	if Network:is_server() then
 		managers.network.matchmake:set_server_attributes(matchmake_attributes)

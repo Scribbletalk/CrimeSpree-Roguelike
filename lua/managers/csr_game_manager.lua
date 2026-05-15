@@ -95,6 +95,14 @@ function CSRGameManager:is_run_active()
 	return true
 end
 
+function CSRGameManager:is_active()
+	-- Honest accessor for `_state.is_active` (the field flipped by start_run /
+	-- end_run). Use this when a hook genuinely needs to know "is a CSR run
+	-- currently in flight" -- e.g. mission lifecycle, save migrations, MP
+	-- session bring-up. Items keep using is_run_active() per the stub above.
+	return self._state.is_active == true
+end
+
 function CSRGameManager:rank()
 	return self._state.rank or 0
 end
@@ -254,6 +262,21 @@ function CSRGameManager:end_run()
 	for _, fn in ipairs(self._callbacks.on_mission_completed) do
 		fn()
 	end
+	self:save()
+	return true
+end
+
+function CSRGameManager:progress_rank(amount)
+	amount = tonumber(amount) or 0
+	if amount <= 0 then
+		return false
+	end
+	if not self._state.is_active then
+		log_csr("progress_rank: no active run; ignored")
+		return false
+	end
+	self._state.rank = (self._state.rank or 0) + amount
+	log_csr("progress_rank: +" .. tostring(amount) .. " (now " .. tostring(self._state.rank) .. ")")
 	self:save()
 	return true
 end
