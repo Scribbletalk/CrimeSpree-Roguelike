@@ -11,7 +11,7 @@
 		},
 		{
 			"hook_id": "lib/managers/playermanager",
-			"script_path": "lua/modifiers/dogtags.lua"
+			"script_path": "lua/items/dogtags.lua"
 		},
 		{
 			"hook_id": "lib/managers/menumanager",
