@@ -1,8 +1,8 @@
 {
-	"name": "Crime Spree Roguelike (6.6.6 refactor)",
-	"description": "Refactor workspace for CSR 6.6.6. Foundation skeleton + Dog Tags pilot + barebones hub menu. Do not ship.",
+	"name": "Crime Spree Roguelike (6.3 refactor)",
+	"description": "Refactor workspace for CSR 6.3. Foundation skeleton + Dog Tags pilot + forked CS contract popup (Slices 1-5). Do not ship.",
 	"author": "Candy",
-	"version": "6.6.6-alpha.0",
+	"version": "6.3-alpha.0",
 	"blt_version": 2,
 	"hooks": [
 		{
