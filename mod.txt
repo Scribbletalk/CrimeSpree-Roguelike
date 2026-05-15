@@ -15,7 +15,7 @@
 		},
 		{
 			"hook_id": "lib/managers/menumanager",
-			"script_path": "lua/menu/csr_hub_node.lua"
+			"script_path": "lua/menu/csr_main_menu.lua"
 		}
 	]
 }
