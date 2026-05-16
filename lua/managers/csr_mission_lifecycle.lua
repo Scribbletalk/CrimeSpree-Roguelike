@@ -5,45 +5,17 @@
 -- lib/states/missionendstate.lua:95-101 (success -> on_mission_completed,
 -- failure -> on_mission_failed), but routes into managers.csr instead.
 --
--- Rank gain on success is read from the vanilla tweak_data.crime_spree.missions
--- entry whose `.level.level_id` matches `managers.job:current_level_id()`.
--- Heists with no matching CS entry (modded maps, vanilla heists never on the CS
--- list) fall back to FALLBACK_RANK_GAIN. Slice 6 removed our vanilla-CS
--- activation, so `tweak_data.crime_spree.missions` is read as static config
--- only -- no dependency on `_global.current_mission` or `_mission_set`.
+-- Rank gain on success is a flat amount per completed heist (rebalance
+-- 2026-05-16: mission length/difficulty no longer scales rank — every heist is
+-- worth the same). The amount comes from managers.csr:constant("rank_per_heist")
+-- so the balance value stays out of code per CLAUDE.md "no hardcoded balance
+-- values"; the 1 here is only a defensive fallback if the constant is missing.
 --
 -- Failure path is a log-only stub for this slice. Roguelike end-on-death and
 -- vanilla-style rank-regression are both deferred.
 
-local FALLBACK_RANK_GAIN = 5
-
 local function log_csr(msg)
 	log("[CSR] " .. tostring(msg))
-end
-
-local function compute_rank_gain_for_current_heist()
-	if not managers.job or not managers.job:current_job_id() then
-		return FALLBACK_RANK_GAIN, "no current job"
-	end
-	local current_level_id = managers.job:current_level_id()
-	if not current_level_id then
-		return FALLBACK_RANK_GAIN, "no current level_id"
-	end
-	local cs_missions = tweak_data and tweak_data.crime_spree and tweak_data.crime_spree.missions
-	if type(cs_missions) ~= "table" then
-		return FALLBACK_RANK_GAIN, "tweak_data.crime_spree.missions missing"
-	end
-	for _, bucket in pairs(cs_missions) do
-		if type(bucket) == "table" then
-			for _, mission in pairs(bucket) do
-				local lvl = mission and mission.level
-				if lvl and lvl.level_id == current_level_id then
-					return mission.add or FALLBACK_RANK_GAIN, "matched " .. tostring(mission.id)
-				end
-			end
-		end
-	end
-	return FALLBACK_RANK_GAIN, "no CS entry for level_id=" .. tostring(current_level_id)
 end
 
 Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", function(self)
@@ -54,9 +26,12 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 		return
 	end
 	if self._success then
-		local gain, source = compute_rank_gain_for_current_heist()
+		local gain = managers.csr:constant("rank_per_heist") or 1
 		managers.csr:progress_rank(gain)
-		log_csr("mission completed: +" .. tostring(gain) .. " rank (source: " .. tostring(source) .. ")")
+		-- Mirror vanilla on_mission_completed: clear the played mission and roll
+		-- a fresh set so the lobby shows new cards on return.
+		managers.csr:generate_mission_set()
+		log_csr("mission completed: +" .. tostring(gain) .. " rank (flat); new mission set rolled")
 	else
 		log_csr("mission failed (no rank change this slice)")
 	end

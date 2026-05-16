@@ -513,6 +513,8 @@ function MenuCallbackHandler:show_peer_kicked_csr_dialog(params)
 end
 
 function MenuCallbackHandler:csr_reroll()
+	-- Slice 8: free reroll (no continental-coin cost). Vanilla's escalating-cost
+	-- reroll economy is intentionally dropped for the alpha mission-select slice.
 	local mission_gui = managers.menu_component:crime_spree_missions_gui()
 
 	if mission_gui and mission_gui:is_randomizing() then
@@ -521,63 +523,16 @@ function MenuCallbackHandler:csr_reroll()
 		return
 	end
 
-	local can_afford = false
-	can_afford = managers.crime_spree:randomization_cost() <= managers.custom_safehouse:coins()
-	local dialog_data = {
-		title = managers.localization:text("menu_cs_reroll_title"),
-		id = "reroll_crime_spree",
-	}
-
-	if can_afford then
-		dialog_data.text = managers.localization:text("menu_cs_reroll_text", {
-			cost = managers.crime_spree:randomization_cost(),
-		})
-		local yes_button = {
-			text = managers.localization:text("dialog_yes"),
-			callback_func = callback(self, self, "_dialog_csr_reroll_yes"),
-		}
-		local no_button = {
-			text = managers.localization:text("dialog_no"),
-			callback_func = callback(self, self, "_dialog_csr_reroll_no"),
-			cancel_button = true,
-		}
-		dialog_data.button_list = {
-			yes_button,
-			no_button,
-		}
-	else
-		dialog_data.text = managers.localization:text("menu_cs_reroll_text_cant_afford", {
-			cost = managers.crime_spree:randomization_cost(),
-		})
-		local no_button = {
-			text = managers.localization:text("dialog_ok"),
-			callback_func = callback(self, self, "_dialog_csr_reroll_no"),
-			cancel_button = true,
-		}
-		dialog_data.button_list = {
-			no_button,
-		}
+	if managers.csr then
+		managers.csr:reroll_mission_set()
 	end
 
-	managers.system_menu:show(dialog_data)
-end
-
-function MenuCallbackHandler:_dialog_csr_reroll_yes()
-	managers.custom_safehouse:deduct_coins(
-		managers.crime_spree:randomization_cost(),
-		TelemetryConst.economy_origin.crime_spree_reroll
-	)
-	managers.crime_spree:randomize_mission_set()
-
-	if managers.menu_component:crime_spree_missions_gui() then
-		managers.menu_component:crime_spree_missions_gui():randomize_crimespree()
+	if mission_gui then
+		mission_gui:randomize_crimespree()
 	end
 
-	WalletGuiObject.refresh()
 	MenuCallbackHandler:save_progress()
 end
-
-function MenuCallbackHandler:_dialog_csr_reroll_no() end
 
 function MenuCallbackHandler:csr_select_modifier()
 	if self:show_csr_select_modifier() then
@@ -586,7 +541,8 @@ function MenuCallbackHandler:csr_select_modifier()
 end
 
 function MenuCallbackHandler:csr_start_game()
-	if managers.crime_spree:current_mission() == nil then
+	-- Slice 8: mission state lives in managers.csr now, not vanilla CS.
+	if not managers.csr or managers.csr:current_mission() == nil then
 		managers.menu:post_event("menu_error")
 	else
 		self:start_the_game()
@@ -736,4 +692,39 @@ if MenuCallbackHandler and not _G._CSR_ACCEPT_CONTRACT_WRAPPED then
 	end
 end
 
-log("[CSR] csr_contract_callbacks.lua loaded (Slice 3 fork + Slice 5 accept wrap)")
+-- Slice 8 wiring: redirect vanilla's lobby start + reroll callbacks (invoked by
+-- the vanilla crime_spree_lobby node's menu items by string name) to our forked
+-- csr_* versions, which run against managers.csr. Same rationale and install
+-- timing as the accept wrap above (vanilla MenuManagerCrimeSpreeCallbacks is
+-- required at menumanager.lua:35, so a raw wrap here captures the final vanilla
+-- definition).
+
+if MenuCallbackHandler and not _G._CSR_START_GAME_WRAPPED then
+	_G._CSR_START_GAME_WRAPPED = true
+
+	local original_start = MenuCallbackHandler.crime_spree_start_game
+
+	function MenuCallbackHandler:crime_spree_start_game()
+		if self.csr_start_game then
+			self:csr_start_game()
+		elseif original_start then
+			original_start(self)
+		end
+	end
+end
+
+if MenuCallbackHandler and not _G._CSR_REROLL_WRAPPED then
+	_G._CSR_REROLL_WRAPPED = true
+
+	local original_reroll = MenuCallbackHandler.crime_spree_reroll
+
+	function MenuCallbackHandler:crime_spree_reroll()
+		if self.csr_reroll then
+			self:csr_reroll()
+		elseif original_reroll then
+			original_reroll(self)
+		end
+	end
+end
+
+log("[CSR] csr_contract_callbacks.lua loaded (Slice 3 fork + Slice 5 accept wrap + Slice 8 start/reroll wrap)")

@@ -1,6 +1,6 @@
 {
 	"name": "Crime Spree Roguelike (6.3 refactor)",
-	"description": "Refactor workspace for CSR 6.3. Foundation skeleton + Dog Tags pilot + forked CS contract popup (Slices 1-5). Do not ship.",
+	"description": "Refactor workspace for CSR 6.3. Foundation skeleton + Dog Tags pilot + forked CS contract popup + mission lifecycle + mission select (Slices 1-8). Do not ship.",
 	"author": "Candy",
 	"version": "6.3-alpha.0",
 	"blt_version": 2,
@@ -28,6 +28,14 @@
 		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",
 			"script_path": "lua/menu/csr_contract_wiring.lua"
+		},
+		{
+			"hook_id": "lib/managers/menu/menucomponentmanager",
+			"script_path": "lua/menu/csr_missions_menu.lua"
+		},
+		{
+			"hook_id": "lib/managers/menu/menucomponentmanager",
+			"script_path": "lua/menu/csr_missions_wiring.lua"
 		},
 		{
 			"hook_id": "lib/states/missionendstate",

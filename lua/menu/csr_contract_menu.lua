@@ -94,9 +94,15 @@ function CSRContractMenuComponent:_setup()
 
 	blur:animate(func)
 
-	local show_level = managers.crime_spree:in_progress() or not self:_is_host()
+	-- Slice 8 backend swap: the header rank must come from managers.csr, not
+	-- vanilla CS. Reading managers.crime_spree:spree_level() here showed a stale
+	-- vanilla Crime Spree level (e.g. 112) carried in the PD2 save, unrelated to
+	-- the CSR run. host-side now reads our rank; the client branch
+	-- (_host_spree_level) is still vanilla-shaped and gets carved in the MP slice.
+	local in_csr_run = managers.csr and managers.csr:is_active()
+	local show_level = in_csr_run or not self:_is_host()
 	local spree_text = show_level and "csr_header_level" or "csr_header_title"
-	local spree_level = self:_is_host() and managers.crime_spree:spree_level() or self:_host_spree_level()
+	local spree_level = self:_is_host() and (managers.csr and managers.csr:rank() or 0) or self:_host_spree_level()
 	self._contact_text_header = self._panel:text({
 		vertical = "top",
 		align = "left",
