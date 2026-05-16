@@ -22,7 +22,11 @@ local RARITY_COLOR_WILDCARD = Color(1, 0.3, 0.8)
 -- singleplayer, the same per-section height is used so the wildcard reads
 -- the same physical size in both modes. Carry-1, so the slot only ever
 -- holds one icon (or an empty magenta placeholder).
-local WILDCARD_SLOT_RATIO = 0.7
+-- Fraction of a per-player section height used for the (square) wildcard
+-- slot. Tunable: higher = bigger wildcard icon in the ESC items tab. 0.9
+-- leaves a small margin so it can't overflow into the next peer's section
+-- in the 4-up MP layout.
+local WILDCARD_SLOT_RATIO = 0.9
 local WILDCARD_SLOT_GAP = 8
 local WILDCARD_SLOT_RIGHT_PAD = 8
 local WILDCARD_MAIN_GRID_LEFT_PAD = 8
@@ -565,9 +569,10 @@ local function populate_items_panel(self, items_panel)
 				})
 			end
 
-			-- Square wildcard cell, vertically centered within this peer's
-			-- section — mirrors briefing items_page.lua MP layout.
-			local slot_y = section_y + math.floor((section_h - wildcard_slot_size) / 2)
+			-- Wildcard cell is vertically centered against THIS player's
+			-- item grid band (grid_y .. grid_y+grid_h), i.e. below the
+			-- name header — not the section and not the whole panel.
+			local slot_y = grid_y + math.floor((grid_h - wildcard_slot_size) / 2)
 			render_wildcard_cell(
 				items_panel,
 				wildcards,

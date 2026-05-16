@@ -70,6 +70,8 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_DebugMenuLoc", function(loc)
 		csr_debug_force_kenaz_desc = "Injects Golden Grin Casino into slot 1 of available missions and selects it. Crime Spree must be active.",
 		csr_debug_force_roberts_title = "Go Bank",
 		csr_debug_force_roberts_desc = "Injects Go Bank into slot 1 of available missions and selects it. Crime Spree must be active.",
+		csr_debug_force_hoxton2_title = "Hoxton Breakout Day 2",
+		csr_debug_force_hoxton2_desc = "Injects Hoxton Breakout Day 2 into slot 1 of available missions and selects it. Crime Spree must be active. Has keycards (Side Satchel test).",
 		csr_debug_instant_win_title = "Instant Win (Current Heist)",
 		csr_debug_instant_win_desc = "Force the current heist to victory. Must be in a heist (game state ingame_standard / ingame_waiting_for_players). Also bindable via Mod Keybinds.",
 		csr_debug_force_catchup_title = "Force MP Catch-up (All Clients)",
@@ -343,6 +345,24 @@ Hooks:Add("MenuManagerInitialize", "CSR_DebugMenuCallbacks", function(menu_manag
 		cs:select_mission("roberts")
 		chat_or_log("[CSR DEBUG] Forced Go Bank (roberts)")
 	end
+
+	MenuCallbackHandler.csr_debug_force_hoxton2 = function()
+		local cs = managers and managers.crime_spree
+		if not cs or not cs:is_active() then
+			chat_or_log("[CSR DEBUG] Crime Spree not active - cannot force heist")
+			return
+		end
+		local mission = cs:get_mission("hoxton_2")
+		if not mission then
+			chat_or_log("[CSR DEBUG] Mission 'hoxton_2' not found in tweak_data")
+			return
+		end
+		if cs._global.available_missions then
+			cs._global.available_missions[1] = mission
+		end
+		cs:select_mission("hoxton_2")
+		chat_or_log("[CSR DEBUG] Forced Hoxton Breakout Day 2 (hoxton_2)")
+	end
 end)
 
 Hooks:Add("MenuManagerSetupCustomMenus", "CSR_DebugMenuSetup", function(menu_manager, nodes)
@@ -487,6 +507,15 @@ Hooks:Add("MenuManagerPopulateCustomMenus", "CSR_DebugMenuPopulate", function(me
 		title = "csr_debug_force_roberts_title",
 		desc = "csr_debug_force_roberts_desc",
 		callback = "csr_debug_force_roberts",
+		menu_id = "csr_debug_heists_menu",
+		priority = 100,
+	})
+
+	MenuHelper:AddButton({
+		id = "csr_debug_force_hoxton2",
+		title = "csr_debug_force_hoxton2_title",
+		desc = "csr_debug_force_hoxton2_desc",
+		callback = "csr_debug_force_hoxton2",
 		menu_id = "csr_debug_heists_menu",
 		priority = 100,
 	})

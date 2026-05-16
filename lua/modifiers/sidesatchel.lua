@@ -62,18 +62,29 @@ local CSR_SIDE_SATCHEL_HEIST_BLOCK_OVERRIDES = {
 }
 
 -- Items whose vanilla equipment.quantity is nil — that makes add_special's
--- math block (line 4917 in playermanager.lua) be skipped on the 2nd pickup,
--- so the amount never increments and the HUD never updates. We backfill
+-- 2nd-pickup increment block be skipped (it is gated on
+-- `equipment.max_quantity or equipment.quantity or ...`, all nil here), so
+-- the amount never increments past 1 and the HUD never updates. We backfill
 -- quantity=1 at load and normalize params.amount=1 at pickup time so the
--- math runs correctly. Includes both FORCE_INCLUDE (planks/boards) and
--- HEIST_BLOCK_OVERRIDES (crowbar variants) — anything we want to actually
--- increment past 1 in the inventory needs this patch.
+-- math runs correctly. Includes FORCE_INCLUDE (planks/boards), the crowbar
+-- HEIST_BLOCK_OVERRIDES variants, and the nil-quantity keycards — anything
+-- we want to actually increment past 1 in the inventory needs this patch.
+--
+-- Keycards: vanilla never sets quantity/max_quantity on the common keycard
+-- specials, so without this the doubled cap (already granted by the
+-- _equipped_upgrade_value override + can_pickup gate) is unreachable — the
+-- 2nd-keycard prompt appears but add_special drops the pickup. The backfill
+-- is behavior-neutral for non-owners (extra=0 → max_amount stays 1).
 local CSR_SIDE_SATCHEL_QUANTITY_PATCH = {
 	planks = true,
 	boards = true,
 	crowbar = true,
 	crowbar_stack = true,
 	gas = true,
+	bank_manager_key = true,
+	president_key = true,
+	help_keycard = true,
+	c_keys = true,
 }
 
 local _quantity_patched = false
@@ -362,9 +373,12 @@ end
 -- the satchel doesn't lift the per-pickup limit, only the storage cap.
 --
 -- Untouched paths: transfer (stash uses transfer_quantity intentionally),
--- dropped_out (respawn drop). Blacklisted items and items without eq.quantity
--- (keycards / USBs / blueprints — never enter the math branch) are skipped via
--- eligible_for_bump + the eq.quantity guard.
+-- dropped_out (respawn drop). Blacklisted items, and remaining nil-quantity
+-- specials NOT in the QUANTITY_PATCH list (USBs / blueprints — never enter
+-- the math branch), are skipped via eligible_for_bump + the eq.quantity
+-- guard. Keycards now carry a backfilled eq.quantity=1 so they DO enter the
+-- math branch and are clamped here to one-per-pickup like every other
+-- doubled special.
 if PlayerManager and not _G._CSR_SIDE_SATCHEL_PM_ADD_SPECIAL_HOOKED then
 	_G._CSR_SIDE_SATCHEL_PM_ADD_SPECIAL_HOOKED = true
 	local original_add_special = PlayerManager.add_special
