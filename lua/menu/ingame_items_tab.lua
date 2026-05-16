@@ -16,6 +16,23 @@ local RARITY_COLOR_RARE = Color(0.3, 0.7, 1)
 local RARITY_COLOR_CONTRABAND = Color(1, 0.4, 0)
 local RARITY_COLOR_WILDCARD = Color(1, 0.3, 0.8)
 
+-- Right-column wildcard slot. Mirrors items_page.lua positional logic:
+-- the slot is a square cell derived from per-player section height
+-- (section_h * RATIO), and is vertically centered within its section. In
+-- singleplayer, the same per-section height is used so the wildcard reads
+-- the same physical size in both modes. Carry-1, so the slot only ever
+-- holds one icon (or an empty magenta placeholder).
+-- Fraction of a per-player section height used for the (square) wildcard
+-- slot. Tunable: higher = bigger wildcard icon in the ESC items tab. 0.9
+-- leaves a small margin so it can't overflow into the next peer's section
+-- in the 4-up MP layout.
+local WILDCARD_SLOT_RATIO = 0.9
+local WILDCARD_SLOT_GAP = 8
+local WILDCARD_SLOT_RIGHT_PAD = 8
+local WILDCARD_MAIN_GRID_LEFT_PAD = 8
+local WILDCARD_ICON_FRAME_RATIO = 0.5
+local WILDCARD_PLACEHOLDER_COLOR = Color(0.35, 1, 0.3, 0.8) -- dim magenta (alpha, r, g, b)
+
 -- Sub-tab constants for the modifiers LOUD / STEALTH row (mirrors modifiers_subtabs.lua)
 local SUBTAB_H = tweak_data.menu.pd2_medium_font_size + 12
 local SUBTAB_H_PAD = 14
@@ -273,6 +290,92 @@ local function render_grid(content, items, start_x, start_y, cell_size, position
 	return start_y + rows * cell_size
 end
 
+-- Split a flat items list into (regular, wildcards). Wildcards are tagged
+-- via build_items_for_peer with is_wildcard=true.
+local function split_wildcards(items)
+	local regular, wildcards = {}, {}
+	for _, item in ipairs(items) do
+		if item.is_wildcard then
+			table.insert(wildcards, item)
+		else
+			table.insert(regular, item)
+		end
+	end
+	return regular, wildcards
+end
+
+-- Render the right-column wildcard slot. If `wildcards` is non-empty, draws
+-- the owned wildcard (frame + icon, with hit detection so the tooltip works).
+-- Otherwise draws a dim magenta hexagon as a reserved-but-empty placeholder.
+-- Carry-1, so at most one icon ever shown.
+local function render_wildcard_cell(content, wildcards, slot_x, slot_y, slot_w, slot_h, positions, peer_id)
+	local frame_size = math.min(slot_w, slot_h)
+	local x = slot_x + math.floor((slot_w - frame_size) / 2)
+	local y = slot_y + math.floor((slot_h - frame_size) / 2)
+
+	if #wildcards == 0 then
+		if tweak_data.hud_icons and tweak_data.hud_icons.csr_frame then
+			local fd = tweak_data.hud_icons.csr_frame
+			content:bitmap({
+				texture = fd.texture,
+				texture_rect = fd.texture_rect,
+				w = frame_size,
+				h = frame_size,
+				x = x,
+				y = y,
+				color = WILDCARD_PLACEHOLDER_COLOR,
+				layer = 0,
+			})
+		end
+		return
+	end
+
+	local item = wildcards[1]
+	local icon_size = math.floor(frame_size * WILDCARD_ICON_FRAME_RATIO)
+	local ICON_SCALE = _G.CSR_IconScale or {}
+
+	if positions then
+		table.insert(positions, {
+			x1 = x,
+			y1 = y,
+			x2 = x + frame_size,
+			y2 = y + frame_size,
+			item = item,
+			peer_id = peer_id,
+		})
+	end
+
+	if item.frame and tweak_data.hud_icons and tweak_data.hud_icons[item.frame] then
+		local fd = tweak_data.hud_icons[item.frame]
+		content:bitmap({
+			texture = fd.texture,
+			texture_rect = fd.texture_rect,
+			w = frame_size,
+			h = frame_size,
+			x = x,
+			y = y,
+			color = item.color or Color.white,
+			layer = 0,
+		})
+	end
+
+	if item.icon and tweak_data.hud_icons and tweak_data.hud_icons[item.icon] then
+		local id = tweak_data.hud_icons[item.icon]
+		local sz = icon_size * (ICON_SCALE[item.icon] or 1)
+		local off = (frame_size - sz) / 2
+		content:bitmap({
+			texture = id.texture,
+			texture_rect = id.texture_rect,
+			w = sz,
+			h = sz,
+			x = x + off,
+			y = y + off,
+			color = Color.white,
+			layer = 2,
+		})
+	end
+end
+
 local function populate_items_panel(self, items_panel)
 	items_panel:clear()
 	self._csr_item_positions = {}
@@ -307,7 +410,26 @@ local function populate_items_panel(self, items_panel)
 	-- Singleplayer: just render local items
 	if not in_mp then
 		local items = CSR_BuildItemsForPeer(local_peer_id)
-		if #items == 0 then
+		local regular, wildcards = split_wildcards(items)
+
+		-- Use the same per-section formula as the MP path so the wildcard slot
+		-- has the same physical size in SP and MP.
+		local section_gap = 6
+		local section_h = math.floor((items_panel:h() - 3 * section_gap) / 4)
+		local wildcard_slot_size = math.floor(section_h * WILDCARD_SLOT_RATIO)
+		local main_w = items_panel:w()
+			- 20
+			- WILDCARD_MAIN_GRID_LEFT_PAD
+			- wildcard_slot_size
+			- WILDCARD_SLOT_GAP
+			- WILDCARD_SLOT_RIGHT_PAD
+		local grid_x = 10 + WILDCARD_MAIN_GRID_LEFT_PAD
+		local slot_x = grid_x + main_w + WILDCARD_SLOT_GAP
+
+		if #regular > 0 then
+			local cell = calc_cell_size(#regular, main_w, items_panel:h() - 10, 72, 24)
+			render_grid(items_panel, regular, grid_x, 10, cell, self._csr_item_positions, local_peer_id, main_w)
+		elseif #wildcards == 0 then
 			items_panel:text({
 				text = managers.localization:text("menu_csr_items_placeholder"),
 				font = tweak_data.menu.pd2_medium_font,
@@ -316,10 +438,21 @@ local function populate_items_panel(self, items_panel)
 				x = 10,
 				y = 10,
 			})
-		else
-			local cell = calc_cell_size(#items, items_panel:w() - 20, items_panel:h() - 10, 72, 24)
-			render_grid(items_panel, items, 10, 10, cell, self._csr_item_positions, local_peer_id)
 		end
+
+		-- Square wildcard cell, vertically centered in the panel — mirrors
+		-- briefing items_page.lua SP layout.
+		local slot_y = math.floor((items_panel:h() - wildcard_slot_size) / 2)
+		render_wildcard_cell(
+			items_panel,
+			wildcards,
+			slot_x,
+			slot_y,
+			wildcard_slot_size,
+			wildcard_slot_size,
+			self._csr_item_positions,
+			local_peer_id
+		)
 		return
 	end
 
@@ -349,6 +482,7 @@ local function populate_items_panel(self, items_panel)
 	local total_h = items_panel:h()
 	local section_h = math.floor((total_h - 3 * section_gap) / 4)
 	local grid_h = section_h - header_h
+	local wildcard_slot_size = math.floor(section_h * WILDCARD_SLOT_RATIO)
 	local MIN_CELL = 20
 
 	for idx, pid in ipairs(peer_ids) do
@@ -407,11 +541,23 @@ local function populate_items_panel(self, items_panel)
 			})
 
 			local grid_y = section_y + header_h
-			if #items > 0 then
+
+			-- Split wildcards out for the dedicated right-column slot.
+			local regular, wildcards = split_wildcards(items)
+			local main_w = items_panel:w()
+				- 20
+				- WILDCARD_MAIN_GRID_LEFT_PAD
+				- wildcard_slot_size
+				- WILDCARD_SLOT_GAP
+				- WILDCARD_SLOT_RIGHT_PAD
+			local grid_x = 10 + WILDCARD_MAIN_GRID_LEFT_PAD
+			local slot_x = grid_x + main_w + WILDCARD_SLOT_GAP
+
+			if #regular > 0 then
 				local start_cell = math.min(72, grid_h)
-				local cell = calc_cell_size(#items, items_panel:w() - 20, grid_h, start_cell, MIN_CELL)
-				render_grid(items_panel, items, 10, grid_y, cell, self._csr_item_positions, pid)
-			else
+				local cell = calc_cell_size(#regular, main_w, grid_h, start_cell, MIN_CELL)
+				render_grid(items_panel, regular, grid_x, grid_y, cell, self._csr_item_positions, pid, main_w)
+			elseif #wildcards == 0 then
 				items_panel:text({
 					text = "No items yet",
 					font = tweak_data.menu.pd2_small_font,
@@ -422,6 +568,21 @@ local function populate_items_panel(self, items_panel)
 					layer = 1,
 				})
 			end
+
+			-- Wildcard cell is vertically centered against THIS player's
+			-- item grid band (grid_y .. grid_y+grid_h), i.e. below the
+			-- name header — not the section and not the whole panel.
+			local slot_y = grid_y + math.floor((grid_h - wildcard_slot_size) / 2)
+			render_wildcard_cell(
+				items_panel,
+				wildcards,
+				slot_x,
+				slot_y,
+				wildcard_slot_size,
+				wildcard_slot_size,
+				self._csr_item_positions,
+				pid
+			)
 		end
 	end
 end

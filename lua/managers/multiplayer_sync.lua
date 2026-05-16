@@ -26,6 +26,9 @@ local MSG = {
 	CATCHUP_GRANT = "CSR_CatchupGrant", -- host -> joining peer: catchup item list + leftover wallet
 	ASSAULT_END = "CSR_AssaultEnd", -- host -> all peers: assault ended (Crooked Badge revive trigger)
 	LOCKES_HEAL = "CSR_LockesHeal", -- any peer -> all peers: 30s Locke's Beret pulse, payload = sender's stacks
+	OATH_HEAL = "CSR_OathHeal", -- host -> client: Hippocratic Oath aura tick, client heals self locally
+	FF_SPIKES = "CSR_FFSpikes", -- any peer -> all peers: Familiar Friend spike-nova VFX trigger, payload = "x,y,z,radius"
+	CHIP_KILL = "CSR_ChipKill", -- any peer -> all peers: Bonnie's Chip proc kill, payload = "x,y,z" (dead enemy position; receiver plays a random chip SFX locally at that position)
 }
 
 -- Max bytes per network payload (conservative; SuperBLT limit is ~237)
@@ -1175,6 +1178,77 @@ Hooks:Add("NetworkReceivedData", "CSR_MultiplayerSync", function(sender, id, dat
 		log("[CSR][Beret] received LOCKES_HEAL from peer=" .. tostring(sender) .. " stacks=" .. tostring(stacks))
 		if stacks and stacks > 0 and _G.CSR_LockesBeret_ApplyTeamHeal then
 			_G.CSR_LockesBeret_ApplyTeamHeal(stacks)
+		end
+		return
+	end
+
+	-- === Familiar Friend spike-nova VFX trigger ===
+	-- Pure visual broadcast; damage runs through the standard damage_bullet
+	-- pipeline on the casting peer (which is already MP-networked). Each
+	-- receiver re-queries its own nearby enemies and renders spike units
+	-- locally — see familiarfriend.lua:CSR_FF_OnRemoteCast.
+	if id == MSG.FF_SPIKES then
+		local x_str, y_str, z_str, r_str = string.match(data, "^(%-?[%d%.]+),(%-?[%d%.]+),(%-?[%d%.]+),(%-?[%d%.]+)$")
+		local x, y, z, r = tonumber(x_str), tonumber(y_str), tonumber(z_str), tonumber(r_str)
+		if x and y and z and r and _G.CSR_FF_OnRemoteCast then
+			pcall(_G.CSR_FF_OnRemoteCast, Vector3(x, y, z), r)
+		end
+		return
+	end
+
+	-- === Bonnie's Chip proc kill — positional SFX broadcast ===
+	-- The killer broadcasts the dead enemy's world position so every other
+	-- peer plays a random chip SFX locally at that position. Variant pick is
+	-- not synced (short SFX, randomization per-peer is fine).
+	if id == MSG.CHIP_KILL then
+		local x_str, y_str, z_str = string.match(data, "^(%-?[%d%.]+),(%-?[%d%.]+),(%-?[%d%.]+)$")
+		local x, y, z = tonumber(x_str), tonumber(y_str), tonumber(z_str)
+		if x and y and z and _G.CSR_PlaySound then
+			local user_vol = (
+				_G.CSR_Settings
+				and _G.CSR_Settings.values
+				and _G.CSR_Settings.values.bonnie_chip_sound_volume
+			) or 1.0
+			pcall(function()
+				_G.CSR_PlaySound("bonnie_chip", {
+					position = Vector3(x, y, z),
+					falloff_db_per_meter = 1,
+					volume = user_vol * 0.75,
+				})
+			end)
+		end
+		return
+	end
+
+	-- Hippocratic Oath aura tick (host -> client). Heals local player by the
+	-- per-tick percent and triggers the local pulse visual on the client's
+	-- medic. Payload is empty; the heal amount lives in CSR_ItemConstants so
+	-- client and host stay in sync if values are tweaked.
+	if id == MSG.OATH_HEAL then
+		local heal_pct = (_G.CSR_ItemConstants and _G.CSR_ItemConstants.hippocratic_heal_pct_per_tick) or 0.05
+		local pu = managers.player and managers.player:player_unit()
+		local hp_before, hp_after
+		if alive(pu) then
+			local cdmg = pu:character_damage()
+			if cdmg and cdmg.restore_health then
+				hp_before = cdmg.get_real_health and cdmg:get_real_health() or nil
+				pcall(cdmg.restore_health, cdmg, heal_pct, false)
+				hp_after = cdmg.get_real_health and cdmg:get_real_health() or nil
+			end
+		end
+		-- Find own medic, fire pulse visual + voiceline (voiceline only if HP
+		-- actually went up and the 30s throttle elapsed).
+		local medic
+		if _G.CSR_HippocraticOath_FindLocalMedic then
+			medic = CSR_HippocraticOath_FindLocalMedic()
+		end
+		if medic then
+			if _G.CSR_HippocraticOath_StartPulse then
+				CSR_HippocraticOath_StartPulse(medic)
+			end
+			if _G.CSR_HippocraticOath_TryPlayVoice then
+				CSR_HippocraticOath_TryPlayVoice(medic, hp_before, hp_after)
+			end
 		end
 		return
 	end

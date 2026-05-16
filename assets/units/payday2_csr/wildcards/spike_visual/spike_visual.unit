@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<unit type="gen" slot="1">
+	<object file="units/pd2_dlc_ecp/weapons/wpn_prj_ecp_arrow/wpn_prj_ecp_arrow" />
+	<network sync="none" />
+	<extensions>
+		<extension class="ScriptUnitData" name="unit_data" />
+	</extensions>
+</unit>

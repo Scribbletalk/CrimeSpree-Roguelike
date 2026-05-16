@@ -58,6 +58,10 @@ Hooks:PostHook(CrimeSpreeManager, "_setup", "CSR_AutoTestSetup", function(self)
 		"player_the_edge_",
 		"player_cup_of_joe_",
 		"player_lockes_beret_",
+		"player_familiar_friend_",
+		"player_side_satchel_",
+		"player_turron_",
+		"player_hippocratic_oath_",
 	}
 
 	print("[CSR Auto Test] Adding " .. #test_prefixes .. " test items...")

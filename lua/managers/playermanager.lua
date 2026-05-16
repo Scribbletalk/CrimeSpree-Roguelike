@@ -467,6 +467,10 @@ Hooks:PostHook(PlayerManager, "spawned_player", "CSR_ApplyBuffs", function(self,
 				["player_crooked_badge_"] = "crooked_badge",
 				["player_dead_mans_trigger_"] = "dead_mans_trigger",
 				["player_half_a_glass_"] = "half_a_glass",
+				["player_familiar_friend_"] = "familiar_friend",
+				["player_side_satchel_"] = "side_satchel",
+				["player_turron_"] = "turron",
+				["player_hippocratic_oath_"] = "hippocratic_oath",
 			}
 			local already_marked = {}
 			for _, item_data in ipairs(my_items) do

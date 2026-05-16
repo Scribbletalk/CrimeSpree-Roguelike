@@ -110,7 +110,7 @@ local function bonnie_chip_try_proc(self, attack_data)
 	return true
 end
 
-local function bonnie_chip_play_kill_sound(attack_data)
+local function bonnie_chip_play_kill_sound(dead_unit, attack_data)
 	if not _G.CSR_PlaySound then
 		return
 	end
@@ -118,14 +118,37 @@ local function bonnie_chip_play_kill_sound(attack_data)
 	if not (player_unit and alive(player_unit)) then
 		return
 	end
-	-- 3D unit-attached source (positional). cleanup_old kills the prior
-	-- proc's source before starting a new one — fixes the back-to-back
-	-- minigun case where rapid procs would layer.
+	if not (dead_unit and alive(dead_unit)) then
+		return
+	end
+	-- Position-based source at the dead enemy's body. Manual quadratic
+	-- attenuation via falloff_max_distance — silent at 30 m and beyond,
+	-- full volume at the source. (SuperBLT's XAudio set_min/max_distance
+	-- API is a no-op in the current C++ build — verified 2026-05-13 with
+	-- diagnostic logging on chip kills at 8.79-37.46 m, sound played at
+	-- full volume regardless of min_distance value.) Source position still
+	-- provides stereo panning via OpenAL even without distance attenuation.
+	-- cleanup_old kills the prior proc's source — fixes back-to-back
+	-- minigun proc layering.
+	local pos = dead_unit:position()
+	local user_vol = (_G.CSR_Settings and _G.CSR_Settings.values and _G.CSR_Settings.values.bonnie_chip_sound_volume)
+		or 1.0
+
 	_G._csr_chip_sound_source = _G.CSR_PlaySound("bonnie_chip", {
-		unit = player_unit,
-		volume_key = "bonnie_chip_sound_volume",
+		position = pos,
+		falloff_db_per_meter = 1,
+		volume = user_vol * 0.75,
 		cleanup_old = _G._csr_chip_sound_source,
 	})
+
+	-- MP sync: broadcast position so other peers hear the chip kill at the
+	-- same spot. Each receiver picks its own random variant locally.
+	if LuaNetworking and _G.CSR_MP and CSR_MP.is_mp_session and CSR_MP.MSG and CSR_MP.MSG.CHIP_KILL then
+		local payload = string.format("%.2f,%.2f,%.2f", pos.x, pos.y, pos.z)
+		pcall(function()
+			LuaNetworking:SendToPeers(CSR_MP.MSG.CHIP_KILL, payload)
+		end)
+	end
 end
 
 Hooks:PreHook(CopDamage, "damage_bullet", "CSR_BonnieChip_Pre", function(self, attack_data)
@@ -136,7 +159,7 @@ end)
 
 Hooks:PostHook(CopDamage, "damage_bullet", "CSR_BonnieChip_Post", function(self, attack_data)
 	if self._csr_chip_proc and self._dead then
-		bonnie_chip_play_kill_sound(self._csr_chip_proc)
+		bonnie_chip_play_kill_sound(self._unit, self._csr_chip_proc)
 	end
 	self._csr_chip_proc = nil
 end)

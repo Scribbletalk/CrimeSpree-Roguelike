@@ -8,6 +8,12 @@ end
 -- Initialize the global store (survives file reloads)
 _G.CSR_PlayerItems = _G.CSR_PlayerItems or {}
 
+-- Per-peer count of wildcards stripped by the carry-1 cleanup in CSR_AddItem.
+-- modifiers_to_select compensates with this so each replacement still counts as
+-- one milestone pick (otherwise #items is unchanged across a swap and the popup
+-- never advances). Seed reset clears it via seed_manager.lua.
+_G.CSR_WildcardReplacements = _G.CSR_WildcardReplacements or {}
+
 -- === STACKS CACHE ===
 -- Counting stacks by prefix walks the items list every call. Combat hooks
 -- (damage_bullet / damage_melee) can hit this hundreds of times per second.
@@ -193,6 +199,34 @@ end
 -- Returns the full item id (e.g. "player_health_boost_3")
 function CSR_AddItem(id_prefix, level)
 	local items = CSR_GetLocalItems()
+
+	-- Carry-1 wildcard enforcement: when adding a wildcard, strip any
+	-- existing wildcard from the inventory first. The popup UI flow shows a
+	-- confirmation modal before reaching this point (wildcard_replace_prompt.lua),
+	-- but the cleanup runs unconditionally so that non-popup paths
+	-- (scrapper, MP late-join catchup, debug menu, sync recovery) can never
+	-- leave the player holding two wildcards and producing a HUD/items-tab
+	-- desync. CSR_ITEM_BY_PREFIX may not be ready on very-early-load paths,
+	-- so guard the lookup.
+	local registry = _G.CSR_ITEM_BY_PREFIX
+	local new_def = registry and registry[id_prefix:sub(1, -2)]
+	if new_def and new_def.rarity == "wildcard" then
+		local peer_id = CSR_LocalPeerId()
+		for i = #items, 1, -1 do
+			local it = items[i]
+			local it_prefix = it.id and it.id:match("^(.+_)%d+$")
+			local it_key = it_prefix and it_prefix:sub(1, -2)
+			local it_def = it_key and registry[it_key]
+			if it_def and it_def.rarity == "wildcard" then
+				table.remove(items, i)
+				-- Compensate milestone math: removal would otherwise mask the
+				-- fact that the player just made a selection (see
+				-- modifiers_to_select in crimespree_filter.lua).
+				_G.CSR_WildcardReplacements[peer_id] = (_G.CSR_WildcardReplacements[peer_id] or 0) + 1
+			end
+		end
+	end
+
 	local next_num = CSR_GetNextId(id_prefix)
 	local new_id = id_prefix .. tostring(next_num)
 	level = level or (managers.crime_spree and managers.crime_spree:spree_level() or 0)

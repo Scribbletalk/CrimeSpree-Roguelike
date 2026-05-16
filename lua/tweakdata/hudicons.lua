@@ -56,6 +56,27 @@ local cup_of_joe_file = mod_path .. "assets/guis/textures/icons/items/cup_of_joe
 local cup_of_joe_path = "guis/textures/pd2/crime_spree/csr_cup_of_joe"
 local lockes_beret_file = mod_path .. "assets/guis/textures/icons/items/locke_beret.dds"
 local lockes_beret_path = "guis/textures/pd2/crime_spree/csr_lockes_beret"
+-- Wildcard icons
+local familiar_friend_file = mod_path .. "assets/guis/textures/icons/items/familiar_friend.dds"
+local familiar_friend_path = "guis/textures/pd2/crime_spree/csr_familiar_friend"
+local side_satchel_file = mod_path .. "assets/guis/textures/icons/items/satchel.dds"
+local side_satchel_path = "guis/textures/pd2/crime_spree/csr_side_satchel"
+local turron_file = mod_path .. "assets/guis/textures/icons/items/turron.dds"
+local turron_path = "guis/textures/pd2/crime_spree/csr_turron"
+local hippocratic_oath_file = mod_path .. "assets/guis/textures/icons/items/hippocratic_oath.dds"
+local hippocratic_oath_path = "guis/textures/pd2/crime_spree/csr_hippocratic_oath"
+-- Pre-mirrored wildcard icons. Used ONLY by hud_wildcard_slot.lua: applying
+-- texture_rect={w,0,-w,h} to a mirrored DDS un-flips the visual AND reverses
+-- the VertexColorTexturedRadial sweep direction, giving the slot a CCW
+-- recharge animation without needing to mirror the icon everywhere else.
+local familiar_friend_mirror_file = mod_path .. "assets/guis/textures/icons/items/familiar_friend_mirror.dds"
+local familiar_friend_mirror_path = "guis/textures/pd2/crime_spree/csr_familiar_friend_mirror"
+local side_satchel_mirror_file = mod_path .. "assets/guis/textures/icons/items/satchel_mirror.dds"
+local side_satchel_mirror_path = "guis/textures/pd2/crime_spree/csr_side_satchel_mirror"
+local turron_mirror_file = mod_path .. "assets/guis/textures/icons/items/turron_mirror.dds"
+local turron_mirror_path = "guis/textures/pd2/crime_spree/csr_turron_mirror"
+local hippocratic_oath_mirror_file = mod_path .. "assets/guis/textures/icons/items/hippocratic_oath_mirror.dds"
+local hippocratic_oath_mirror_path = "guis/textures/pd2/crime_spree/csr_hippocratic_oath_mirror"
 -- Modifier icons (located in icons/modifiers/ folder)
 local guilty_conscience_file = mod_path .. "assets/guis/textures/icons/modifiers/guilty_conscience.dds"
 local guilty_conscience_path = "guis/textures/pd2/crime_spree/csr_guilty_conscience"
@@ -146,6 +167,18 @@ if DB and DB.create_entry then
 	DB:create_entry(Idstring("texture"), Idstring(cup_of_joe_path), cup_of_joe_file)
 
 	DB:create_entry(Idstring("texture"), Idstring(lockes_beret_path), lockes_beret_file)
+
+	-- Wildcard items
+	DB:create_entry(Idstring("texture"), Idstring(familiar_friend_path), familiar_friend_file)
+	DB:create_entry(Idstring("texture"), Idstring(side_satchel_path), side_satchel_file)
+	DB:create_entry(Idstring("texture"), Idstring(turron_path), turron_file)
+	DB:create_entry(Idstring("texture"), Idstring(hippocratic_oath_path), hippocratic_oath_file)
+
+	-- Pre-mirrored wildcard icons (HUD slot CCW recharge — see comment above).
+	DB:create_entry(Idstring("texture"), Idstring(familiar_friend_mirror_path), familiar_friend_mirror_file)
+	DB:create_entry(Idstring("texture"), Idstring(side_satchel_mirror_path), side_satchel_mirror_file)
+	DB:create_entry(Idstring("texture"), Idstring(turron_mirror_path), turron_mirror_file)
+	DB:create_entry(Idstring("texture"), Idstring(hippocratic_oath_mirror_path), hippocratic_oath_mirror_file)
 
 	-- Modifier icons
 	DB:create_entry(Idstring("texture"), Idstring(guilty_conscience_path), guilty_conscience_file)
@@ -305,6 +338,50 @@ function HudIconsTweakData:init()
 
 	self.csr_lockes_beret = {
 		texture = lockes_beret_path,
+		texture_rect = { 0, 0, 128, 128 },
+	}
+
+	-- Wildcard items
+	self.csr_familiar_friend = {
+		texture = familiar_friend_path,
+		texture_rect = { 0, 0, 128, 128 },
+	}
+
+	self.csr_side_satchel = {
+		texture = side_satchel_path,
+		texture_rect = { 0, 0, 128, 128 },
+	}
+
+	self.csr_turron = {
+		texture = turron_path,
+		texture_rect = { 0, 0, 128, 128 },
+	}
+
+	self.csr_hippocratic_oath = {
+		texture = hippocratic_oath_path,
+		texture_rect = { 0, 0, 128, 128 },
+	}
+
+	-- Pre-mirrored wildcard icons. The HUD slot pairs these with
+	-- texture_rect={w,0,-w,h} so the icon LOOKS un-mirrored on screen but
+	-- VertexColorTexturedRadial sweeps counterclockwise instead of clockwise.
+	self.csr_familiar_friend_mirror = {
+		texture = familiar_friend_mirror_path,
+		texture_rect = { 0, 0, 128, 128 },
+	}
+
+	self.csr_side_satchel_mirror = {
+		texture = side_satchel_mirror_path,
+		texture_rect = { 0, 0, 128, 128 },
+	}
+
+	self.csr_turron_mirror = {
+		texture = turron_mirror_path,
+		texture_rect = { 0, 0, 128, 128 },
+	}
+
+	self.csr_hippocratic_oath_mirror = {
+		texture = hippocratic_oath_mirror_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 

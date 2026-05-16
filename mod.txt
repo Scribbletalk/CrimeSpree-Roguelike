@@ -2,7 +2,7 @@
 	"name": "Crime Spree Roguelike",
 	"description": "Roguelike items and buffs for Crime Spree mode",
 	"author": "Candy",
-	"version": "6.1.4",
+	"version": "6.2.0",
 	"blt_version": 2,
 	"updates": [
 		{
@@ -40,6 +40,10 @@
 		{
 			"hook_id": "lib/entry",
 			"script_path": "lua/core/item_registry.lua"
+		},
+		{
+			"hook_id": "lib/entry",
+			"script_path": "lua/units/player/wildcard_dispatcher.lua"
 		}
 	],
 	"hooks": [
@@ -237,6 +241,10 @@
 			"script_path": "lua/menu/item_frames_in_selection.lua"
 		},
 		{
+			"hook_id": "lib/managers/menu/crimespreemodifiersmenucomponent",
+			"script_path": "lua/menu/wildcard_replace_prompt.lua"
+		},
+		{
 			"hook_id": "lib/managers/crimespreemanager",
 			"script_path": "lua/managers/crimespree_filter.lua"
 		},
@@ -335,6 +343,10 @@
 		{
 			"hook_id": "lib/managers/hud/hudteammate",
 			"script_path": "lua/modifiers/dearestpossession.lua"
+		},
+		{
+			"hook_id": "lib/managers/hud/hudteammate",
+			"script_path": "lua/menu/hud_wildcard_slot.lua"
 		},
 		{
 			"hook_id": "lib/units/beings/player/playerdamage",
@@ -687,6 +699,62 @@
 		{
 			"hook_id": "lib/managers/menu/missionbriefinggui",
 			"script_path": "lua/compat/holoui_briefing.lua"
+		},
+		{
+			"hook_id": "lib/managers/playermanager",
+			"script_path": "lua/modifiers/familiarfriend.lua"
+		},
+		{
+			"hook_id": "lib/tweak_data/tweakdata",
+			"script_path": "lua/tweakdata/csr_ff_projectile.lua"
+		},
+		{
+			"hook_id": "lib/units/weapons/projectiles/arrowbase",
+			"script_path": "lua/tweakdata/csr_ff_projectile.lua"
+		},
+		{
+			"hook_id": "lib/units/contourext",
+			"script_path": "lua/tweakdata/csr_ff_projectile.lua"
+		},
+		{
+			"hook_id": "lib/managers/playermanager",
+			"script_path": "lua/modifiers/sidesatchel.lua"
+		},
+		{
+			"hook_id": "lib/units/interactions/interactionext",
+			"script_path": "lua/modifiers/sidesatchel.lua"
+		},
+		{
+			"hook_id": "lib/managers/playermanager",
+			"script_path": "lua/modifiers/turron.lua"
+		},
+		{
+			"hook_id": "lib/units/beings/player/playerdamage",
+			"script_path": "lua/modifiers/turron.lua"
+		},
+		{
+			"hook_id": "lib/managers/playermanager",
+			"script_path": "lua/modifiers/hippocraticoath.lua"
+		},
+		{
+			"hook_id": "lib/units/beings/player/playerbase",
+			"script_path": "lua/modifiers/hippocraticoath.lua"
+		},
+		{
+			"hook_id": "lib/units/beings/player/huskplayerbase",
+			"script_path": "lua/modifiers/hippocraticoath.lua"
+		},
+		{
+			"hook_id": "lib/managers/group_ai_states/groupaistatebase",
+			"script_path": "lua/modifiers/hippocraticoath.lua"
+		},
+		{
+			"hook_id": "lib/network/base/basenetworksession",
+			"script_path": "lua/modifiers/hippocraticoath.lua"
+		},
+		{
+			"hook_id": "lib/units/enemies/cop/copdamage",
+			"script_path": "lua/modifiers/hippocraticoath.lua"
 		}
 	],
 	"keybinds": [
@@ -716,6 +784,14 @@
 			"run_in_game": true,
 			"key": "f9",
 			"script_path": "lua/debug/keybind_debug_prop_cycle.lua"
+		},
+		{
+			"keybind_id": "csr_activate_wildcard",
+			"name": "Activate Wildcard Item",
+			"description": "Activates an owned wildcard active item.",
+			"run_in_menu": false,
+			"run_in_game": true,
+			"script_path": "lua/keybinds/csr_activate_wildcard.lua"
 		}
 	]
 }

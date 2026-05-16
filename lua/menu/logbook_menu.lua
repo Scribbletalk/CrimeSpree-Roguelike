@@ -200,6 +200,36 @@ local ITEMS_DATA = {
 		name_en = "DEAD MAN'S TRIGGER",
 		effect_en = "When going down you explode dealing 480 (+240 per stack, linear) damage in a 3 (+2 per stack, linear) meter radius. Damage scales with Crime Spree rank.",
 	},
+
+	-- WILDCARD
+	{
+		id = "familiar_friend",
+		icon = "csr_familiar_friend",
+		rarity = "wildcard",
+		name_en = "FAMILIAR FRIEND",
+		effect_en = "Active wildcard (carry-1). Press your wildcard key to fire a Spike Nova: 360° AoE damage around you. Damage scales with Crime Spree rank. 60-second cooldown. Stealth-blocked.",
+	},
+	{
+		id = "side_satchel",
+		icon = "csr_side_satchel",
+		rarity = "wildcard",
+		name_en = "SIDE SATCHEL",
+		effect_en = "Passive wildcard (carry-1). Doubles the carry cap of mission specials (C4 4 → 8, keycards 1 → 2, drill parts 1 → 2, etc.).",
+	},
+	{
+		id = "turron",
+		icon = "csr_turron",
+		rarity = "wildcard",
+		name_en = "TURRON",
+		effect_en = "Active wildcard (carry-1). Press your wildcard key to instantly heal 33% of max HP and gain 20% damage reduction for 5 seconds. 90-second cooldown. Works in stealth.",
+	},
+	{
+		id = "hippocratic_oath",
+		icon = "csr_hippocratic_oath",
+		rarity = "wildcard",
+		name_en = "HIPPOCRATIC OATH",
+		effect_en = "Passive wildcard (carry-1). On loud transition, a medic spawns and joins your crew. While within 3 metres of the medic, regenerate 1% max HP per second. After death, the medic respawns 6 minutes later. Loud only.",
+	},
 }
 
 -- Rarity colours
@@ -219,6 +249,13 @@ local GRID_PADDING_Y = -2
 local GRID_ITEMS_PER_ROW = 10
 local GRID_MARGIN_X = 0
 local GRID_MARGIN_Y = 0
+
+-- Logbook-only per-icon scale overrides. Takes precedence over _G.CSR_IconScale
+-- so the items tab / wildcard slot can keep their own sizing.
+local LOGBOOK_ICON_SCALE = {
+	csr_side_satchel = 0.9,
+	csr_hippocratic_oath = 0.9,
+}
 
 -- Rarity frame icons (same textures as items_page and selection popup)
 -- All rarities use the same frame (rare) to avoid icon sizing issues
@@ -939,7 +976,7 @@ function CrimeSpreeLogbookMenuComponent:_create_icons_grid()
 			})
 		end
 
-		local this_icon_size = icon_size * (ICON_SCALE[item_data.icon] or 1)
+		local this_icon_size = icon_size * (LOGBOOK_ICON_SCALE[item_data.icon] or ICON_SCALE[item_data.icon] or 1)
 		local icon_offset = (frame_size - this_icon_size) / 2
 
 		if is_unlocked then
@@ -1122,18 +1159,19 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 		layer = 5,
 	})
 
-	-- Apply color tags: {g}text{/} = green, {r}text{/} = red
+	-- Apply color tags: {g}text{/} = green, {r}text{/} = red, {b}text{/} = blue
 	-- Tags are stripped from display text, colors applied via set_range_color
 	local COLOR_POS = Color(0.7, 1, 0.7)
 	local COLOR_NEG = Color(1, 0.5, 0.5)
-	local TAG_COLORS = { g = COLOR_POS, r = COLOR_NEG }
+	local COLOR_INFO = Color(0.6, 0.8, 1.0)
+	local TAG_COLORS = { g = COLOR_POS, r = COLOR_NEG, b = COLOR_INFO }
 	local ranges = {}
 	local clean = ""
 	local i = 1
 	local current_color = nil
 	local color_start = nil
 	while i <= #effect_text do
-		local tag = effect_text:match("^{(/?[gr]?)}", i)
+		local tag = effect_text:match("^{(/?[grb]?)}", i)
 		if tag then
 			if tag == "/" then
 				if current_color and color_start then

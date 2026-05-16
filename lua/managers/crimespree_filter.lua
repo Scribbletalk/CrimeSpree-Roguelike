@@ -381,35 +381,15 @@ if CrimeSpreeManager then
 			if _G.CSR_CatchupItemsReceived then
 				catchup_items = _G.CSR_CatchupItemsReceived[pid] or 0
 			end
-			local milestone_selected = math.max(0, selected - bonus_items - shop_items - catchup_items)
+			-- Wildcard replacements (carry-1): the swap leaves #items unchanged,
+			-- but the player did make a selection — add it back so popup advances.
+			local wildcard_replaced = 0
+			if _G.CSR_WildcardReplacements then
+				wildcard_replaced = _G.CSR_WildcardReplacements[pid] or 0
+			end
+			local milestone_selected =
+				math.max(0, selected + wildcard_replaced - bonus_items - shop_items - catchup_items)
 			local result = math.max(expected - milestone_selected, 0)
-
-			-- Diagnostic for milestone-popup-not-firing bug (Zeon report 2026-05-03).
-			-- Unconditional log on every call so we can see which input is wrong
-			-- the instant the bug repros. Strip the unconditional log once the
-			-- root cause is identified — the throttled CSR_log version below stays.
-			log(
-				"[CSR mts] loud level="
-					.. level
-					.. " expected="
-					.. expected
-					.. " items="
-					.. selected
-					.. " bonus="
-					.. bonus_items
-					.. " shop="
-					.. shop_items
-					.. " catchup="
-					.. catchup_items
-					.. " milestone="
-					.. milestone_selected
-					.. " result="
-					.. result
-					.. " in_progress="
-					.. tostring(self:in_progress())
-					.. " host_rank="
-					.. tostring(using_host_rank)
-			)
 			return result
 		end
 		return original_modifiers_to_select(self, table_name, add_repeating)
@@ -584,7 +564,16 @@ if CrimeSpreeManager then
 		end
 		-- Also track player item count from the per-player store
 		local player_item_count = CSR_GetLocalItems and #CSR_GetLocalItems() or 0
-		local current_count = forced_count + player_item_count
+		-- Wildcard carry-1 swaps leave #items unchanged (one removed, one
+		-- added), so without this neither the cache-invalidation gate below
+		-- nor the offer RNG seed would advance — the popup would return the
+		-- byte-identical cached offer and keep re-offering the wildcard,
+		-- allowing infinite swaps. Fold the per-player replacement counter in
+		-- so a swap counts as progress here too, mirroring the existing
+		-- modifiers_to_select() compensation.
+		local wc_peer_id = (CSR_LocalPeerId and CSR_LocalPeerId()) or 1
+		local wildcard_replaced = (_G.CSR_WildcardReplacements and _G.CSR_WildcardReplacements[wc_peer_id]) or 0
+		local current_count = forced_count + player_item_count + wildcard_replaced
 
 		-- Track modifier count changes for auto-save and popup deduplication
 		if not CSR_ModifierCountInitialized then
@@ -676,7 +665,10 @@ if CrimeSpreeManager then
 		local peer_id = CSR_LocalPeerId and CSR_LocalPeerId() or 1
 		local player_seed = cs_seed + peer_id * 104729
 		local spree_level = self:spree_level() or 0
-		local unique_seed = player_seed + player_item_count * 1337 + spree_level * 7919
+		-- wildcard_replaced (computed above) advances the seed on a carry-1
+		-- swap, where player_item_count alone would not change. Distinct
+		-- prime multiplier so it never collides with the item-count term.
+		local unique_seed = player_seed + player_item_count * 1337 + spree_level * 7919 + wildcard_replaced * 31337
 		math.randomseed(unique_seed)
 		-- Warm up the RNG (first values after randomseed() can be predictable)
 		for i = 1, 10 do

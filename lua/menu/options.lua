@@ -19,6 +19,10 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_OptionsLocalization", function(loc
 		csr_lobby_filter_title = "CSR-Only Lobby Filter",
 		csr_lobby_filter_desc = "Hides non-CSR Crime Spree lobbies in Crime.Net and auto-kicks players without the mod. Enable if you only want to play with other CSR players.",
 
+		-- Wildcard HUD display
+		csr_hud_wildcard_use_bar_title = "Wildcard HUD: Vertical Bar",
+		csr_hud_wildcard_use_bar_desc = "Replace the wildcard icon next to the health circle with a vertical magenta bar that fills bottom-to-top as the cooldown depletes. Passive wildcards show a permanently full bar.",
+
 		-- Item Settings (sub-menu)
 		csr_item_settings_title = "Items Settings",
 		csr_item_settings_desc = "Per-item sound volume and other item-specific options.",
@@ -112,6 +116,12 @@ Hooks:Add("MenuManagerInitialize", "CSR_MenuCallbacks", function(menu_manager)
 	MenuCallbackHandler.csr_lobby_filter_changed = function(self, item)
 		if CSR_Settings then
 			CSR_Settings:SetValue("lobby_filter", item:value() == "on")
+		end
+	end
+
+	MenuCallbackHandler.csr_hud_wildcard_use_bar_changed = function(self, item)
+		if CSR_Settings then
+			CSR_Settings:SetValue("hud_wildcard_use_bar", item:value() == "on")
 		end
 	end
 
@@ -292,6 +302,18 @@ Hooks:Add("MenuManagerPopulateCustomMenus", "CSR_PopulateMenus", function(menu_m
 		value = block_healing_value,
 		menu_id = "csr_item_settings_menu",
 		priority = 3,
+	})
+
+	-- Wildcard HUD: Vertical Bar toggle (in Item Settings)
+	local hud_wildcard_use_bar_value = CSR_Settings and CSR_Settings.values.hud_wildcard_use_bar or false
+	MenuHelper:AddToggle({
+		id = "csr_hud_wildcard_use_bar",
+		title = "csr_hud_wildcard_use_bar_title",
+		desc = "csr_hud_wildcard_use_bar_desc",
+		callback = "csr_hud_wildcard_use_bar_changed",
+		value = hud_wildcard_use_bar_value,
+		menu_id = "csr_item_settings_menu",
+		priority = 4,
 	})
 
 	-- Verbose Logging toggle (bottom of menu)

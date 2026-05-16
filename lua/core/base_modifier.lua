@@ -189,6 +189,37 @@ _G.CSR_ItemConstants = {
 	lockes_beret_max_pct = 0.50, -- Hyperbolic asymptote: 50% of max HP
 	lockes_beret_interval = 30, -- Pulse interval (seconds)
 
+	-- === WILDCARD ITEMS ===
+
+	-- FAMILIAR FRIEND — Spike Nova: 360° AoE damage on key press
+	familiar_friend_radius = 1000, -- AoE radius (cm, 10m)
+	familiar_friend_damage = 2000, -- internal damage at rank 0 (= 400 display HP)
+	familiar_friend_level_pct = 0.0035, -- +0.35% damage per CS rank (additive linear)
+	familiar_friend_cooldown = 60, -- seconds between activations
+	familiar_friend_charge_delay = 0.6, -- wind-up time before nova fires (matches charge SFX)
+
+	-- TURRON — instant heal + 5s damage reduction window
+	turron_heal_pct = 0.33, -- +33% of max HP, instant on press
+	turron_dr_pct = 0.33, -- 33% damage reduction during window
+	turron_dr_duration = 5, -- seconds of DR after press
+	turron_cooldown = 90, -- seconds between presses
+
+	-- SIDE SATCHEL — additive movement-speed bump while a loot bag is on the back
+	side_satchel_carry_speed_mult = 1.20, -- 1.20 = +20% (additive vs vanilla baseline)
+
+	-- HIPPOCRATIC OATH — passive medic joker that heals via aura
+	hippocratic_aura_radius = 500, -- 5m heal aura around the medic (PD2 units, 1m = 100)
+	hippocratic_aura_tick = 5.0, -- heal pulse cadence (seconds)
+	hippocratic_heal_pct_per_tick = 0.05, -- 5% max HP per pulse (1%/sec sustained)
+	hippocratic_respawn_delay = 360, -- 6 minutes between deaths (cooldown only, no per-heist cap)
+	hippocratic_spawn_min_distance = 1500, -- spawn medic at least 15m from owner (offscreen feel)
+	hippocratic_spawn_max_distance = 4000, -- but no farther than 40m (so they actually arrive)
+	hippocratic_medic_dr = 0.80, -- 80% damage reduction on incoming damage to the medic
+	hippocratic_pulse_duration = 0.5, -- expanding-ring visual lifetime per heal pulse (seconds)
+	hippocratic_pulse_alpha = 0.06, -- peak opacity of the expanding ring (0..1, fades linearly to 0 over duration). Brush uses `opacity_add` blend so this value actually scales contribution; vanilla glows sit in the 0.07-0.15 range, so 0.06 is intentionally on the subtle side.
+	hippocratic_voice_event = "f47", -- Wwise event the medic shouts on heal (vanilla medic priority_shout)
+	hippocratic_voice_throttle = 30, -- minimum seconds between heal voicelines per machine
+
 	-- === FORCED MODIFIERS ===
 
 	-- EXPLOSIVE RESISTANCE (Bulldozer explosion immunity override)
