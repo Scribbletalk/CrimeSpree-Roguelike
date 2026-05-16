@@ -25,6 +25,7 @@
 
 CSRMissionsMenuComponent = CSRMissionsMenuComponent or class(MenuGuiComponentGeneric)
 local padding = 10
+local large_padding = 32
 local size = 280
 CSRMissionsMenuComponent.button_size = {
 	w = size * 0.6666666666666666,
@@ -166,7 +167,88 @@ function CSRMissionsMenuComponent:_setup()
 
 	self._host_failed:set_h(h)
 	self._host_failed:set_bottom(self._host_failed_text:top())
+
+	-- Forked vanilla CS "Start the Heist" button. Vanilla surfaced this as the
+	-- crime_spree_lobby node's `spree_start` menu item; it is not showing in the
+	-- forked flow. We rebuild it with the exact widget + params vanilla uses in
+	-- crimespreemissionendoptions.lua for its menu_cs_start option: CrimeSpreeButton
+	-- (forked as CSRStartButton) with pd2_large_font + shrink_wrap_button, then
+	-- right-aligned. Child of self._panel so vanilla close() cleans it up.
+	self._start_button =
+		CSRStartButton:new(self._panel, tweak_data.menu.pd2_large_font, tweak_data.menu.pd2_large_font_size)
+
+	self._start_button:set_button("BTN_START")
+	self._start_button:set_text(managers.localization:to_upper_text("menu_cs_start"))
+	self._start_button:set_callback(callback(self, self, "_start_pressed"))
+
+	if managers.menu:is_pc_controller() then
+		self._start_button:shrink_wrap_button()
+	end
+
+	self._start_button:panel():set_right(self._buttons_panel:right())
+	self._start_button:panel():set_bottom(parent:bottom() - padding)
+	self._start_bg_text = self:_add_bg_text(self._start_button, managers.localization:to_upper_text("menu_cs_start"))
+
+	-- Forked vanilla CS "Reroll" button. Same widget as start (vanilla builds
+	-- both corner buttons from one CrimeSpreeButton class in
+	-- crimespreemissionendoptions.lua); the reroll/second corner uses
+	-- pd2_large_font_size * 0.8 and sits to the LEFT of start with a
+	-- large_padding gap (set_right(start:left() - large_padding)).
+	self._reroll_button =
+		CSRStartButton:new(self._panel, tweak_data.menu.pd2_large_font, tweak_data.menu.pd2_large_font_size * 0.8)
+
+	self._reroll_button:set_text(managers.localization:to_upper_text("menu_cs_reroll"))
+	self._reroll_button:set_callback(callback(self, self, "_reroll_pressed"))
+
+	if managers.menu:is_pc_controller() then
+		self._reroll_button:shrink_wrap_button()
+	end
+
+	self._reroll_button:panel():set_right(self._start_button:panel():left() - large_padding)
+	self._reroll_button:panel():set_bottom(self._start_button:panel():bottom())
+	self._reroll_bg_text = self:_add_bg_text(self._reroll_button, managers.localization:to_upper_text("menu_cs_reroll"))
 	self:refresh()
+end
+
+function CSRMissionsMenuComponent:_add_bg_text(btn, label)
+	-- Big faded ghost text behind a corner button, copied 1:1 from vanilla's
+	-- per-corner-item recipe (menunodegui.lua:545-560). Parented to self._panel
+	-- (not the shrink-wrapped button panel) so the massive font isn't clipped;
+	-- a lower layer than the button (1000) keeps the sharp button text on top.
+	-- MenuBackdropGUI.animate_bg_text is intentionally NOT called: in vanilla it
+	-- defines an unused closure and never animates, so it is a no-op.
+	local bg_text = self._panel:text({
+		vertical = "bottom",
+		h = 90,
+		alpha = 0.4,
+		align = "right",
+		rotation = 360,
+		layer = 1,
+		text = label,
+		font_size = tweak_data.menu.pd2_massive_font_size,
+		font = tweak_data.menu.pd2_massive_font,
+		color = tweak_data.screen_colors.button_stage_3,
+	})
+
+	bg_text:set_right(btn:panel():right())
+	bg_text:set_center_y(btn:panel():center_y())
+	bg_text:move(13, -9)
+
+	return bg_text
+end
+
+function CSRMissionsMenuComponent:_start_pressed()
+	-- Mirrors vanilla CrimeSpreeMissionEndOptions:perform_start, but routed
+	-- through our forked callback. csr_start_game already guards on
+	-- managers.csr:current_mission() == nil with a menu_error post.
+	MenuCallbackHandler:csr_start_game()
+end
+
+function CSRMissionsMenuComponent:_reroll_pressed()
+	-- Mirrors vanilla CrimeSpreeMissionEndOptions:perform_reroll. csr_reroll
+	-- already guards on is_randomizing() (menu_error) and drives our component's
+	-- randomize_crimespree(); it is the free-reroll fork (no continental coins).
+	MenuCallbackHandler:csr_reroll()
 end
 
 function CSRMissionsMenuComponent:update_mission(btn_idx)
@@ -314,6 +396,24 @@ function CSRMissionsMenuComponent:mouse_moved(o, x, y)
 		end
 	end
 
+	if self._start_button then
+		self._start_button:set_selected(self._start_button:inside(x, y))
+
+		if self._start_button:is_selected() then
+			pointer = "link"
+			used = true
+		end
+	end
+
+	if self._reroll_button then
+		self._reroll_button:set_selected(self._reroll_button:inside(x, y))
+
+		if self._reroll_button:is_selected() then
+			pointer = "link"
+			used = true
+		end
+	end
+
 	return used, pointer
 end
 
@@ -332,6 +432,18 @@ function CSRMissionsMenuComponent:confirm_pressed()
 
 			return true
 		end
+	end
+
+	if self._start_button and self._start_button:is_selected() and self._start_button:callback() then
+		self._start_button:callback()()
+
+		return true
+	end
+
+	if self._reroll_button and self._reroll_button:is_selected() and self._reroll_button:callback() then
+		self._reroll_button:callback()()
+
+		return true
 	end
 end
 
@@ -801,4 +913,104 @@ function CSRMissionButton:mission_id()
 	return (self._mission_data or {}).id
 end
 
-log("[CSR] csr_missions_menu.lua loaded (Slice 8 fork)")
+-- CSRStartButton — byte-for-byte fork of vanilla CrimeSpreeButton
+-- (pd2_source_code/lib/managers/menu/crimespreemodifiersmenucomponent.lua:526-614).
+-- This is the SAME widget vanilla CS uses for its "Start the Heist" option
+-- (crimespreemissionendoptions.lua builds it with menu_cs_start + pd2_large_font
+-- + shrink_wrap_button): a clean right-aligned large-font text button with a
+-- faint add-blend highlight, NOT a boxed/blurred panel. Class rename only; the
+-- widget is backend-agnostic (pure Diesel UI). The callback owner
+-- (CSRMissionsMenuComponent:_start_pressed) routes to our forked csr_start_game.
+CSRStartButton = CSRStartButton or class(MenuGuiItem)
+CSRStartButton._type = "CSRStartButton"
+
+function CSRStartButton:init(parent, font, font_size)
+	self._w = 0.35
+	self._color = tweak_data.screen_colors.button_stage_3
+	self._selected_color = tweak_data.screen_colors.button_stage_2
+	self._links = {}
+	self._panel = parent:panel({
+		layer = 1000,
+		x = parent:w() * (1 - self._w) - padding,
+		w = parent:w() * self._w,
+		h = font_size or tweak_data.menu.pd2_medium_font_size,
+	})
+
+	self._panel:set_bottom(parent:h())
+
+	self._text = self._panel:text({
+		y = 0,
+		blend_mode = "add",
+		align = "right",
+		text = "",
+		halign = "right",
+		x = 0,
+		layer = 1,
+		color = self._color,
+		font = font or tweak_data.menu.pd2_medium_font,
+		font_size = font_size or tweak_data.menu.pd2_medium_font_size,
+	})
+	self._highlight = self._panel:rect({
+		blend_mode = "add",
+		alpha = 0.2,
+		valign = "scale",
+		halign = "scale",
+		layer = 10,
+		color = self._color,
+	})
+
+	self:refresh()
+end
+
+function CSRStartButton:refresh()
+	self._highlight:set_visible(self:is_selected())
+	self._highlight:set_color(self:is_selected() and self._selected_color or self._color)
+	self._text:set_color(self:is_selected() and self._selected_color or self._color)
+end
+
+function CSRStartButton:panel()
+	return self._panel
+end
+
+function CSRStartButton:inside(x, y)
+	return self._panel:inside(x, y)
+end
+
+function CSRStartButton:callback()
+	return self._callback
+end
+
+function CSRStartButton:set_callback(clbk)
+	self._callback = clbk
+end
+
+function CSRStartButton:set_button(btn)
+	self._btn = btn
+end
+
+function CSRStartButton:set_text(text)
+	local prefix = not managers.menu:is_pc_controller()
+			and self._btn
+			and managers.localization:get_default_macro(self._btn)
+		or ""
+
+	self._text:set_text(prefix .. text)
+end
+
+function CSRStartButton:get_link(dir)
+	return self._links[dir]
+end
+
+function CSRStartButton:set_link(dir, item)
+	self._links[dir] = item
+end
+
+function CSRStartButton:update(t, dt) end
+
+function CSRStartButton:shrink_wrap_button(w_padding, h_padding)
+	local _, _, w, h = self._text:text_rect()
+
+	self._panel:set_size(w + (w_padding or 0), h + (h_padding or 0))
+end
+
+log("[CSR] csr_missions_menu.lua loaded (Slice 8 fork + start button)")
