@@ -66,6 +66,68 @@ Hooks:PostHook(MenuComponentManager, "close_crime_spree_contract_gui", "CSR_Swap
 	end
 end)
 
+-- Lobby contract-box class swap.
+--
+-- The in-lobby contract/crew box is built by MenuComponentManager:create_contract_gui,
+-- which picks its class via _contract_gui_class(). Vanilla returns
+-- CrimeSpreeContractBoxGui when managers.crime_spree:is_active(); we never
+-- activate vanilla CS (Slice 6), so it falls through to plain ContractBoxGui.
+-- ContractBoxGui draws the "CHOOSE NEW CONTRACT FROM CRIME.NET" placeholder
+-- (contractboxgui.lua:42, shown when not managers.job:has_active_job()), which
+-- then bleeds through the translucent mission cards.
+--
+-- CrimeSpreeContractBoxGui is backend-agnostic (no managers.crime_spree reads):
+-- in single player _can_update() is false so it renders nothing; in MP it shows
+-- only peer character panels — exactly the vanilla CS-lobby behaviour. We mirror
+-- vanilla's branch with our own active check.
+--
+-- SuperBLT PostHook return-override is intentional and verified
+-- (mods/base/req/core/Hooks.lua:272-285): a post hook returning a non-nil value
+-- replaces the original return; returning nothing leaves vanilla's choice
+-- (ContractBoxGui / SkirmishContractBoxGui / real-CS CrimeSpreeContractBoxGui)
+-- untouched. This keeps Critical Rule #1 (no raw override / hook shadowing).
+--
+-- CSR-only scoping (no vanilla leak): managers.csr:is_active() alone is NOT
+-- sufficient. _state.is_active is a persisted save flag (csr_save.json) that
+-- CSRGameManager:load() restores verbatim; a run whose end_run() never fired
+-- (backed out / crash / alpha has no robust run-state machine) leaves it true
+-- across sessions. create_contract_gui()/_contract_gui_class() runs for EVERY
+-- lobby (normal "lobby" node AND "crime_spree_lobby" node), so a leaked
+-- is_active=true would suppress the vanilla "CHOOSE NEW CONTRACT" box in a
+-- normal lobby too.
+--
+-- The exact, correctly-scoped "we are in the CSR lobby" signal: our forked
+-- CSRMissionsMenuComponent. set_active_components builds a node's components in
+-- list order via ipairs (menucomponentmanager.lua:596-601); the crime_spree_lobby
+-- node lists "crime_spree_missions" BEFORE "contract", so the
+-- create_crime_spree_missions_gui PostHook has already stored our component in
+-- self._crime_spree_missions by the time _contract_gui_class runs for the
+-- contract component. That component is built ONLY for crime_spree_lobby (the
+-- normal "lobby" node has no crime_spree_missions component), and the missions
+-- wiring itself gates on managers.csr:is_active() — so checking it here pins the
+-- contract-box swap to exactly the cards' lifecycle. In any normal/vanilla
+-- lobby self._crime_spree_missions is nil -> we return nil -> vanilla's box is
+-- preserved byte-for-byte, even with a leaked is_active.
+--
+-- Class identity via getmetatable is the same pattern vanilla uses at
+-- menucomponentmanager.lua:660 (getmetatable(self._contract_gui) == class).
+--
+-- MP note: still implicitly gated on managers.csr:is_active() (the missions
+-- wiring won't have built our component otherwise). Until the MP sync slice
+-- lands a client whose managers.csr is not yet active gets vanilla
+-- ContractBoxGui; same scope boundary as the rest of the alpha (host/SP first).
+local function csr_lobby_is_active(mcm)
+	local comp = mcm and mcm._crime_spree_missions
+
+	return comp ~= nil and CSRMissionsMenuComponent ~= nil and getmetatable(comp) == CSRMissionsMenuComponent
+end
+
+Hooks:PostHook(MenuComponentManager, "_contract_gui_class", "CSR_ContractGuiClass_UseCSBox", function(self)
+	if csr_lobby_is_active(self) then
+		return CrimeSpreeContractBoxGui
+	end
+end)
+
 Hooks:Add("LocalizationManagerPostInit", "CSR_ContractHeaderLocalization", function(loc)
 	loc:add_localized_strings({
 		csr_header_title = "Crime Spree Roguelike",

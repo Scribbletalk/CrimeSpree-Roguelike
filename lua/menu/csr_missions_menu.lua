@@ -27,6 +27,12 @@ CSRMissionsMenuComponent = CSRMissionsMenuComponent or class(MenuGuiComponentGen
 local padding = 10
 local large_padding = 32
 local size = 280
+-- Vertical gap between the measured bottom of the foreground title text and the
+-- top of the sidebar. Single visual tunable: raise it to push the sidebar down,
+-- lower it to pull the sidebar up toward the header. Kept small — the massive
+-- ghost behind the title is alpha 0.4 and its visible glyphs sit well above its
+-- 90px box, so a modest clearance avoids overlap without wasting space.
+local sidebar_title_gap = 16
 CSRMissionsMenuComponent.button_size = {
 	w = size * 0.6666666666666666,
 	h = size * 0.5 * 0.6666666666666666,
@@ -70,9 +76,17 @@ function CSRMissionsMenuComponent:_setup()
 	self._panel = parent:panel({
 		layer = self._init_layer,
 	})
+
+	-- Mission cards' bottom edge (applied below via self._buttons_panel:set_bottom).
+	-- Hoisted so the sidebar can be built with its height pinned to it — the
+	-- sidebar sits at y=0, so h == bottom makes its bottom line up with the cards.
+	local bottom = parent:bottom() - tweak_data.menu.pd2_large_font_size * 1.5
+
+	self:_create_title()
+	self:_create_sidebar(bottom)
+
 	local w = (self.button_size.w + padding) * tweak_data.crime_spree.gui.missions_displayed - padding
 	local h = self.button_size.h + self.button_size.title_h
-	local bottom = parent:bottom() - tweak_data.menu.pd2_large_font_size * 1.5
 	self._title_panel = self._panel:panel({})
 
 	self._title_panel:set_w(w)
@@ -187,7 +201,6 @@ function CSRMissionsMenuComponent:_setup()
 
 	self._start_button:panel():set_right(self._buttons_panel:right())
 	self._start_button:panel():set_bottom(parent:bottom() - padding)
-	self._start_bg_text = self:_add_bg_text(self._start_button, managers.localization:to_upper_text("menu_cs_start"))
 
 	-- Forked vanilla CS "Reroll" button. Same widget as start (vanilla builds
 	-- both corner buttons from one CrimeSpreeButton class in
@@ -206,35 +219,82 @@ function CSRMissionsMenuComponent:_setup()
 
 	self._reroll_button:panel():set_right(self._start_button:panel():left() - large_padding)
 	self._reroll_button:panel():set_bottom(self._start_button:panel():bottom())
-	self._reroll_bg_text = self:_add_bg_text(self._reroll_button, managers.localization:to_upper_text("menu_cs_reroll"))
 	self:refresh()
 end
 
-function CSRMissionsMenuComponent:_add_bg_text(btn, label)
-	-- Big faded ghost text behind a corner button, copied 1:1 from vanilla's
-	-- per-corner-item recipe (menunodegui.lua:545-560). Parented to self._panel
-	-- (not the shrink-wrapped button panel) so the massive font isn't clipped;
-	-- a lower layer than the button (1000) keeps the sharp button text on top.
-	-- MenuBackdropGUI.animate_bg_text is intentionally NOT called: in vanilla it
-	-- defines an unused closure and never animates, so it is a no-op.
-	local bg_text = self._panel:text({
-		vertical = "bottom",
-		h = 90,
-		alpha = 0.4,
-		align = "right",
-		rotation = 360,
-		layer = 1,
-		text = label,
-		font_size = tweak_data.menu.pd2_massive_font_size,
-		font = tweak_data.menu.pd2_massive_font,
-		color = tweak_data.screen_colors.button_stage_3,
+function CSRMissionsMenuComponent:_create_title()
+	-- Top-left branded header in the vanilla lobby "crew page" style
+	-- (contractboxgui.lua:8-84, the PLANNING-PHASE-looking title): a crisp
+	-- pd2_large_font foreground on the safe workspace plus a huge faded blue
+	-- pd2_massive_font ghost on the fullscreen workspace, coordinate-mapped with
+	-- safe_to_full_16_9 so the ghost lines up without being clipped by the safe
+	-- area. Copied 1:1 from vanilla; only the text (csr_header_title, registered
+	-- in csr_contract_wiring.lua) and component panels differ. We route the lobby
+	-- box to CrimeSpreeContractBoxGui (which draws no crewpage header), so this
+	-- corner is free and there is no double-up with vanilla. MenuBackdropGUI.
+	-- animate_bg_text is intentionally NOT called: it is a verified no-op
+	-- (pd2_menubackdrop_animate_bg_text_noop) -- the ghost is static in vanilla.
+	-- Children of self._panel / self._fullscreen_panel, both removed in close().
+	local title = self._panel:text({
+		vertical = "top",
+		name = "csr_title",
+		align = "left",
+		text = managers.localization:to_upper_text("csr_header_title"),
+		font_size = tweak_data.menu.pd2_large_font_size,
+		font = tweak_data.menu.pd2_large_font,
+		color = tweak_data.screen_colors.text,
 	})
+	local _, _, w, h = title:text_rect()
 
-	bg_text:set_right(btn:panel():right())
-	bg_text:set_center_y(btn:panel():center_y())
-	bg_text:move(13, -9)
+	title:set_size(w, h)
 
-	return bg_text
+	-- Measured bottom of the solid foreground title, in self._panel (safe)
+	-- coords. The sidebar starts at this + sidebar_title_gap. We anchor to the
+	-- measured text (not modelled ghost-box geometry): the ghost is alpha 0.4
+	-- and top-aligned in an oversized box, so its visible glyphs end only a
+	-- little below the foreground — a small gap clears both.
+	self._title_bottom = title:bottom()
+
+	if MenuBackdropGUI then
+		local ghost_h = 90
+		local ghost_move_y = 9
+		local bg_text = self._fullscreen_panel:text({
+			name = "csr_title",
+			vertical = "top",
+			h = ghost_h,
+			alpha = 0.4,
+			align = "left",
+			layer = 1,
+			text = managers.localization:to_upper_text("csr_header_title"),
+			font_size = tweak_data.menu.pd2_massive_font_size,
+			font = tweak_data.menu.pd2_massive_font,
+			color = tweak_data.screen_colors.button_stage_3,
+		})
+		local x, y = managers.gui_data:safe_to_full_16_9(title:world_x(), title:world_center_y())
+
+		bg_text:set_world_left(x)
+		bg_text:set_world_center_y(y)
+		bg_text:move(-13, ghost_move_y)
+	end
+end
+
+function CSRMissionsMenuComponent:_create_sidebar(bottom)
+	-- CrimeNet-style left sidebar, forked from CrimeNetSidebarGui /
+	-- CrimeNetSidebarItem (crimenetsidebargui.lua). Visual recipe copied 1:1
+	-- (256-wide panel, 0.4 black + test_blur_df backdrop, BoxGui border, icon +
+	-- underscored-uppercase label rows). The collapse/expand, glow, pulse,
+	-- attention/separator subclasses and controller snap are intentionally
+	-- dropped — user asked for "just the panel" for now. Buttons are
+	-- placeholders with no callbacks; behaviour wired in a later pass.
+	-- Child of self._panel so the existing close() (removes self._panel) cleans
+	-- it up. CSR-only by construction: this component is built only for the
+	-- crime_spree_lobby node. The panel spans [top, bottom]: `top` clears the
+	-- title (measured foreground bottom + sidebar_title_gap) so the sidebar
+	-- never overlaps the header text or its faint ghost; `bottom` is the
+	-- mission cards' bottom edge so the two line up.
+	local top = (self._title_bottom or 0) + sidebar_title_gap
+
+	self._sidebar = CSRSidebar:new(self._panel, top, bottom)
 end
 
 function CSRMissionsMenuComponent:_start_pressed()
@@ -375,6 +435,10 @@ function CSRMissionsMenuComponent:update(t, dt)
 		btn:update(t, dt)
 	end
 
+	if self._sidebar then
+		self._sidebar:update(t, dt)
+	end
+
 	if not managers.menu:is_pc_controller() and randomizing and not self:is_randomizing() then
 		self:_select_mission(1)
 	end
@@ -414,10 +478,33 @@ function CSRMissionsMenuComponent:mouse_moved(o, x, y)
 		end
 	end
 
+	if self._sidebar then
+		local s_used, s_pointer = self._sidebar:mouse_moved(x, y)
+
+		if s_used then
+			pointer = s_pointer
+			used = true
+		end
+	end
+
 	return used, pointer
 end
 
-function CSRMissionsMenuComponent:mouse_pressed(o, button, x, y)
+-- NOTE: MenuComponentManager dispatches this via
+-- run_return_on_all_live_components("mouse_pressed", button, x, y)
+-- (menucomponentmanager.lua:1693) — i.e. the component is called as
+-- mouse_pressed(self, button, x, y), only THREE args. Vanilla declares
+-- (o, button, x, y) and gets away with it because its body only calls
+-- confirm_pressed() and never reads the (shifted) coords. Our sidebar branch
+-- needs real x,y, so we must use the correct 3-arg signature here.
+function CSRMissionsMenuComponent:mouse_pressed(button, x, y)
+	-- Sidebar click uses real cursor coords (confirm_pressed has none). With
+	-- placeholder buttons (no callbacks) this returns nil and falls through, so
+	-- card/start/reroll handling is unchanged until sidebar callbacks land.
+	if self._sidebar and self._sidebar:mouse_pressed(x, y) then
+		return true
+	end
+
 	return self:confirm_pressed()
 end
 
@@ -1012,5 +1099,285 @@ function CSRStartButton:shrink_wrap_button(w_padding, h_padding)
 
 	self._panel:set_size(w + (w_padding or 0), h + (h_padding or 0))
 end
+
+-- CSRSidebar / CSRSidebarItem — fork of vanilla CrimeNetSidebarGui /
+-- CrimeNetSidebarItem (pd2_source_code/lib/managers/menu/crimenetsidebargui.lua).
+-- Visual recipe copied 1:1: 256-wide panel pinned to the workspace left edge,
+-- 0.4 black rect + test_blur_df backdrop on a layer -1 sub-panel, BoxGui border,
+-- and per-row icon + underscored-uppercase label with a 0.66 black highlight bg.
+-- Deliberately NOT forked (user wants "just the panel"): collapse/expand state,
+-- glow, pulse colour, controller mouse-snap, the tweak_data.gui.crime_net.sidebar
+-- data drive, and the Attention/Separator/Safehouse/etc. item subclasses. Items
+-- here are a static placeholder list with no callbacks; behaviour is a later
+-- pass. Pure Diesel UI — no managers.crime_spree / managers.csr reads; CSR-only
+-- scoping is guaranteed by the owning component (built only for crime_spree_lobby).
+CSRSidebar = CSRSidebar or class()
+CSRSidebar._type = "CSRSidebar"
+CSRSidebar.WIDTH = 160 -- vanilla CrimeNet sidebar is 256; CSR uses a narrower panel
+-- CSR feature rows, in the order the user requested. icon ids are real vanilla
+-- hud_icons used by the live CrimeNet sidebar (guitweakdata.lua:1840+) so they
+-- resolve through tweak_data.hud_icons:get_icon_data — they are PLACEHOLDERS
+-- only (final art TBD). Callbacks are wired per-row as features get ported;
+-- rows without one are inert until then.
+local function csr_open_logbook()
+	-- Reuse the ported open-node callback (lua/menu/logbook_button.lua), which
+	-- wraps managers.menu:open_node("csr_logbook_screen"). Resolved at click
+	-- time, so load order with the logbook scripts doesn't matter.
+	local has_cb = MenuCallbackHandler ~= nil and MenuCallbackHandler.CSR_OpenLogbook ~= nil
+	log("[CSR Logbook] sidebar Logbook clicked; CSR_OpenLogbook present=" .. tostring(has_cb))
+
+	if has_cb then
+		MenuCallbackHandler:CSR_OpenLogbook()
+	end
+end
+
+CSRSidebar.ITEMS = {
+	{ text = "Items", icon = "sidebar_basics" },
+	{ text = "Modifiers", icon = "sidebar_mutators" },
+	{ text = "Rewards", icon = "sidebar_broker" },
+	{ separator = true },
+	{ text = "Gage Services", icon = "sidebar_gage" },
+	{ separator = true },
+	{ text = "Logbook", icon = "sidebar_codex", callback = csr_open_logbook },
+}
+
+function CSRSidebar:init(parent, top, bottom)
+	self._buttons = {}
+	self._panel = parent:panel({
+		w = CSRSidebar.WIDTH,
+		y = top,
+		h = bottom - top,
+		layer = 100,
+	})
+	self._bg_panel = self._panel:panel({
+		layer = -1,
+	})
+
+	self._bg_panel:rect({
+		alpha = 0.4,
+		color = Color.black,
+	})
+	self._bg_panel:bitmap({
+		texture = "guis/textures/test_blur_df",
+		name = "blur_bg",
+		halign = "scale",
+		layer = -1,
+		render_template = "VertexColorTexturedBlur3D",
+		valign = "scale",
+		w = self._bg_panel:w(),
+		h = self._bg_panel:h(),
+	})
+
+	local next_position = padding
+	local item_margin = 2
+
+	for _, item in ipairs(CSRSidebar.ITEMS) do
+		local btn
+
+		if item.separator then
+			btn = CSRSidebarSeparator:new(self._panel, {
+				position = next_position,
+			})
+		else
+			btn = CSRSidebarItem:new(self._panel, {
+				position = next_position,
+				text = item.text,
+				icon = item.icon,
+				callback = item.callback,
+			})
+		end
+
+		next_position = next_position + btn:panel():height() + item_margin
+
+		table.insert(self._buttons, btn)
+	end
+
+	self._border = BoxGuiObject:new(
+		self._panel:panel({
+			layer = 100,
+		}),
+		{
+			sides = {
+				1,
+				1,
+				1,
+				1,
+			},
+		}
+	)
+end
+
+function CSRSidebar:panel()
+	return self._panel
+end
+
+function CSRSidebar:mouse_moved(x, y)
+	local used, pointer = false, nil
+
+	for _, btn in ipairs(self._buttons) do
+		if btn:accepts_interaction() then
+			local inside = btn:inside(x, y)
+
+			btn:set_highlight(inside, true)
+
+			if inside then
+				used = true
+				pointer = "link"
+			end
+		end
+	end
+
+	return used, pointer
+end
+
+function CSRSidebar:mouse_pressed(x, y)
+	for _, btn in ipairs(self._buttons) do
+		if btn:accepts_interaction() and btn:inside(x, y) and btn:callback() then
+			btn:callback()()
+
+			return true
+		end
+	end
+end
+
+function CSRSidebar:update(t, dt)
+	for _, btn in ipairs(self._buttons) do
+		btn:update(t, dt)
+	end
+end
+
+-- CSRSidebarSeparator — fork of vanilla CrimeNetSidebarSeparator
+-- (crimenetsidebargui.lua:457-491), 1:1 minus the collapse width-swap (we have
+-- no collapse). A non-interactive 10px row with the vanilla dotted divider
+-- texture. Texture path verified present in extracted assets
+-- (guis/dlcs/sju/textures/pd2/crimenet_menu_dots_df.texture).
+CSRSidebarSeparator = CSRSidebarSeparator or class()
+CSRSidebarSeparator._type = "CSRSidebarSeparator"
+
+function CSRSidebarSeparator:init(parent_panel, parameters)
+	self._panel = parent_panel:panel({
+		h = 10,
+		layer = 10,
+		w = parent_panel:width() - padding * 2,
+		x = padding,
+		y = parameters.position,
+	})
+
+	local bitmap = self._panel:bitmap({
+		texture = "guis/dlcs/sju/textures/pd2/crimenet_menu_dots_df",
+		name = "separator",
+		color = tweak_data.screen_colors.button_stage_3,
+	})
+
+	bitmap:set_center_y(self._panel:height() * 0.5)
+end
+
+function CSRSidebarSeparator:panel()
+	return self._panel
+end
+
+function CSRSidebarSeparator:accepts_interaction()
+	return false
+end
+
+function CSRSidebarSeparator:update(t, dt) end
+
+CSRSidebarItem = CSRSidebarItem or class()
+CSRSidebarItem._type = "CSRSidebarItem"
+
+function CSRSidebarItem:init(panel, parameters)
+	local font_size = math.ceil(tweak_data.menu.pd2_small_font_size)
+	local icon_size = 24
+	local panel_size = math.max(font_size, icon_size)
+	self._callback = parameters.callback
+	self._panel = panel:panel({
+		halign = "scale",
+		layer = 10,
+		valign = "scale",
+		w = panel:w() - padding * 2,
+		h = panel_size,
+		x = padding,
+		y = parameters.position,
+	})
+
+	local texture, rect = tweak_data.hud_icons:get_icon_data(parameters.icon)
+
+	self._icon = self._panel:bitmap({
+		name = "icon",
+		blend_mode = "normal",
+		layer = 1,
+		texture = texture,
+		texture_rect = rect,
+		w = icon_size,
+		h = icon_size,
+	})
+	self._text = self._panel:text({
+		text = "",
+		name = "title",
+		valign = "scale",
+		halign = "scale",
+		blend_mode = "normal",
+		y = 2,
+		layer = 2,
+		font = tweak_data.menu.pd2_medium_font,
+		font_size = font_size,
+		color = tweak_data.screen_colors.button_stage_3,
+		x = icon_size + 4,
+		h = font_size,
+	})
+
+	self:set_text(parameters.text or "")
+
+	self._bg = self._panel:rect({
+		blend_mode = "normal",
+		layer = 1,
+		halign = "scale",
+		alpha = 0.66,
+		valign = "scale",
+		x = icon_size,
+		color = Color.black,
+	})
+
+	self:set_highlight(false, true)
+end
+
+function CSRSidebarItem:inside(x, y)
+	return self._panel:inside(x, y)
+end
+
+function CSRSidebarItem:panel()
+	return self._panel
+end
+
+function CSRSidebarItem:callback()
+	return self._callback
+end
+
+function CSRSidebarItem:accepts_interaction()
+	return true
+end
+
+function CSRSidebarItem:set_highlight(enabled, force_update)
+	if self._highlight ~= enabled or force_update then
+		self._text:set_visible(true)
+		self._bg:set_visible(enabled)
+		self._text:set_color(enabled and Color.white or tweak_data.screen_colors.button_stage_2)
+		self._icon:set_color(enabled and Color.white or tweak_data.screen_colors.button_stage_2)
+		self._bg:set_color(Color.black)
+
+		self._highlight = enabled
+	end
+end
+
+function CSRSidebarItem:set_text(text)
+	-- Vanilla quirk preserved 1:1 (CrimeNetSidebarItem:set_text): upper-case and
+	-- spaces -> underscores. Keeps the look identical to the CrimeNet sidebar.
+	text = utf8.to_upper(text)
+	text = text:gsub(" ", "_")
+
+	self._text:set_text(text)
+end
+
+function CSRSidebarItem:update(t, dt) end
 
 log("[CSR] csr_missions_menu.lua loaded (Slice 8 fork + start button)")
