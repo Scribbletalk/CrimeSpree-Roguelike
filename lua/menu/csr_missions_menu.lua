@@ -107,6 +107,8 @@ function CSRMissionsMenuComponent:_setup()
 		font_size = tweak_data.menu.pd2_medium_font_size,
 	})
 
+	self:_create_status_bar(w)
+
 	self._buttons_panel = self._panel:panel({})
 
 	self._buttons_panel:set_w(w)
@@ -297,6 +299,77 @@ function CSRMissionsMenuComponent:_create_sidebar(bottom)
 	self._sidebar = CSRSidebar:new(self._panel, top, bottom)
 end
 
+function CSRMissionsMenuComponent:_create_status_bar(w)
+	-- Spree RANK gets its own row directly above the "SELECT NEXT HEIST"
+	-- header (left-aligned, same width / right edge / font as self._title_panel
+	-- so they read as a stacked header above the mission cards). The vanilla
+	-- DIFFICULTY the spree runs at sits on the SAME line as the header instead,
+	-- right-aligned -- it is parented to self._title_panel and uses that text's
+	-- bottom/valign so the baselines line up. Backend reads go through
+	-- managers.csr (the refactor's single source of truth).
+	-- Difficulty is mapped id -> loc via vanilla tweak_data.difficulty_name_ids
+	-- (NOT "menu_difficulty_"..id -- engine ids like "overkill" don't match that
+	-- pattern: that id localizes to "Very Hard", not "Overkill"). Child of
+	-- self._panel, so the existing close() (removes self._panel) cleans it up.
+	local gap = 2
+	-- Yellow highlight for the dynamic values only (rank number + Crime Spree
+	-- glyph, and the difficulty name) -- the static "RANK"/"DIFFICULTY:" labels
+	-- stay white. 4-arg Color per Rule #6 (3-arg Color drops blue). Applied as
+	-- a sub-string recolor via set_range_color, the same vanilla-proven pattern
+	-- used for the mission-card risk text further down this file.
+	local highlight = Color(1, 1, 1, 0)
+	-- U+E018: the Crime Spree glyph (same codepoint csr_localization.lua emits
+	-- as the raw bytes \xEE\x80\x98); utf8.char keeps it consistent with the
+	-- existing utf8.char(0xE012) usage there.
+	local cs_glyph = utf8.char(0xE018)
+	self._status_panel = self._panel:panel({})
+
+	self._status_panel:set_w(w)
+	self._status_panel:set_h(tweak_data.menu.pd2_medium_font_size)
+	self._status_panel:set_right(self._title_panel:right())
+	self._status_panel:set_bottom(self._title_panel:top() - gap)
+
+	local rank_prefix = managers.localization:to_upper_text("csr_lobby_rank") .. ": "
+	local rank_str = rank_prefix .. tostring(managers.csr:rank()) .. " " .. cs_glyph
+	local rank_text = self._status_panel:text({
+		layer = 51,
+		vertical = "center",
+		align = "left",
+		halign = "left",
+		valign = "center",
+		text = rank_str,
+		color = Color.white,
+		font = tweak_data.menu.pd2_medium_font,
+		font_size = tweak_data.menu.pd2_medium_font_size,
+	})
+
+	rank_text:set_range_color(utf8.len(rank_prefix), utf8.len(rank_str), highlight)
+
+	local diff_id = managers.csr:difficulty()
+	local diff_name_id = tweak_data.difficulty_name_ids[diff_id]
+	local diff_text = diff_name_id and managers.localization:to_upper_text(diff_name_id) or tostring(diff_id)
+
+	-- Parented to self._title_panel (not self._status_panel) so it shares the
+	-- header's line; vertical/valign "bottom" mirrors the title text so the
+	-- baselines align. refresh() already toggles self._title_panel visibility,
+	-- so this child follows it.
+	local diff_prefix = managers.localization:to_upper_text("csr_lobby_difficulty") .. ": "
+	local diff_full = diff_prefix .. diff_text
+	local diff_label = self._title_panel:text({
+		layer = 51,
+		vertical = "bottom",
+		align = "right",
+		halign = "right",
+		valign = "bottom",
+		text = diff_full,
+		color = Color.white,
+		font = tweak_data.menu.pd2_medium_font,
+		font_size = tweak_data.menu.pd2_medium_font_size,
+	})
+
+	diff_label:set_range_color(utf8.len(diff_prefix), utf8.len(diff_full), highlight)
+end
+
 function CSRMissionsMenuComponent:_start_pressed()
 	-- Mirrors vanilla CrimeSpreeMissionEndOptions:perform_start, but routed
 	-- through our forked callback. csr_start_game already guards on
@@ -420,6 +493,10 @@ function CSRMissionsMenuComponent:refresh()
 	self._host_failed_text:set_visible(hide)
 	self._host_failed:set_visible(hide)
 	self._title_panel:set_visible(not hide)
+
+	if self._status_panel then
+		self._status_panel:set_visible(not hide)
+	end
 end
 
 function CSRMissionsMenuComponent.get_height()

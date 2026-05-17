@@ -111,7 +111,16 @@ function CSRGameManager:rank()
 end
 
 function CSRGameManager:difficulty()
-	return self._state.difficulty
+	-- CSR has no bespoke difficulty system: a spree runs on a vanilla difficulty.
+	-- The difficulty-selection slice is not ported yet, so the truthful "current
+	-- difficulty" is the vanilla one select_mission() forces the heist to load
+	-- at, sourced from tweak_data.crime_spree.base_difficulty (see
+	-- :select_mission). _state.difficulty is a not-yet-wired stub; only fall back
+	-- to it if tweak_data is not up yet (early-load nil guard). When the
+	-- difficulty-selection slice lands it reworks this accessor to return the
+	-- player's chosen vanilla difficulty.
+	local cs_td = tweak_data and tweak_data.crime_spree
+	return (cs_td and cs_td.base_difficulty) or self._state.difficulty
 end
 
 function CSRGameManager:seed()
