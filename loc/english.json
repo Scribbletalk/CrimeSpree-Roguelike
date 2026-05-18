@@ -175,6 +175,7 @@
 	"menu_csr_rank_penalty": "Rank Penalty",
 	"csr_lobby_rank": "RANK",
 	"csr_lobby_difficulty": "DIFFICULTY",
+	"csr_lobby_missions_completed": "MISSIONS COMPLETED",
 	"csr_logbook_rarity_common": "Common",
 	"csr_logbook_rarity_uncommon": "Uncommon",
 	"csr_logbook_rarity_rare": "Rare",

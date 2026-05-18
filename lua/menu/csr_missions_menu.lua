@@ -93,20 +93,9 @@ function CSRMissionsMenuComponent:_setup()
 	self._title_panel:set_h(tweak_data.menu.pd2_medium_font_size)
 	self._title_panel:set_right(parent:right())
 	self._title_panel:set_bottom(bottom - h - 4)
-	self._title_panel:text({
-		layer = 51,
-		vertical = "bottom",
-		word_wrap = true,
-		wrap = true,
-		align = "left",
-		halign = "left",
-		valign = "bottom",
-		text = managers.localization:to_upper_text("menu_cs_select_next_heist"),
-		color = Color.white,
-		font = tweak_data.menu.pd2_medium_font,
-		font_size = tweak_data.menu.pd2_medium_font_size,
-	})
-
+	-- The header row's text is built entirely by _create_status_bar: spree RANK
+	-- on the left (replacing the old static "SELECT NEXT HEIST" label) and the
+	-- DIFFICULTY on the right, both on this single line above the cards.
 	self:_create_status_bar(w)
 
 	self._buttons_panel = self._panel:panel({})
@@ -221,6 +210,27 @@ function CSRMissionsMenuComponent:_setup()
 
 	self._reroll_button:panel():set_right(self._start_button:panel():left() - large_padding)
 	self._reroll_button:panel():set_bottom(self._start_button:panel():bottom())
+
+	-- Black scrim behind the Start / Reroll buttons. Spans the full 3-card
+	-- mission-row width (same `w` and right edge as self._buttons_panel above)
+	-- so it reads as a backing plate aligned with the cards. Created after the
+	-- buttons so it can measure them, but pinned to layer 1 -- well below the
+	-- CSRStartButton panels (layer 1000, see CSRStartButton:init) -- so Diesel's
+	-- per-layer child sort draws it underneath regardless of insertion order.
+	-- color + alpha (not a 3-arg Color, Rule #6): same rect idiom CSRStartButton
+	-- uses for its highlight. Child of self._panel, so vanilla close() cleans it
+	-- up. Start/Reroll are never toggled in refresh(), so neither is this.
+	local actions_vpad = 6
+	local start_panel = self._start_button:panel()
+	self._actions_bg = self._panel:rect({
+		layer = 1,
+		color = Color.black,
+		alpha = 0.4,
+	})
+	self._actions_bg:set_w(w)
+	self._actions_bg:set_h(start_panel:h() + actions_vpad * 2)
+	self._actions_bg:set_right(self._buttons_panel:right())
+	self._actions_bg:set_bottom(start_panel:bottom() + actions_vpad)
 	self:refresh()
 end
 
@@ -300,18 +310,19 @@ function CSRMissionsMenuComponent:_create_sidebar(bottom)
 end
 
 function CSRMissionsMenuComponent:_create_status_bar(w)
-	-- Spree RANK gets its own row directly above the "SELECT NEXT HEIST"
-	-- header (left-aligned, same width / right edge / font as self._title_panel
-	-- so they read as a stacked header above the mission cards). The vanilla
-	-- DIFFICULTY the spree runs at sits on the SAME line as the header instead,
-	-- right-aligned -- it is parented to self._title_panel and uses that text's
-	-- bottom/valign so the baselines line up. Backend reads go through
+	-- The header row directly above the mission cards (it replaces the old
+	-- static "SELECT NEXT HEIST" label) shows three values on one line:
+	--   MISSIONS COMPLETED (left)  |  RANK (center)  |  DIFFICULTY (right)
+	-- All three are parented to self._title_panel with vertical/valign "bottom"
+	-- so the baselines line up, and all follow the single self._title_panel
+	-- visibility toggle in refresh(). RANK uses align "center" so it floats
+	-- between the left/right anchored labels. Backend reads go through
 	-- managers.csr (the refactor's single source of truth).
 	-- Difficulty is mapped id -> loc via vanilla tweak_data.difficulty_name_ids
 	-- (NOT "menu_difficulty_"..id -- engine ids like "overkill" don't match that
 	-- pattern: that id localizes to "Very Hard", not "Overkill"). Child of
 	-- self._panel, so the existing close() (removes self._panel) cleans it up.
-	local gap = 2
+	--
 	-- Yellow highlight for the dynamic values only (rank number + Crime Spree
 	-- glyph, and the difficulty name) -- the static "RANK"/"DIFFICULTY:" labels
 	-- stay white. 4-arg Color per Rule #6 (3-arg Color drops blue). Applied as
@@ -322,21 +333,35 @@ function CSRMissionsMenuComponent:_create_status_bar(w)
 	-- as the raw bytes \xEE\x80\x98); utf8.char keeps it consistent with the
 	-- existing utf8.char(0xE012) usage there.
 	local cs_glyph = utf8.char(0xE018)
-	self._status_panel = self._panel:panel({})
 
-	self._status_panel:set_w(w)
-	self._status_panel:set_h(tweak_data.menu.pd2_medium_font_size)
-	self._status_panel:set_right(self._title_panel:right())
-	self._status_panel:set_bottom(self._title_panel:top() - gap)
-
-	local rank_prefix = managers.localization:to_upper_text("csr_lobby_rank") .. ": "
-	local rank_str = rank_prefix .. tostring(managers.csr:rank()) .. " " .. cs_glyph
-	local rank_text = self._status_panel:text({
+	-- Left anchor: how many heists were completed in the current run. Reads the
+	-- dedicated managers.csr:missions_completed() counter (NOT rank -- the two
+	-- are distinct concepts; see csr_game_manager.lua default_state comment).
+	local missions_prefix = managers.localization:to_upper_text("csr_lobby_missions_completed") .. ": "
+	local missions_str = missions_prefix .. tostring(managers.csr:missions_completed())
+	local missions_text = self._title_panel:text({
 		layer = 51,
-		vertical = "center",
+		vertical = "bottom",
 		align = "left",
 		halign = "left",
-		valign = "center",
+		valign = "bottom",
+		text = missions_str,
+		color = Color.white,
+		font = tweak_data.menu.pd2_medium_font,
+		font_size = tweak_data.menu.pd2_medium_font_size,
+	})
+
+	missions_text:set_range_color(utf8.len(missions_prefix), utf8.len(missions_str), highlight)
+
+	-- Center anchor: spree RANK, floating between the left/right labels.
+	local rank_prefix = managers.localization:to_upper_text("csr_lobby_rank") .. ": "
+	local rank_str = rank_prefix .. tostring(managers.csr:rank()) .. " " .. cs_glyph
+	local rank_text = self._title_panel:text({
+		layer = 51,
+		vertical = "bottom",
+		align = "center",
+		halign = "center",
+		valign = "bottom",
 		text = rank_str,
 		color = Color.white,
 		font = tweak_data.menu.pd2_medium_font,
@@ -349,10 +374,9 @@ function CSRMissionsMenuComponent:_create_status_bar(w)
 	local diff_name_id = tweak_data.difficulty_name_ids[diff_id]
 	local diff_text = diff_name_id and managers.localization:to_upper_text(diff_name_id) or tostring(diff_id)
 
-	-- Parented to self._title_panel (not self._status_panel) so it shares the
-	-- header's line; vertical/valign "bottom" mirrors the title text so the
-	-- baselines align. refresh() already toggles self._title_panel visibility,
-	-- so this child follows it.
+	-- Right-aligned on the same self._title_panel line as the rank text;
+	-- vertical/valign "bottom" matches the rank text so the baselines align.
+	-- refresh() toggles self._title_panel visibility, so this child follows it.
 	local diff_prefix = managers.localization:to_upper_text("csr_lobby_difficulty") .. ": "
 	local diff_full = diff_prefix .. diff_text
 	local diff_label = self._title_panel:text({
@@ -492,11 +516,9 @@ function CSRMissionsMenuComponent:refresh()
 
 	self._host_failed_text:set_visible(hide)
 	self._host_failed:set_visible(hide)
+	-- Rank + difficulty are both children of self._title_panel, so this single
+	-- toggle covers the whole header row.
 	self._title_panel:set_visible(not hide)
-
-	if self._status_panel then
-		self._status_panel:set_visible(not hide)
-	end
 end
 
 function CSRMissionsMenuComponent.get_height()
@@ -967,8 +989,16 @@ function CSRMissionButton:update_info_text(mission_data)
 
 	text = text .. spacer
 	local len = utf8.len(text)
+	-- Vanilla passes mission_data.add here -- the per-mission rank increment
+	-- from vanilla CS tweak_data, which varies by mission length/difficulty.
+	-- The CSR rebalance makes every completed heist worth a FLAT rank amount
+	-- (rank_per_heist), so the card must advertise that same flat value, not
+	-- the vanilla per-mission number. This is the exact value the player
+	-- actually receives -- csr_mission_lifecycle.lua awards
+	-- managers.csr:constant("rank_per_heist") on a successful heist with the
+	-- identical `or 1` fallback, so the card and the payout never disagree.
 	local inc_text = managers.localization:text("menu_cs_lobby_mission_inc", {
-		inc = mission_data.add,
+		inc = managers.csr:constant("rank_per_heist") or 1,
 	})
 	text = text .. inc_text
 

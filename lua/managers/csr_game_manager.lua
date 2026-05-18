@@ -36,6 +36,13 @@ local function default_state()
 	return {
 		is_active = false,
 		rank = 0,
+		-- Count of heists completed in the CURRENT run. Tracked independently
+		-- of rank on purpose: rank gain per heist is a tunable constant
+		-- (rank_per_heist) and may also come from other sources later, so this
+		-- must NOT be derived from rank. Old saves lacking this key inherit the
+		-- 0 default here (init() seeds _state from default_state() before
+		-- load() overlays only the keys present on disk -> automatic migration).
+		missions_completed = 0,
 		difficulty = "overkill",
 		seed = nil,
 		mission_set = {}, -- array of mission ids currently offered in the lobby
@@ -84,8 +91,80 @@ function CSRGameManager:init()
 	}
 	self:_migrate_legacy_save()
 	self:load()
+	self:_setup_temporary_job()
 	self:_pilot_seed_dog_tags()
 	log_csr("CSRGameManager initialised; version=" .. tostring(self._meta.version))
+end
+
+-- Re-establish the temporary "crime_spree" narrative chain from the level the
+-- game is actually loading. Mirrors vanilla CrimeSpreeManager:_setup_temporary_job
+-- (crimespreemanager.lua:1184), which vanilla calls from CrimeSpreeManager:_setup
+-- on EVERY manager construction -- including the game-side one -- so the chain
+-- survives the menu->game state transition. CSR previously set the chain ONLY
+-- in select_mission (menu-side); by the briefing screen (game-side)
+-- tweak_data.narrative.jobs.crime_spree.chain was back to its {} default, so
+-- JobManager:current_stage_data() returned {} (job_chain[1] == nil), then
+-- current_level_id()/current_level_data() returned nil, and every
+-- narrative-derived briefing surface nil-crashed on heist launch
+-- (HUDMissionBriefing num_stages; MissionBriefingGui DescriptionItem
+-- level_data -- crash_report_2026_05_18_11_51).
+--
+-- Sourced from Global.game_settings.level_id (set by select_mission and
+-- persisted by the engine across the state transition -- it IS the level being
+-- loaded), NOT _state.current_mission: select_mission deliberately does not
+-- persist current_mission (see its body comment), so the freshly-loaded
+-- game-side _state never has it. Gated like vanilla's `if not current_mission`
+-- guard: if no crime_spree mission matches the loading level, leave the chain
+-- untouched -- a safe no-op for non-CSR sessions and for the menu-side
+-- construction (where level_id is absent or stale).
+function CSRGameManager:_setup_temporary_job()
+	-- NOT gated on self:is_active(): a CSR client never started the run, so its
+	-- _state.is_active is false (the MP host->client carve-out is a later
+	-- refactor slice), yet the client loads the same crime_spree level and its
+	-- briefing surfaces need the chain just as much as the host's. Gating on
+	-- is_active() would re-crash the client (feedback_check_host_and_client).
+	-- The level-match below is the real CSR-context gate: the chain is written
+	-- only when the loading level IS a registered crime_spree mission level.
+	-- A normal heist on a level a CS mission happens to reuse would also match,
+	-- but that write is provably inert -- nothing reads
+	-- tweak_data.narrative.jobs.crime_spree.chain unless the active job is
+	-- "crime_spree", and a real vanilla Crime Spree re-sets it itself before
+	-- reading -- so normal play / vanilla CS / Skirmish stay behaviourally
+	-- untouched (feedback_csr_only_no_vanilla_leak: no-op verified, not just
+	-- gated).
+	local gs = Global and Global.game_settings
+	local level_id = gs and gs.level_id
+	if not level_id then
+		return
+	end
+	local narrative = tweak_data and tweak_data.narrative
+	local cs_missions = tweak_data and tweak_data.crime_spree and tweak_data.crime_spree.missions
+	if not narrative or not narrative.jobs or not narrative.jobs.crime_spree or type(cs_missions) ~= "table" then
+		return
+	end
+	local want_mission = gs.mission or "none"
+	local fallback_level = nil
+	for _, tier in ipairs(cs_missions) do
+		for _, m in ipairs(tier) do
+			if m.level and m.level.level_id == level_id then
+				-- Exact match (level + mission variant) wins immediately; a
+				-- level-only match is kept as a fallback in case the variant
+				-- string drifted. Either way chain[1] is a valid narrative
+				-- stage with a real .level_id, which is all the briefing/job
+				-- surfaces need.
+				if (m.mission or "none") == want_mission then
+					narrative.jobs.crime_spree.chain = { m.level }
+					log_csr("_setup_temporary_job: chain set from level_id=" .. tostring(level_id))
+					return
+				end
+				fallback_level = fallback_level or m.level
+			end
+		end
+	end
+	if fallback_level then
+		narrative.jobs.crime_spree.chain = { fallback_level }
+		log_csr("_setup_temporary_job: chain set (level-only) from level_id=" .. tostring(level_id))
+	end
 end
 
 -- =====================================================
@@ -108,6 +187,10 @@ end
 
 function CSRGameManager:rank()
 	return self._state.rank or 0
+end
+
+function CSRGameManager:missions_completed()
+	return self._state.missions_completed or 0
 end
 
 function CSRGameManager:difficulty()
@@ -454,6 +537,7 @@ function CSRGameManager:start_run()
 	end
 	self._state.is_active = true
 	self._state.rank = 0
+	self._state.missions_completed = 0
 	self._state.difficulty = self._state.difficulty or "overkill"
 	self._state.seed = math.random(1, 2 ^ 30)
 	self:generate_mission_set()
@@ -495,6 +579,22 @@ function CSRGameManager:progress_rank(amount)
 	end
 	self._state.rank = (self._state.rank or 0) + amount
 	log_csr("progress_rank: +" .. tostring(amount) .. " (now " .. tostring(self._state.rank) .. ")")
+	self:save()
+	return true
+end
+
+-- One completed heist == +1 to the run's mission counter. Kept separate from
+-- progress_rank because rank and "missions completed" are distinct concepts
+-- (rank amount per heist is tunable / may gain other sources). Called from the
+-- mission-lifecycle hook on a successful end only; mission-end is a rare,
+-- once-per-heist event so the extra save() here is not a hot-path concern.
+function CSRGameManager:record_mission_completed()
+	if not self._state.is_active then
+		log_csr("record_mission_completed: no active run; ignored")
+		return false
+	end
+	self._state.missions_completed = (self._state.missions_completed or 0) + 1
+	log_csr("record_mission_completed: now " .. tostring(self._state.missions_completed))
 	self:save()
 	return true
 end

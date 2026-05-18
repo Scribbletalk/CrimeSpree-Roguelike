@@ -28,6 +28,9 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 	if self._success then
 		local gain = managers.csr:constant("rank_per_heist") or 1
 		managers.csr:progress_rank(gain)
+		-- Track completed-heist count for the run independently of rank (the
+		-- lobby header shows it next to RANK; the two are distinct concepts).
+		managers.csr:record_mission_completed()
 		-- Mirror vanilla on_mission_completed: clear the played mission and roll
 		-- a fresh set so the lobby shows new cards on return.
 		managers.csr:generate_mission_set()
