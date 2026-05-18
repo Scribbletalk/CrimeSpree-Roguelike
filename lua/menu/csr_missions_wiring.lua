@@ -30,7 +30,33 @@ Hooks:PostHook(
 	"create_crime_spree_missions_gui",
 	"CSR_SwapMissionsGuiCreate",
 	function(self, node)
+		-- No-leak gate (feedback_csr_only_no_vanilla_leak). managers.csr:is_active()
+		-- alone is NOT a safe gate here: it is a persisted csr_save.json flag and
+		-- end_run() is never driven in 6.3, so after the first start_run() it stays
+		-- true across sessions. Vanilla create_crime_spree_missions_gui is invoked
+		-- as a registered component create-callback for EVERY node that lists the
+		-- crime_spree_missions component (vanilla no-ops via its own
+		-- managers.crime_spree:is_active() guard); our PostHook fired anyway and a
+		-- leaked is_active=true rebuilt the CSR sidebar/start/reroll panel in the
+		-- normal post-heist crew lobby (user report 2026-05-18).
+		--
+		-- The correctly-scoped signal is node identity, not the flag: the CSR
+		-- lobby is always entered via select_node("crime_spree_lobby", ...)
+		-- (csr_contract_callbacks.lua, menumanagerpd2.lua) — the same node vanilla
+		-- CS uses. node:parameters().name is vanilla's own node-name idiom
+		-- (menucomponentmanager.lua:2525). We also exclude a real vanilla CS run
+		-- (not managers.crime_spree:is_active()) to mirror the briefing/contract
+		-- no-leak pattern; CSR never activates vanilla CS (Slice 6).
 		if not node or not managers.csr or not managers.csr:is_active() then
+			return
+		end
+
+		local params = node.parameters and node:parameters()
+		if not params or params.name ~= "crime_spree_lobby" then
+			return
+		end
+
+		if managers.crime_spree and managers.crime_spree:is_active() then
 			return
 		end
 

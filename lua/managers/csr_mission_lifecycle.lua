@@ -18,11 +18,37 @@ local function log_csr(msg)
 	log("[CSR] " .. tostring(msg))
 end
 
+-- No-leak gate (feedback_csr_only_no_vanilla_leak). managers.csr:is_active() is
+-- a persisted csr_save.json flag and end_run() is never driven in 6.3, so after
+-- the first start_run() it stays true across sessions. Gating ONLY on it meant
+-- completing a VANILLA heist after a CSR run granted rank, counted a mission and
+-- rerolled the mission set for that vanilla heist (user report 2026-05-18).
+--
+-- The correctly-scoped signal is the active job, not the flag: a CSR-launched
+-- heist runs the temporary "crime_spree" job (activate_temporary_job on launch)
+-- with vanilla Crime Spree NOT enabled; a vanilla heist carries its real job id.
+-- This is byte-identical to csr_briefing_wiring.lua:csr_briefing_active() — the
+-- already-verified run-scoped CSR-exclusive signal. The job is still set at
+-- MissionEndState:at_enter (vanilla calls on_mission_completed here, which reads
+-- job/level), so the signal is valid at this hook point.
+local function csr_heist_active()
+	if not managers or not managers.job then
+		return false
+	end
+	if managers.job:current_job_id() ~= "crime_spree" then
+		return false
+	end
+	if managers.crime_spree and managers.crime_spree:is_active() then
+		return false
+	end
+	return true
+end
+
 Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", function(self)
 	if self._server_left or self._kicked then
 		return
 	end
-	if not managers.csr or not managers.csr:is_active() then
+	if not managers.csr or not csr_heist_active() then
 		return
 	end
 	if self._success then

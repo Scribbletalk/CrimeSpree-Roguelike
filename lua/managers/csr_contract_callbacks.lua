@@ -92,11 +92,23 @@ end
 function MenuCallbackHandler:_accept_csr_contract_sp(item, node)
 	-- Slice 6 full-replace: vanilla start_crime_spree + enable_crime_spree_gamemode
 	-- removed. managers.csr:start_run() is now the sole run-state activator.
-	-- The vanilla `crime_spree_lobby` node still receives navigation so the
-	-- forked UI surface keeps its visual flow; lobby contents driven by vanilla
-	-- CS state (mission picks, etc.) will be empty until later slices carve
-	-- their replacements.
-	managers.csr:start_run()
+	--
+	-- STOPGAP (2026-05-18): only start_run() when NO run is active. start_run()
+	-- unconditionally resets rank + missions_completed to 0; re-accepting the
+	-- CrimeNet CSR contract is currently the ONLY way back into the lobby
+	-- because the CS end-screen "continue" loop is an unported slice, so an
+	-- unconditional start_run() wiped the player's run progress every time they
+	-- returned from a completed heist (progress IS saved to disk; it was just
+	-- discarded here on re-entry). Guarding on is_active() makes re-entry
+	-- CONTINUE the in-flight run; a fresh run still starts when none is active.
+	-- The proper fix (end-screen fork with a real Continue/Return + end_run on
+	-- cash-out/return) is planned -- see project_endscreen_fork_plan.md. Known
+	-- stopgap edge: a stale is_active=true from an abandoned/never-ended run
+	-- continues instead of starting fresh; not balance-wrecking under the
+	-- locked flat-1-rank rebalance, and there is no reset UI in alpha anyway.
+	if not managers.csr:is_active() then
+		managers.csr:start_run()
+	end
 	MenuCallbackHandler:save_progress()
 	managers.menu:active_menu().logic:select_node("crime_spree_lobby", true, {})
 end
@@ -108,7 +120,14 @@ function MenuCallbackHandler:_accept_csr_contract_mp(item, node)
 	-- apply_matchmake_attributes will now write lobby_attributes.crime_spree = -1
 	-- because vanilla CS isn't in_progress; lobby will look like a normal one
 	-- to other clients until MP carve-out lands.
-	managers.csr:start_run()
+	--
+	-- STOPGAP (2026-05-18): see _accept_csr_contract_sp — only start_run() when
+	-- no run is active so re-entering the lobby CONTINUES the in-flight run
+	-- instead of resetting rank/missions to 0. Proper fix tracked in
+	-- project_endscreen_fork_plan.md.
+	if not managers.csr:is_active() then
+		managers.csr:start_run()
+	end
 
 	local matchmake_attributes = self:get_matchmake_attributes()
 
