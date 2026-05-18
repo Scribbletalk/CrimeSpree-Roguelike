@@ -133,6 +133,8 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_ContractHeaderLocalization", funct
 		csr_header_title = "Crime Spree Roguelike",
 		csr_header_level = "Crime Spree Roguelike Level $level$",
 		csr_header_level_no_num = "Crime Spree Roguelike Level ",
+		csr_end_spree = "End Spree",
+		csr_return_to_lobby = "Return to Lobby",
 	})
 end)
 

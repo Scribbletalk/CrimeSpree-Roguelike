@@ -43,6 +43,12 @@ local function default_state()
 		-- 0 default here (init() seeds _state from default_state() before
 		-- load() overlays only the keys present on disk -> automatic migration).
 		missions_completed = 0,
+		-- A FAILED run is not ended: it stays active but locked. The lobby
+		-- blocks Start/Reroll/select until the player pays the Continue cost
+		-- (clear_failed) or gives up (End Spree -> end_run). Persisted so the
+		-- failed state survives the return-to-lobby. Old saves lacking this
+		-- key inherit false here (same auto-migration as missions_completed).
+		failed = false,
 		difficulty = "overkill",
 		seed = nil,
 		mission_set = {}, -- array of mission ids currently offered in the lobby
@@ -75,6 +81,11 @@ local function default_registry()
 		constants = {
 			dog_tags_hp_bonus = 0.10, -- +10% max HP per stack (additive)
 			rank_per_heist = 1, -- rebalance: every completed heist grants exactly 1 rank
+			-- Continental-coin cost to clear a FAILED run and continue:
+			-- continue_cost_base + continue_cost_per_mission * missions_completed
+			-- (user-locked 2026-05-18: 10 + 10*missions -> 1 mission=20, 5=60).
+			continue_cost_base = 10,
+			continue_cost_per_mission = 10,
 		},
 	}
 end
@@ -536,6 +547,7 @@ function CSRGameManager:start_run()
 		)
 	end
 	self._state.is_active = true
+	self._state.failed = false
 	self._state.rank = 0
 	self._state.missions_completed = 0
 	self._state.difficulty = self._state.difficulty or "overkill"
@@ -560,6 +572,7 @@ function CSRGameManager:end_run()
 		return false
 	end
 	self._state.is_active = false
+	self._state.failed = false
 	log_csr("end_run: run ended at rank=" .. tostring(self._state.rank))
 	for _, fn in ipairs(self._callbacks.on_mission_completed) do
 		fn()
@@ -602,6 +615,49 @@ end
 -- =====================================================
 -- Registries & settings
 -- =====================================================
+
+-- =====================================================
+-- Failed-run state + continue cost (Slice B)
+-- =====================================================
+
+function CSRGameManager:has_failed()
+	return self._state.failed == true
+end
+
+-- Flag the active run as failed (lost a heist). Does NOT end the run — the run
+-- stays active but locked; the lobby gates Start/Reroll/select on has_failed()
+-- until clear_failed (paid Continue) or end_run (End Spree). No-op if no run.
+function CSRGameManager:mark_failed()
+	if not self._state.is_active then
+		log_csr("mark_failed: no active run; ignored")
+		return false
+	end
+	self._state.failed = true
+	log_csr("mark_failed: run is now FAILED at rank=" .. tostring(self._state.rank))
+	self:save()
+	return true
+end
+
+-- Clear the failed flag so a failed run can continue (called after the player
+-- pays the Continue cost). No-op if the run was not failed.
+function CSRGameManager:clear_failed()
+	if not self._state.failed then
+		return false
+	end
+	self._state.failed = false
+	log_csr("clear_failed: failed state cleared (run continues)")
+	self:save()
+	return true
+end
+
+-- Continental-coin cost to clear a failed run and continue. Scales with the
+-- run's completed-mission count. Both terms are tunable constants (no
+-- hardcoded balance, CLAUDE.md). User-locked 2026-05-18: 10 + 10*missions.
+function CSRGameManager:get_continue_cost()
+	local base = self:constant("continue_cost_base") or 0
+	local per = self:constant("continue_cost_per_mission") or 0
+	return base + per * (self._state.missions_completed or 0)
+end
 
 function CSRGameManager:constant(name)
 	return self._registry.constants and self._registry.constants[name]

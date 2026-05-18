@@ -52,7 +52,30 @@ Hooks:PostHook(
 		end
 
 		local params = node.parameters and node:parameters()
-		if not params or params.name ~= "crime_spree_lobby" then
+		-- Two safe build surfaces, each with its own no-leak boundary
+		-- (feedback_csr_only_no_vanilla_leak — the persisted
+		-- managers.csr:is_active() flag is required above but is NOT a
+		-- safe boundary by itself on a generic node):
+		--  * LOBBY: node name "crime_spree_lobby" is itself the boundary
+		--    (CSR-specific node — the verified-correct lobby signal). The
+		--    user-tested working path; unchanged.
+		--  * END SCREEN: mission_end_menu's ONLY node is the GENERIC name
+		--    "main" (verified gamedata/menus/mission_end_menu.menu lists
+		--    crime_spree_missions among that node's menu_components).
+		--    "main" is also the normal crew-lobby / main-menu node, so
+		--    node-name alone is unsafe here. The safe boundary for the
+		--    generic node is the RUN-SCOPED CSR-heist signal: the active
+		--    job is the temporary "crime_spree" job (still set on the end
+		--    screen — MissionEndState deactivates it later, in
+		--    :at_exit -> _load_start_menu) AND vanilla CS NOT active
+		--    (excluded just below). Byte-identical to
+		--    csr_mission_lifecycle.lua:csr_heist_active().
+		local in_lobby = params and params.name == "crime_spree_lobby"
+		local in_endscreen = params
+			and params.name == "main"
+			and managers.job
+			and managers.job:current_job_id() == "crime_spree"
+		if not (in_lobby or in_endscreen) then
 			return
 		end
 

@@ -51,6 +51,32 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 	if not managers.csr or not csr_heist_active() then
 		return
 	end
+
+	-- CSR grants NO per-heist XP or cash: rewards accrue only at run
+	-- completion. Vanilla Crime Spree suppresses end-screen XP via
+	-- MissionEndState:update's
+	--   `if managers.crime_spree:is_active() then self._total_xp_bonus = false end`
+	-- (missionendstate.lua:864) — that guard is false for a CSR heist (CSR
+	-- never enables vanilla CS), so the XP would otherwise be given. Mirror
+	-- the suppression here (this PostHook runs after at_enter has set
+	-- _total_xp_bonus via completion_bonus_done() at :238).
+	--
+	-- _completion_bonus_done must be forced true: skipping the XP block in
+	-- :update also skips its set_completion_bonus_done() call, which would
+	-- otherwise leave the inline continue button permanently _continue_blocked
+	-- (:783). Set the field directly rather than via the setter to avoid its
+	-- _set_continue_button_text() side effect firing before the endscreen GUI
+	-- exists; our forked continue button is a no-op anyway, and :update
+	-- refreshes the text later when the block timer clears. Vanilla CS does
+	-- not get stuck because its continue is the separate post-heist options
+	-- node (Slice B), not the inline button — revisit when that lands.
+	--
+	-- Cash is suppressed separately in csr_endscreen_economy.lua: the payout
+	-- is added inside at_enter (:134) BEFORE this PostHook fires, so it must
+	-- be gated in MoneyManager, it cannot be undone here.
+	self._total_xp_bonus = false
+	self._completion_bonus_done = true
+
 	if self._success then
 		local gain = managers.csr:constant("rank_per_heist") or 1
 		managers.csr:progress_rank(gain)
@@ -62,7 +88,14 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 		managers.csr:generate_mission_set()
 		log_csr("mission completed: +" .. tostring(gain) .. " rank (flat); new mission set rolled")
 	else
-		log_csr("mission failed (no rank change this slice)")
+		-- Slice B: a lost heist FAILS the run (does not end it). The run stays
+		-- active but locked — the lobby gates Start/Reroll/select on
+		-- managers.csr:has_failed() until the player pays Continue
+		-- (clear_failed) or gives up via End Spree (end_run). mark_failed is a
+		-- no-op if no run is active, so this is safe on any non-CSR failure
+		-- that slipped past csr_heist_active() (it cannot — but defensive).
+		managers.csr:mark_failed()
+		log_csr("mission FAILED: run marked failed (locked until Continue/End Spree)")
 	end
 end)
 

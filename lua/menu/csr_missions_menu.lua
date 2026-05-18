@@ -57,6 +57,15 @@ function CSRMissionsMenuComponent:init(ws, fullscreen_ws, node)
 
 	self._buttons = {}
 
+	-- The component now builds on BOTH the crime_spree_lobby node AND the
+	-- mission_end_menu "main" node (csr_missions_wiring.lua fix #3). The
+	-- branded "Crime Spree Roguelike" title and the left sidebar are
+	-- LOBBY-ONLY chrome — on the end screen they must not render (user
+	-- report 2026-05-18). node-name is the deterministic boundary, the same
+	-- signal csr_missions_wiring.lua gates the build on.
+	local pnode = node and node.parameters and node:parameters()
+	self._is_lobby = pnode ~= nil and pnode.name == "crime_spree_lobby"
+
 	self:_setup()
 end
 
@@ -82,6 +91,15 @@ function CSRMissionsMenuComponent:_setup()
 	-- sidebar sits at y=0, so h == bottom makes its bottom line up with the cards.
 	local bottom = parent:bottom() - tweak_data.menu.pd2_large_font_size * 1.5
 
+	-- _create_title() is called UNCONDITIONALLY: it sets self._title_bottom,
+	-- and _create_sidebar anchors its top to that
+	-- (top = self._title_bottom + sidebar_title_gap). Skipping the title would
+	-- make _title_bottom nil -> top collapses to sidebar_title_gap -> the
+	-- sidebar shifts UP and grows taller (user report 2026-05-18 — NOT
+	-- requested). The title is lobby-only chrome, so on the end screen its
+	-- visible elements are hidden INSIDE _create_title instead: the geometry
+	-- (self._title_bottom) is preserved, only the text is not drawn. Sidebar
+	-- stays byte-identical to the lobby.
 	self:_create_title()
 	self:_create_sidebar(bottom)
 
@@ -211,6 +229,16 @@ function CSRMissionsMenuComponent:_setup()
 	self._reroll_button:panel():set_right(self._start_button:panel():left() - large_padding)
 	self._reroll_button:panel():set_bottom(self._start_button:panel():bottom())
 
+	-- Slice B context button, LEFT of Reroll. Same CSRStartButton widget as
+	-- Reroll. Its label + callback (and the Start/Reroll failed-lock) are set
+	-- by _refresh_action_buttons(), called here and from refresh() so the
+	-- failed state re-applies whenever the panel rebuilds.
+	self._action_button =
+		CSRStartButton:new(self._panel, tweak_data.menu.pd2_large_font, tweak_data.menu.pd2_large_font_size * 0.8)
+
+	self._action_button:panel():set_bottom(self._reroll_button:panel():bottom())
+	self:_refresh_action_buttons()
+
 	-- Black scrim behind the Start / Reroll buttons. Spans the full 3-card
 	-- mission-row width (same `w` and right edge as self._buttons_panel above)
 	-- so it reads as a backing plate aligned with the cards. Created after the
@@ -267,6 +295,13 @@ function CSRMissionsMenuComponent:_create_title()
 	-- little below the foreground — a small gap clears both.
 	self._title_bottom = title:bottom()
 
+	-- End screen: the measurement above is kept (the sidebar anchors to it),
+	-- but the branded title itself is lobby-only chrome and must not render
+	-- here (user report 2026-05-18). Hide rather than skip so geometry holds.
+	if not self._is_lobby then
+		title:set_visible(false)
+	end
+
 	if MenuBackdropGUI then
 		local ghost_h = 90
 		local ghost_move_y = 9
@@ -287,6 +322,11 @@ function CSRMissionsMenuComponent:_create_title()
 		bg_text:set_world_left(x)
 		bg_text:set_world_center_y(y)
 		bg_text:move(-13, ghost_move_y)
+
+		-- End screen: hide the faded ghost too (lobby-only chrome).
+		if not self._is_lobby then
+			bg_text:set_visible(false)
+		end
 	end
 end
 
@@ -408,6 +448,74 @@ function CSRMissionsMenuComponent:_reroll_pressed()
 	MenuCallbackHandler:csr_reroll()
 end
 
+-- A failed run (lobby only) locks mission select / Start until the player
+-- resolves it via the paid Continue or End Spree. has_failed() is a persisted
+-- managers.csr flag set by csr_mission_lifecycle on a lost heist.
+function CSRMissionsMenuComponent:_is_locked()
+	return self._is_lobby and managers.csr and managers.csr:has_failed() == true
+end
+
+-- Thin wrappers to the backend-swapped contract callbacks (same pattern as
+-- _start_pressed -> csr_start_game). end_csr/return_to_csr_lobby/csr_continue
+-- now act on managers.csr (Slice B backend swap).
+function CSRMissionsMenuComponent:_action_end_spree()
+	MenuCallbackHandler:end_csr()
+end
+
+function CSRMissionsMenuComponent:_action_return_to_lobby()
+	log("[CSR] _action_return_to_lobby: button pressed (is_lobby=" .. tostring(self._is_lobby) .. ")")
+	MenuCallbackHandler:return_to_csr_lobby()
+end
+
+function CSRMissionsMenuComponent:_action_continue()
+	MenuCallbackHandler:csr_continue()
+end
+
+-- Sets the context button (left of Reroll) + the Start/Reroll failed-lock.
+-- Called at build and from refresh() so the failed state always re-applies.
+function CSRMissionsMenuComponent:_refresh_action_buttons()
+	local locked = self:_is_locked()
+
+	if self._action_button then
+		-- Loc: csr_end_spree / csr_return_to_lobby follow the csr_* convention
+		-- (CSR-owned wording, like csr_lobby_rank). menu_cs_continue is the
+		-- existing vanilla key (crimespreemissionendoptions.lua:80).
+		if self._is_lobby then
+			self._action_button:set_text(managers.localization:to_upper_text("csr_end_spree"))
+			self._action_button:set_callback(callback(self, self, "_action_end_spree"))
+		else
+			self._action_button:set_text(managers.localization:to_upper_text("csr_return_to_lobby"))
+			self._action_button:set_callback(callback(self, self, "_action_return_to_lobby"))
+		end
+
+		if managers.menu:is_pc_controller() then
+			self._action_button:shrink_wrap_button()
+		end
+
+		self._action_button:panel():set_right(self._reroll_button:panel():left() - large_padding)
+		self._action_button:panel():set_bottom(self._reroll_button:panel():bottom())
+	end
+
+	if self._start_button then
+		-- Failed: Start hidden (cannot launch a heist on a failed run).
+		self._start_button:panel():set_visible(not locked)
+	end
+
+	if self._reroll_button then
+		if locked then
+			self._reroll_button:set_text(managers.localization:to_upper_text("menu_cs_continue"))
+			self._reroll_button:set_callback(callback(self, self, "_action_continue"))
+		else
+			self._reroll_button:set_text(managers.localization:to_upper_text("menu_cs_reroll"))
+			self._reroll_button:set_callback(callback(self, self, "_reroll_pressed"))
+		end
+
+		if managers.menu:is_pc_controller() then
+			self._reroll_button:shrink_wrap_button()
+		end
+	end
+end
+
 function CSRMissionsMenuComponent:update_mission(btn_idx)
 	for idx, btn in ipairs(self._buttons) do
 		if btn._type == "CSRMissionButton" and (btn_idx == nil or btn:index() == btn_idx) then
@@ -474,6 +582,12 @@ function CSRMissionsMenuComponent:_set_button_index_selected(idx, selected)
 		return false
 	end
 
+	-- Failed run is locked: no mission can be selected until Continue (pay)
+	-- or End Spree. The cards stay visible but inert.
+	if selected and self:_is_locked() then
+		return false
+	end
+
 	self._selected_button = idx
 	local btn = self._buttons[idx]
 
@@ -519,6 +633,10 @@ function CSRMissionsMenuComponent:refresh()
 	-- Rank + difficulty are both children of self._title_panel, so this single
 	-- toggle covers the whole header row.
 	self._title_panel:set_visible(not hide)
+
+	-- Re-apply the context button + failed-lock every refresh so returning to
+	-- a FAILED lobby comes up locked (Start hidden, Reroll -> Continue).
+	self:_refresh_action_buttons()
 end
 
 function CSRMissionsMenuComponent.get_height()
@@ -577,6 +695,15 @@ function CSRMissionsMenuComponent:mouse_moved(o, x, y)
 		end
 	end
 
+	if self._action_button then
+		self._action_button:set_selected(self._action_button:inside(x, y))
+
+		if self._action_button:is_selected() then
+			pointer = "link"
+			used = true
+		end
+	end
+
 	if self._sidebar then
 		local s_used, s_pointer = self._sidebar:mouse_moved(x, y)
 
@@ -628,6 +755,12 @@ function CSRMissionsMenuComponent:confirm_pressed()
 
 	if self._reroll_button and self._reroll_button:is_selected() and self._reroll_button:callback() then
 		self._reroll_button:callback()()
+
+		return true
+	end
+
+	if self._action_button and self._action_button:is_selected() and self._action_button:callback() then
+		self._action_button:callback()()
 
 		return true
 	end

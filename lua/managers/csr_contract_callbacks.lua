@@ -36,11 +36,11 @@ function MenuCallbackHandler:csr_not_in_progress()
 end
 
 function MenuCallbackHandler:csr_not_failed()
-	return not managers.crime_spree:has_failed()
+	return not managers.csr:has_failed()
 end
 
 function MenuCallbackHandler:csr_failed()
-	return managers.crime_spree:has_failed()
+	return managers.csr:has_failed()
 end
 
 function MenuCallbackHandler:show_csr_start()
@@ -221,14 +221,9 @@ function MenuCallbackHandler:end_csr(item, node)
 		title = managers.localization:text("dialog_warning_title"),
 	}
 
-	if managers.crime_spree:can_refund_entry_fee() then
-		local cost = managers.crime_spree:get_start_cost(managers.crime_spree:spree_level())
-		dialog_data.text = managers.localization:text("dialog_are_you_sure_you_want_stop_cs_refund", {
-			coins = cost,
-		})
-	else
-		dialog_data.text = managers.localization:text("dialog_are_you_sure_you_want_stop_cs")
-	end
+	-- CSR has no continental-coin entry fee, so the vanilla CS refund branch
+	-- (can_refund_entry_fee / get_start_cost) is dropped — plain confirm only.
+	dialog_data.text = managers.localization:text("dialog_are_you_sure_you_want_stop_cs")
 
 	dialog_data.id = "stop_crime_spree"
 	local yes_button = {
@@ -249,13 +244,13 @@ function MenuCallbackHandler:end_csr(item, node)
 end
 
 function MenuCallbackHandler:_dialog_end_csr_yes()
-	if managers.crime_spree:can_refund_entry_fee() then
-		local cost = managers.crime_spree:get_start_cost(managers.crime_spree:spree_level())
-
-		managers.custom_safehouse:add_coins(cost, TelemetryConst.economy_origin.refund_crime_spree)
-	end
-
-	managers.crime_spree:reset_crime_spree()
+	-- End Spree: end the CSR run (THE persisted-is_active leak-class
+	-- dissolver — see project_endscreen_fork_plan) and leave the lobby back to
+	-- the main menu. No refund branch (CSR has no entry fee).
+	-- _dialog_leave_lobby_yes is the verified vanilla leave-lobby path
+	-- (menumanager.lua:3574 -> managers.menu:on_leave_lobby; its
+	-- crime_spree:disable_crime_spree_gamemode is a harmless no-op for CSR).
+	managers.csr:end_run()
 	self:_dialog_leave_lobby_yes()
 	MenuCallbackHandler:save_progress()
 end
@@ -263,6 +258,8 @@ end
 function MenuCallbackHandler:_dialog_end_csr_no() end
 
 function MenuCallbackHandler:return_to_csr_lobby()
+	log("[CSR] return_to_csr_lobby: invoked (state=" .. tostring(game_state_machine:current_state_name()) .. ")")
+
 	if game_state_machine:current_state_name() == "disconnected" then
 		return
 	end
@@ -275,6 +272,21 @@ function MenuCallbackHandler:return_to_csr_lobby()
 		text = managers.localization:text("dialog_yes"),
 		callback_func = function()
 			if game_state_machine:current_state_name() ~= "disconnected" then
+				-- One-shot routing intent: vanilla MenuManager:on_enter_lobby
+				-- (menumanagerpd2.lua:31) only selects the "crime_spree_lobby"
+				-- node when the CS gamemode is enabled, which CSR never does
+				-- (Slice 6 runs a temp "crime_spree" job under the vanilla
+				-- gamemode). Without this flag the player lands in the empty
+				-- normal "lobby" node. csr_lobby_routing.lua consumes the flag
+				-- in an on_enter_lobby PostHook and re-selects the CSR node.
+				-- Transient (cleared on consume), NOT the persisted
+				-- managers.csr:is_active() — avoids the vanilla-leak class.
+				-- MUST be Global.* not _G.*: load_start_menu_lobby from the
+				-- victoryscreen state triggers a full Lua-environment reinit
+				-- (game-state _G ≠ menu-state _G). Global survives it; _G does
+				-- not. Mirrors vanilla Global.load_start_menu_lobby.
+				Global.CSR_RETURN_TO_LOBBY = true
+				log("[CSR] return_to_csr_lobby: flag set, calling load_start_menu_lobby")
 				self:load_start_menu_lobby()
 			end
 		end,
@@ -398,9 +410,9 @@ function MenuCallbackHandler:_dialog_end_game_csr_yes(failed)
 end
 
 function MenuCallbackHandler:csr_continue()
-	local cost = managers.crime_spree:get_continue_cost(managers.crime_spree:spree_level())
+	local cost = managers.csr:get_continue_cost()
 	local params = {
-		level = managers.crime_spree:spree_level(),
+		level = managers.csr:rank(),
 		cost = cost,
 	}
 	local coins = 0
@@ -449,24 +461,33 @@ function MenuCallbackHandler:csr_continue()
 end
 
 function MenuCallbackHandler:_dialog_csr_continue_yes()
-	print("[MenuCallbackHandler:_dialog_csr_continue_yes]")
-	managers.crime_spree:continue_crime_spree()
-	managers.menu:active_menu().logic:refresh_node("main")
+	-- Paid Continue: spend the continental-coin cost, clear the failed flag
+	-- (the run continues), then rebuild the CSR missions panel so its
+	-- failed-lock re-evaluates and Start / Reroll / mission-select unlock.
+	-- The vanilla-CS mission-end / details gui plumbing is dropped — those
+	-- components are not part of the CSR fork. deduct_coins is the verified
+	-- vanilla spend (crimespreemanager.lua:751 uses the identical call +
+	-- telemetry origin). csr_continue already guarded coins >= cost before
+	-- showing the yes button.
+	local cost = managers.csr:get_continue_cost()
 
-	if managers.menu_component:crime_spree_mission_end_gui() then
-		local node = managers.menu_component:crime_spree_mission_end_gui()._node
+	managers.custom_safehouse:deduct_coins(cost, TelemetryConst.economy_origin.continue_crime_spree)
+	managers.csr:clear_failed()
 
-		managers.menu_component:close_crime_spree_mission_end_gui(node)
-		managers.menu_component:create_crime_spree_mission_end_gui(node)
+	local logic = managers.menu:active_menu() and managers.menu:active_menu().logic
+	if logic then
+		local node = logic:selected_node()
+		local name = node and node.parameters and node:parameters() and node:parameters().name
+
+		if name then
+			logic:refresh_node(name)
+		end
+
+		managers.menu_component:create_crime_spree_missions_gui(node)
 	end
 
-	managers.menu_component:create_crime_spree_missions_gui(managers.menu:active_menu().logic:selected_node())
-	managers.menu_component:refresh_crime_spree_details_gui()
 	WalletGuiObject.refresh()
-
-	if managers.menu:active_menu() then
-		managers.menu:active_menu().logic:select_item("spree_start", true)
-	end
+	MenuCallbackHandler:save_progress()
 end
 
 function MenuCallbackHandler:_dialog_csr_continue_no() end
