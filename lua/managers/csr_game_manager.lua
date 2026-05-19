@@ -7,13 +7,15 @@
 --   managers.csr._state     (active run, resets between runs)
 --   managers.csr._registry  (static authored content, read-only after init)
 --
--- Alpha skeleton with the first pilot item (Dog Tags) wired in. Items are
--- stored as { id = "<prefix>N", type = "<type>" } entries under
--- _state.peer_items[peer_id].items — same shape the legacy player_items_store
--- used, so the future migrator can map across without reshaping.
+-- Items: identity is `type` only and ownership is a plain count per type
+-- (_state.peer_items[peer_id].counts[type] = n). The legacy id-list / prefix
+-- model was a vanilla-CS UI holdover, removed 2026-05-19; get_or_create_peer_entry
+-- folds an old { items = {...} } save forward. Items (CSR's own included)
+-- register through the public API — see csr_extension_api.lua /
+-- csr_builtin_items.lua / projects/.../csr_mod_extension_api_design.md.
 
 CSRGameManager = CSRGameManager or class()
-CSRGameManager.VERSION = "6.6.6-alpha.0"
+CSRGameManager.VERSION = "6.3-alpha.0"
 
 local SAVE_FILE = "csr_save.json"
 local LEGACY_SETTINGS_FILE = "crime_spree_roguelike.json"
@@ -61,25 +63,19 @@ local function default_state()
 end
 
 local function default_registry()
-	local items_list = {
-		{
-			type = "dog_tags",
-			id_prefix = "player_health_boost_",
-			rarity = "common",
-		},
-	}
-	local by_type = {}
-	local by_prefix = {}
-	for _, item in ipairs(items_list) do
-		by_type[item.type] = item
-		by_prefix[item.id_prefix:sub(1, -2)] = item -- strip trailing underscore
-	end
+	-- items_list starts EMPTY. Every item -- CSR's own included -- registers
+	-- through the public API (CSR.register_item), dogfooded; see
+	-- csr_builtin_items.lua and projects/.../csr_mod_extension_api_design.md.
+	-- Identity is `type` only: no id_prefix, no per-stack ids, no by_prefix
+	-- (vanilla-CS holdover removed 2026-05-19). Ownership is a count per type
+	-- (see the Items section below).
 	return {
-		items = items_list,
-		by_type = by_type,
-		by_prefix = by_prefix,
+		items = {},
+		by_type = {},
 		constants = {
-			dog_tags_hp_bonus = 0.10, -- +10% max HP per stack (additive)
+			-- Kept for back-compat/reference; the live Dog Tags value now
+			-- travels in its effect descriptor (per_stack) via register_item.
+			dog_tags_hp_bonus = 0.10,
 			rank_per_heist = 1, -- rebalance: every completed heist grants exactly 1 rank
 			-- Continental-coin cost to clear a FAILED run and continue:
 			-- continue_cost_base + continue_cost_per_mission * missions_completed
@@ -102,8 +98,13 @@ function CSRGameManager:init()
 	}
 	self:_migrate_legacy_save()
 	self:load()
+	-- Replay every registration (addon + csr_builtin_items.lua) into this fresh
+	-- _registry. init() runs multiple times per session and rebuilds _registry
+	-- empty each time, so this REPLAYS (idempotent via by_type), never drains.
+	if _G.CSR and _G.CSR._apply_registrations then
+		_G.CSR._apply_registrations(self)
+	end
 	self:_setup_temporary_job()
-	self:_pilot_seed_dog_tags()
 	log_csr("CSRGameManager initialised; version=" .. tostring(self._meta.version))
 end
 
@@ -251,80 +252,165 @@ end
 -- Items
 -- =====================================================
 
+-- Ownership model: identity is `type` only, ownership is a plain count per
+-- type — _state.peer_items[peer_id].counts[type] = n. No per-stack ids, no
+-- prefix (the vanilla-CS id-list model was a UI holdover; removed 2026-05-19).
 local function get_or_create_peer_entry(state, peer_id)
 	local entry = state.peer_items[peer_id]
 	if not entry then
-		entry = { items = {} }
+		entry = { counts = {} }
 		state.peer_items[peer_id] = entry
 	end
+	-- In-place migration of a legacy { items = { {id,type}, ... } } entry
+	-- (pre-2026-05-19 model) into { counts = { [type] = n } }, so an alpha
+	-- save written by the old shape is folded forward, not silently dropped.
+	if entry.items and not entry.counts then
+		local counts = {}
+		for _, it in ipairs(entry.items) do
+			if it.type then
+				counts[it.type] = (counts[it.type] or 0) + 1
+			end
+		end
+		entry.counts = counts
+		entry.items = nil
+	end
+	entry.counts = entry.counts or {}
 	return entry
 end
 
+-- Read-only { [type] = n } map of everything the peer owns ({} if nothing).
 function CSRGameManager:player_items(peer_id)
 	local entry = self._state.peer_items[peer_id]
-	return entry and entry.items or {}
+	return (entry and entry.counts) or {}
 end
 
-function CSRGameManager:item_count(peer_id, prefix)
+-- Owned stacks of ONE item type.
+function CSRGameManager:item_count(peer_id, item_type)
 	local entry = self._state.peer_items[peer_id]
-	if not entry or not entry.items then
+	local counts = entry and entry.counts
+	return (counts and counts[item_type]) or 0
+end
+
+-- Total stacks across ALL types. One rank == one pick, so the lobby
+-- "unselected items" reminder subtracts this from host rank.
+function CSRGameManager:total_item_count(peer_id)
+	local entry = self._state.peer_items[peer_id]
+	local counts = entry and entry.counts
+	if not counts then
 		return 0
 	end
-	local count = 0
-	for _, item in ipairs(entry.items) do
-		if item.id and string.find(item.id, prefix, 1, true) == 1 then
-			count = count + 1
-		end
+	local total = 0
+	for _, n in pairs(counts) do
+		total = total + n
 	end
-	return count
+	return total
 end
 
 function CSRGameManager:has_item(peer_id, item_type)
-	local def = self._registry.by_type[item_type]
-	if not def then
-		return false
-	end
-	return self:item_count(peer_id, def.id_prefix) > 0
+	return self:item_count(peer_id, item_type) > 0
 end
 
 function CSRGameManager:add_item(peer_id, item_type)
-	local def = self._registry.by_type[item_type]
-	if not def then
+	if not self._registry.by_type[item_type] then
 		log_csr("add_item: unknown type '" .. tostring(item_type) .. "' — ignored")
 		return false
 	end
 	local entry = get_or_create_peer_entry(self._state, peer_id)
-	local next_n = self:item_count(peer_id, def.id_prefix) + 1
-	local item = {
-		id = def.id_prefix .. tostring(next_n),
-		type = item_type,
-	}
-	table.insert(entry.items, item)
+	entry.counts[item_type] = (entry.counts[item_type] or 0) + 1
 	for _, fn in ipairs(self._callbacks.on_item_added) do
-		fn(peer_id, item)
+		fn(peer_id, item_type, entry.counts[item_type])
 	end
 	self:save()
-	log_csr("add_item: peer=" .. tostring(peer_id) .. " id=" .. item.id)
+	log_csr("add_item: peer=" .. tostring(peer_id) .. " type=" .. item_type .. " count=" .. entry.counts[item_type])
 	return true
 end
 
 function CSRGameManager:remove_item(peer_id, item_type)
 	local entry = self._state.peer_items[peer_id]
-	if not entry or not entry.items then
+	local counts = entry and entry.counts
+	if not counts or not counts[item_type] or counts[item_type] <= 0 then
 		return false
 	end
-	for i, item in ipairs(entry.items) do
-		if item.type == item_type then
-			local removed = table.remove(entry.items, i)
-			for _, fn in ipairs(self._callbacks.on_item_removed) do
-				fn(peer_id, removed)
-			end
-			self:save()
-			log_csr("remove_item: peer=" .. tostring(peer_id) .. " id=" .. removed.id)
-			return true
-		end
+	counts[item_type] = counts[item_type] - 1
+	if counts[item_type] <= 0 then
+		counts[item_type] = nil
 	end
-	return false
+	for _, fn in ipairs(self._callbacks.on_item_removed) do
+		fn(peer_id, item_type, counts[item_type] or 0)
+	end
+	self:save()
+	log_csr("remove_item: peer=" .. tostring(peer_id) .. " type=" .. item_type)
+	return true
+end
+
+-- ===================================================== Registration
+--
+-- The public surface (CSR.register_item, csr_extension_api.lua) routes here.
+-- CSR's own items use the SAME path (csr_builtin_items.lua) -- dogfooded.
+local KNOWN_RARITIES = {
+	common = true,
+	uncommon = true,
+	rare = true,
+	contraband = true,
+	wildcard = true,
+}
+-- Slice 1 declarative vocabulary. Grows one entry at a time as each item that
+-- needs a new kind is ported (never speculatively).
+local KNOWN_EFFECT_KINDS = { stat_mul = true }
+
+function CSRGameManager:register_item(def)
+	if type(def) ~= "table" then
+		log_csr("register_item: definition not a table — skipped")
+		return false
+	end
+	local t = def.type
+	if type(t) ~= "string" or t == "" then
+		log_csr("register_item: missing/invalid 'type' — skipped")
+		return false
+	end
+	if self._registry.by_type[t] then
+		log_csr("register_item: duplicate type '" .. t .. "' — skipped")
+		return false
+	end
+	if not KNOWN_RARITIES[def.rarity] then
+		log_csr("register_item: '" .. t .. "' unknown rarity '" .. tostring(def.rarity) .. "' — skipped")
+		return false
+	end
+	local effect = def.effect
+	local has_cb = def.on_apply ~= nil or def.on_remove ~= nil or def.on_tick ~= nil
+	if effect ~= nil then
+		if type(effect) ~= "table" or not KNOWN_EFFECT_KINDS[effect.kind] then
+			log_csr(
+				"register_item: '" .. t .. "' bad effect kind '" .. tostring(effect and effect.kind) .. "' — skipped"
+			)
+			return false
+		end
+	elseif not has_cb then
+		log_csr("register_item: '" .. t .. "' has neither effect nor callbacks — skipped")
+		return false
+	end
+
+	local entry = {
+		type = t,
+		rarity = def.rarity,
+		name = def.name,
+		desc = def.desc,
+		icon = def.icon,
+		effect = effect,
+		on_apply = def.on_apply,
+		on_remove = def.on_remove,
+		on_tick = def.on_tick,
+	}
+	table.insert(self._registry.items, entry)
+	self._registry.by_type[t] = entry
+	log_csr("register_item: '" .. t .. "' (" .. def.rarity .. ")")
+	return true
+end
+
+-- Read-only list of registered item definitions (UI / effect dispatcher
+-- iterate this instead of hardcoded tables).
+function CSRGameManager:registered_items()
+	return self._registry.items
 end
 
 function CSRGameManager:roll_item_pool(peer_id, count)
@@ -790,24 +876,6 @@ function CSRGameManager:_migrate_legacy_save()
 	end
 
 	log_csr("migrator: stub run complete; legacy files untouched")
-end
-
--- =====================================================
--- Pilot test seed (alpha-only)
---
--- Adds one Dog Tags item to peer 1 if absent. Idempotent — once the item is
--- in state and saved, subsequent launches load it from disk and this is a
--- no-op. Lets the player launch PD2 and verify the +10% max-HP bump in the
--- HUD without needing a debug keybind or UI plumbing.
--- =====================================================
-
-function CSRGameManager:_pilot_seed_dog_tags()
-	if self:has_item(1, "dog_tags") then
-		log_csr("pilot seed: dog_tags already present for peer 1; skipping")
-		return
-	end
-	log_csr("pilot seed: adding one dog_tags item to peer 1")
-	self:add_item(1, "dog_tags")
 end
 
 -- =====================================================

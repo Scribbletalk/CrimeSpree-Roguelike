@@ -6,12 +6,24 @@
 	"blt_version": 2,
 	"hooks": [
 		{
+			"hook_id": "lib/entry",
+			"script_path": "lua/core/csr_extension_api.lua"
+		},
+		{
+			"hook_id": "lib/setups/setup",
+			"script_path": "lua/core/csr_extension_api.lua"
+		},
+		{
 			"hook_id": "lib/setups/setup",
 			"script_path": "lua/managers/csr_game_manager.lua"
 		},
 		{
+			"hook_id": "lib/setups/setup",
+			"script_path": "lua/items/csr_builtin_items.lua"
+		},
+		{
 			"hook_id": "lib/managers/playermanager",
-			"script_path": "lua/items/dogtags.lua"
+			"script_path": "lua/items/csr_item_effects.lua"
 		},
 		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",

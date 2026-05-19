@@ -565,6 +565,154 @@ function CSRMissionsMenuComponent:_create_status_bar(w)
 	})
 
 	diff_label:set_range_color(utf8.len(diff_prefix), utf8.len(diff_full), highlight)
+
+	-- Notification line ABOVE the status row, right-aligned over DIFFICULTY:
+	-- a yellow, clickable reminder that the player still owes roguelike item
+	-- picks. The hit target is a snug panel (not the w-wide title row) so only
+	-- the words react -- this file hit-tests panels everywhere (sidebar, cards),
+	-- never raw text objects, so we follow that convention. Child of
+	-- self._panel, so the existing close() (removes self._panel) cleans it up.
+	-- Same yellow as the rank/difficulty highlight above for visual coherence
+	-- (4-arg Color per Rule #6; this is a=1 r=1 g=1 b=0 == yellow).
+	-- Default (left/top) align: the text is snugged to its glyphs by
+	-- make_fine_text in _refresh_unselected_items and pinned to (0,0), then the
+	-- hit-panel is sized to it and right-anchored over DIFFICULTY. Right edge
+	-- stays put as the digit count changes (panel grows leftward).
+	-- Two-state yellow: dim by default, full bright on hover (mouse_moved
+	-- swaps these). Bright == the rank/difficulty highlight yellow above for
+	-- coherence; dim is the same hue scaled down. 4-arg Color per Rule #6
+	-- (a=1, r, g, b=0 == yellow).
+	self._unselected_color_dim = Color(1, 0.85, 0.78, 0)
+	self._unselected_color_bright = Color(1, 1, 1, 0)
+
+	self._unselected_panel = self._panel:panel({
+		layer = 51,
+	})
+	-- Near-transparent yellow backing plate, same rect idiom as self._actions_bg
+	-- (color sets RGB, the alpha field sets the final translucency -- Rule #6:
+	-- this is 4-arg a=1 r=1 g=1 b=0 == yellow, not a 3-arg Color). Child of
+	-- self._panel (NOT the snug hit-panel): it spans the whole mission row
+	-- while the hit-panel stays snug around the words, so it needs its own
+	-- visibility toggle. Layer 1 so Diesel's per-layer sort draws it under the
+	-- layer-51 hit-panel (and its layer-52 text). Sized in _refresh_unselected_items.
+	self._unselected_bg = self._panel:rect({
+		layer = 1,
+		color = Color(1, 1, 1, 0),
+		alpha = 0.1,
+	})
+	self._unselected_items = self._unselected_panel:text({
+		layer = 52,
+		text = "",
+		color = self._unselected_color_dim,
+		font = tweak_data.menu.pd2_medium_font,
+		font_size = tweak_data.menu.pd2_medium_font_size * 1.2,
+	})
+
+	-- Populate text, snug the hit-panel, and apply pending>0 visibility. The
+	-- host-fail hide in refresh() can still override this (passed as `allowed`).
+	self:_refresh_unselected_items(true)
+end
+
+-- How many roguelike item picks the player still owes. The entitlement is the
+-- HOST's spree rank (user spec); subtract what the local player already owns.
+-- Items bought with Gage tokens must NOT count toward the rank quota ("это на
+-- будущее"): tokens/shop are not ported in 6.3 so every owned item is currently
+-- a rank item -- when the token slice lands, filter token-sourced items out of
+-- the `owned` count right here.
+function CSRMissionsMenuComponent:_unselected_item_count()
+	if not managers.csr then
+		return 0
+	end
+
+	local host_rank = managers.csr:host_rank() or 0
+	local peer_id = managers.csr:local_peer_id()
+	-- total_item_count = sum of stacks across all owned types (the count model
+	-- replaced the id-list, so #player_items would be wrong on the map).
+	local owned = managers.csr:total_item_count(peer_id)
+
+	return math.max(0, host_rank - owned)
+end
+
+-- Refresh the notification's text + size + visibility. `allowed == false`
+-- force-hides it (host-fail state), otherwise it shows only when the player
+-- actually owes picks. Called from _create_status_bar (initial) and refresh()
+-- (event-driven, never per-frame), so the table alloc in :text{} is fine.
+function CSRMissionsMenuComponent:_refresh_unselected_items(allowed)
+	if not self._unselected_panel or not alive(self._unselected_panel) then
+		return
+	end
+
+	local count = self:_unselected_item_count()
+	-- to_upper_text (not text): all-caps, same as the csr_lobby_rank/difficulty
+	-- labels on the status row below. It takes the macro table too (vanilla
+	-- uses to_upper_text("menu_cs_level", { ... }) the same way).
+	self._unselected_items:set_text(managers.localization:to_upper_text("csr_lobby_unselected_items", {
+		count = count,
+	}))
+
+	-- Snug the text to its glyphs with the canonical PD2 helper
+	-- (blackmarketgui.lua:2416 -- set_size + ROUNDED set_position; the original
+	-- of this fork uses the same call in CrimeSpreeMissionButton:update_button_text).
+	-- Doing the resize by hand without the position re-pin left the glyphs
+	-- drawn outside the moved panel: panel hoverable, text invisible. Then pin
+	-- the text to (0,0) and wrap the hit-panel exactly around it so only the
+	-- words are clickable, right-anchored over DIFFICULTY.
+	BlackMarketGui.make_fine_text(nil, self._unselected_items)
+
+	-- Padded backing plate (vanilla-button feel): the snug text sits inside a
+	-- slightly larger panel so the yellow plate has breathing room, and the
+	-- click/hover area equals the visible plate. bg fills the panel; both grow
+	-- leftward since the right edge is pinned over DIFFICULTY.
+	local pad_x, pad_y = 8, 3
+	local tw, th = self._unselected_items:w(), self._unselected_items:h()
+	self._unselected_items:set_position(pad_x, pad_y)
+	self._unselected_panel:set_size(tw + pad_x * 2, th + pad_y * 2)
+	self._unselected_panel:set_right(self._title_panel:right())
+	-- Sit clearly ABOVE the status row (one medium line of clearance), not
+	-- hugging it. Re-applied every refresh so a re-snug keeps the gap.
+	self._unselected_panel:set_bottom(self._title_panel:top() - tweak_data.menu.pd2_medium_font_size)
+
+	-- Backing plate: height == the TEXT glyph height (th), not the padded hit
+	-- panel; width spans the whole mission row -- from the left edge of the
+	-- leftmost card to the right edge over DIFFICULTY. self._title_panel shares
+	-- w and right edge with self._buttons_panel (the cards), so right-anchoring
+	-- at title_panel:right() with w == title_panel:w() lands exactly there.
+	-- Vertically centred on the hit panel (the text is centred in it), so the
+	-- th-tall plate sits flush behind the glyphs.
+	self._unselected_bg:set_w(self._title_panel:w())
+	self._unselected_bg:set_h(th)
+	self._unselected_bg:set_right(self._title_panel:right())
+	self._unselected_bg:set_center_y(self._unselected_panel:center_y())
+
+	-- Reset to the dim base colour on (re)build; mouse_moved brightens it on
+	-- hover. Stale hover can't persist a bright colour through a refresh.
+	self._unselected_items:set_color(self._unselected_color_dim)
+	self._unselected_items_hover = false
+
+	self._unselected_visible = allowed ~= false and count > 0
+	self._unselected_panel:set_visible(self._unselected_visible)
+	-- bg is a sibling under self._panel, not a child of the hit panel, so the
+	-- panel's set_visible above does NOT cover it -- toggle it on the same flag.
+	self._unselected_bg:set_visible(self._unselected_visible)
+end
+
+-- Open the forked item-selection window (csr_item_selection.lua). That file
+-- owns the register/hide-chrome lifecycle and exposes _G.CSR_OpenItemSelectionDebug;
+-- _G._csr_item_selection_debug is its own "is it open" flag, which we reuse as
+-- the guard. CSR_OpenItemSelectionDebug is NOT idempotent -- a second call
+-- re-registers the component and overwrites its live-component-order snapshot
+-- (the "after close, CSR buttons dead" bug it documents), so only open when
+-- nothing is open yet. Nil-guarded: the window file is menu-loaded, but stay
+-- defensive in case load order/strip changes. The pool is still the debug set
+-- until CSRGameManager:roll_item_pool lands; this wires the trigger now.
+function CSRMissionsMenuComponent:_on_unselected_items_clicked()
+	-- Click SFX, same event the mission cards / sidebar post on activation
+	-- (managers.menu_component:post_event("menu_enter"), see _set_button_index_selected).
+	managers.menu_component:post_event("menu_enter")
+
+	if _G.CSR_OpenItemSelectionDebug and not _G._csr_item_selection_debug then
+		_G.CSR_OpenItemSelectionDebug()
+	end
 end
 
 function CSRMissionsMenuComponent:_start_pressed()
@@ -780,6 +928,12 @@ function CSRMissionsMenuComponent:refresh()
 	-- toggle covers the whole header row.
 	self._title_panel:set_visible(not hide)
 
+	-- The reminder is a sibling of self._title_panel (own snug panel, not a
+	-- child of the row), so it needs its own toggle. Re-evaluates the pending
+	-- count every refresh -- the pick total can change across sub-screen
+	-- round-trips -- and stays hidden while the host-fail screen is up.
+	self:_refresh_unselected_items(not hide)
+
 	-- Re-apply the context button + failed-lock every refresh so returning to
 	-- a FAILED lobby comes up locked (Start hidden, Reroll -> Continue).
 	self:_refresh_action_buttons()
@@ -881,6 +1035,38 @@ function CSRMissionsMenuComponent:mouse_moved(o, x, y)
 		end
 	end
 
+	-- Unselected-items reminder: link cursor on hover, mirroring the buttons
+	-- above. self._unselected_visible already folds in the pending>0 + host-fail
+	-- gating, so an invisible reminder can never be hovered. (Hover/click are
+	-- only reached for host/SP -- mouse_moved early-returns for non-host, same
+	-- as mission selection; full per-client behaviour is a later slice.)
+	local was_unselected_hover = self._unselected_items_hover == true
+	self._unselected_items_hover = self._unselected_visible == true
+		and self._unselected_panel ~= nil
+		and alive(self._unselected_panel)
+		and self._unselected_panel:inside(x, y)
+
+	if self._unselected_items_hover then
+		pointer = "link"
+		used = true
+
+		-- Hover SFX once on the false->true transition (NOT every mouse_moved
+		-- while inside) -- the exact gate vanilla CrimeNetSidebarItem:set_highlight
+		-- uses. "highlight" is the vanilla menu hover event
+		-- (crimenetsidebargui.lua:604; also CSRSidebarItem:set_highlight here).
+		if not was_unselected_hover then
+			managers.menu:post_event("highlight")
+		end
+	end
+
+	-- Brighten on hover, dim otherwise (mirrors the buttons' set_selected here;
+	-- mouse_moved is event-driven, not a per-frame path, so set_color is cheap).
+	if self._unselected_visible and alive(self._unselected_panel) then
+		self._unselected_items:set_color(
+			self._unselected_items_hover and self._unselected_color_bright or self._unselected_color_dim
+		)
+	end
+
 	return used, pointer
 end
 
@@ -929,6 +1115,12 @@ function CSRMissionsMenuComponent:confirm_pressed()
 
 	if self._action_button and self._action_button:is_selected() and self._action_button:callback() then
 		self._action_button:callback()()
+
+		return true
+	end
+
+	if self._unselected_items_hover then
+		self:_on_unselected_items_clicked()
 
 		return true
 	end

@@ -740,23 +740,39 @@ end
 -- Builds the debug card set: the only registered 6.3 item is Dog Tags
 -- (managers.csr._registry), shown x3. Description is derived from the live
 -- balance constant (no hardcoded number, no logbook {color} markup).
+-- Registry-driven: one card per item registered through CSR.register_item
+-- (CSR's own + any addon's). Reads name/desc/icon/rarity straight off the
+-- registered def as literal strings -- deliberately NOT via loc keys, so this
+-- path never touches the partially-ported legacy csr_localization.lua
+-- generator. The selection POOL (which subset rolls) lands with
+-- CSRGameManager:roll_item_pool; for now it lists everything registered.
 local function build_debug_items()
-	local bonus = 0.10
-	if managers.csr and managers.csr.constant then
-		bonus = managers.csr:constant("dog_tags_hp_bonus") or bonus
-	end
-	local desc = string.format("Increases maximum health by %g%% (+%g%% per stack, linear).", bonus * 100, bonus * 100)
-
 	local items = {}
-	for i = 1, 3 do
-		items[i] = {
-			id = "player_health_boost_" .. i,
-			icon = "csr_dog_tags",
-			rarity = "common",
-			name = "DOG TAGS",
-			desc = desc,
+	local mgr = managers and managers.csr
+	local reg = (mgr and mgr.registered_items and mgr:registered_items()) or {}
+
+	for _, def in ipairs(reg) do
+		items[#items + 1] = {
+			id = def.type,
+			icon = def.icon or "csr_dog_tags",
+			rarity = def.rarity or "common",
+			name = def.name or string.upper(tostring(def.type)),
+			desc = def.desc or "",
 		}
 	end
+
+	if #items == 0 then
+		-- Opened before any item registered (or none exist): keep the window
+		-- readable as "nothing yet" instead of an empty/broken layout.
+		items[1] = {
+			id = "csr_none",
+			icon = "csr_dog_tags",
+			rarity = "common",
+			name = "NO ITEMS",
+			desc = "No items are registered yet.",
+		}
+	end
+
 	return items
 end
 
