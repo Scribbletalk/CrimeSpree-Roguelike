@@ -768,4 +768,19 @@ if MenuCallbackHandler and not _G._CSR_REROLL_WRAPPED then
 	end
 end
 
+-- Drop the chosen mission when the player GENUINELY leaves the CSR lobby.
+-- _dialog_leave_lobby_yes (vanilla, menumanager.lua:3574) is the single
+-- executor for every real lobby exit (leave_csr_lobby -> CrimeNet/main,
+-- End Spree, Claim Rewards) and is NOT in the path for Inventory/Options
+-- sub-screen round-trips or the Start->briefing heist launch -- so the pick
+-- correctly survives those and only resets on a true exit (user 2026-05-19).
+-- managers.csr:select_mission(false) only nils current_mission (CSR-owned
+-- transient state); no vanilla surface is touched, so this is safe to stack
+-- on the vanilla callback even on non-CSR lobby leaves (harmless no-op there).
+Hooks:PostHook(MenuCallbackHandler, "_dialog_leave_lobby_yes", "CSR_ClearMissionOnLeaveLobby", function(self)
+	if managers and managers.csr and managers.csr.select_mission then
+		managers.csr:select_mission(false)
+	end
+end)
+
 log("[CSR] csr_contract_callbacks.lua loaded (Slice 3 fork + Slice 5 accept wrap + Slice 8 start/reroll wrap)")

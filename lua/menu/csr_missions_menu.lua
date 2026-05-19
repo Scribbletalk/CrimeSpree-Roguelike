@@ -141,6 +141,11 @@ function CSRMissionsMenuComponent:_setup()
 			btn:set_callback(callback(self, self, "_select_mission", idx))
 			table.insert(self._buttons, btn)
 
+			-- Re-highlight the still-selected mission on rebuild. The pick
+			-- survives sub-screen round-trips (Inventory/Options) and is only
+			-- cleared on a genuine lobby exit -- managers.csr:select_mission(false)
+			-- in the CSR_ClearMissionOnLeaveLobby PostHook on the vanilla
+			-- _dialog_leave_lobby_yes (csr_contract_callbacks.lua).
 			if managers.csr:current_mission() == data.id then
 				default_index = idx
 			end
@@ -721,9 +726,23 @@ function CSRMissionsMenuComponent:_set_button_index_selected(idx, selected)
 	if btn then
 		btn:set_selected(selected)
 		btn:set_active(selected)
-		managers.csr:select_mission(btn:mission_id())
 
-		if self:_is_host() then
+		-- Diverges DELIBERATELY from vanilla crimespreemissionsmenucomponent.lua
+		-- (which calls select_mission(btn:mission_id()) unconditionally). In the
+		-- CSR fork csr_start_game reads managers.csr:current_mission() directly,
+		-- and reroll/_select_mission(0) deselects the old card AFTER
+		-- reroll_mission_set() already nil'd current_mission. The vanilla
+		-- unconditional call re-selects the old (still-attached) mission_data on
+		-- that deselect, so Start launched the pre-reroll heist. Push the pick
+		-- into the manager only when actually selecting; clear it on deselect so
+		-- a reroll (and a genuine deselect) leaves current_mission nil.
+		if selected then
+			managers.csr:select_mission(btn:mission_id())
+		else
+			managers.csr:select_mission(false)
+		end
+
+		if selected and self:_is_host() then
 			managers.menu_component:post_event("menu_enter")
 		end
 
@@ -795,8 +814,39 @@ function CSRMissionsMenuComponent:mouse_moved(o, x, y)
 
 	local used, pointer = nil
 
+	-- The sidebar is a child object of THIS component but is geometrically
+	-- disjoint from the mission cards: the sidebar column and
+	-- self._buttons_panel never overlap (verified from runtime bounds
+	-- 2026-05-19 -- sidebar x:[0,160], cards x:[618,1198]). So the sidebar
+	-- needs NO coupling with the card-hover logic: forward the cursor to it
+	-- purely for its own button highlight / hover-sound and let it report
+	-- whether it consumed the cursor. The card loop below is independently
+	-- bounded to self._buttons_panel, so a cursor over the sidebar simply
+	-- yields cards_area=false and no card reacts. Removing the previous
+	-- "over_sidebar" early-return (which force-cleared every card's
+	-- set_selected and juggled the pointer) eliminated the entire
+	-- collapse->expand flicker class -- the two were only ever coupled by
+	-- that band-aid.
+	if self._sidebar then
+		local s_used, s_pointer = self._sidebar:mouse_moved(x, y)
+
+		if s_used then
+			used = true
+			pointer = s_pointer or pointer
+		end
+	end
+
+	-- Bound mission-card hover to the cards' OWN container. A card is only
+	-- hover-selected when the cursor is inside self._buttons_panel AND inside
+	-- that card. Without the container check, any widget drawn over the card
+	-- area on a higher layer (the social-hub notification toast, lobby code,
+	-- future overlays) makes the card behind it flicker as the cursor moves,
+	-- because mouse_moved otherwise hit-tests cards across the whole screen
+	-- (user report 2026-05-19, generalises the sidebar fix above).
+	local cards_area = self._buttons_panel and alive(self._buttons_panel) and self._buttons_panel:inside(x, y)
+
 	for idx, btn in ipairs(self._buttons) do
-		btn:set_selected(btn:inside(x, y))
+		btn:set_selected(cards_area and btn:inside(x, y) or false)
 
 		if btn:is_selected() then
 			pointer = "link"
@@ -827,15 +877,6 @@ function CSRMissionsMenuComponent:mouse_moved(o, x, y)
 
 		if self._action_button:is_selected() then
 			pointer = "link"
-			used = true
-		end
-	end
-
-	if self._sidebar then
-		local s_used, s_pointer = self._sidebar:mouse_moved(x, y)
-
-		if s_used then
-			pointer = s_pointer
 			used = true
 		end
 	end
@@ -1070,7 +1111,16 @@ function CSRMissionButton:init(idx, parent, mission_data)
 end
 
 function CSRMissionButton:refresh()
-	self._bg:set_visible(not self:is_selected())
+	-- Fork divergence from vanilla CrimeSpreeMissionButton:refresh (which keys
+	-- _bg purely on is_selected): vanilla CS auto-launches the heist the instant
+	-- a mission is picked, so a chosen card is never left on screen to hover
+	-- away from. CSR keeps the chosen mission card persistent in the lobby, so
+	-- with vanilla's rule the chosen card's _bg pulses every time the cursor
+	-- enters/leaves it (set_selected toggles via the hover loop while is_active
+	-- stays true -- runtime-confirmed 2026-05-19). Gate _bg on is_active too so
+	-- the chosen card holds its selected look regardless of hover; the other
+	-- three lines already depend on is_active and were always stable.
+	self._bg:set_visible(not (self:is_selected() or self:is_active()))
 	self._highlight:set_visible(self:is_active() or self:is_selected())
 	self._highlight_name:set_visible(self:is_active() or self:is_selected())
 	self._active_border:set_visible(self:is_active())
