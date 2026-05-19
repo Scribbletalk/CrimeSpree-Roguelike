@@ -38,6 +38,10 @@
 			"script_path": "lua/menu/csr_missions_wiring.lua"
 		},
 		{
+			"hook_id": "lib/managers/menu/menucomponentmanager",
+			"script_path": "lua/menu/csr_item_selection.lua"
+		},
+		{
 			"hook_id": "lib/managers/hud/hudmissionbriefing",
 			"script_path": "lua/menu/csr_mission_briefing.lua"
 		},
@@ -118,6 +122,14 @@
 			"run_in_menu": false,
 			"run_in_game": true,
 			"script_path": "lua/keybinds/csr_debug_fail_heist.lua"
+		},
+		{
+			"keybind_id": "csr_debug_item_selection",
+			"name": "CSR Debug: Toggle Item Selection Window",
+			"description": "Opens/closes the forked item-selection window. Debug tool, menu only.",
+			"run_in_menu": true,
+			"run_in_game": false,
+			"script_path": "lua/keybinds/csr_debug_item_selection.lua"
 		}
 	]
 }
