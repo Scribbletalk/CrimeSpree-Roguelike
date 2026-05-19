@@ -52,6 +52,38 @@ if not RequiredScript then
 	return
 end
 
+-- Tear down the stale end-screen HUD backdrop that leaks into the CSR lobby.
+--
+-- CSRHUDStageEndScreen._backdrop is a MenuBackdropGUI whose "stage_text"
+-- children ("<HeistName>: SUCCESS", set by the delegated HUDStageEndScreen
+-- .set_success) live on HUDManager's PERSISTENT workspace("fullscreen_workspace",
+-- "menu"). Nothing in vanilla lib ever destroys _hud_stage_endscreen or calls
+-- _backdrop:close() (verified: StageEndScreenGui:close()/our fork only remove
+-- their own component panels). Vanilla relies on an implicit menu-workspace
+-- recreation that CSR's temporary "crime_spree" job return path never triggers
+-- (same "vanilla-CS-aware path not taken" class as the briefing/lobby leaks),
+-- so the orphaned backdrop title survives into the CSR lobby and overlaps the
+-- "Crime Spree Roguelike" header (user report 2026-05-18).
+--
+-- MenuBackdropGUI:close() -> destroy() removes _panel and guard-handles
+-- _blackborder_workspace / _black_bg_ws (menubackdropgui.lua:651-675). Because
+-- NOTHING else frees this object, an explicit close here cannot double-free.
+-- We also nil managers.hud._hud_stage_endscreen so HUDManager's nil-guarded
+-- *_endscreen_hud methods become safe no-ops and the next setup_endscreen_hud
+-- builds a fresh instance. Host and client each run on_enter_lobby locally and
+-- each built their own local CSRHUDStageEndScreen, so both tear down their own;
+-- no network packet is involved (feedback_check_host_and_client).
+local function csr_teardown_endscreen_hud()
+	local hud = managers and managers.hud
+	local screen = hud and hud._hud_stage_endscreen
+
+	if screen and screen._backdrop then
+		screen._backdrop:close()
+		hud._hud_stage_endscreen = nil
+		log("[CSR] lobby routing: tore down stale end-screen HUD backdrop")
+	end
+end
+
 Hooks:PostHook(MenuManager, "on_enter_lobby", "CSR_OnEnterLobbyRoute", function(self)
 	log("[CSR] lobby routing: on_enter_lobby PostHook fired (flag=" .. tostring(Global.CSR_RETURN_TO_LOBBY) .. ")")
 
@@ -60,6 +92,10 @@ Hooks:PostHook(MenuManager, "on_enter_lobby", "CSR_OnEnterLobbyRoute", function(
 	end
 
 	Global.CSR_RETURN_TO_LOBBY = nil
+
+	-- The end-screen backdrop leaks regardless of whether the reroute below
+	-- succeeds, so tear it down first (before the logic nil-check bail-out).
+	csr_teardown_endscreen_hud()
 
 	local active = managers.menu and managers.menu:active_menu()
 	local logic = active and active.logic

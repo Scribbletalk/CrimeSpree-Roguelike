@@ -123,6 +123,10 @@ function CSRMissionsMenuComponent:_setup()
 	self._buttons_panel:set_right(parent:right())
 	self._buttons_panel:set_bottom(bottom)
 
+	-- Built here (not in _create_sidebar) because it measures BOTH the sidebar
+	-- and the now-positioned mission-cards panel for its left/right bounds.
+	self:_create_feature_panels()
+
 	local default_index = nil
 
 	for idx = 1, tweak_data.crime_spree.gui.missions_displayed do
@@ -346,7 +350,131 @@ function CSRMissionsMenuComponent:_create_sidebar(bottom)
 	-- mission cards' bottom edge so the two line up.
 	local top = (self._title_bottom or 0) + sidebar_title_gap
 
-	self._sidebar = CSRSidebar:new(self._panel, top, bottom)
+	-- Pass self as owner so the sidebar's Items row can toggle the
+	-- component-owned Items panel (geometry spans sidebar -> mission cards).
+	self._sidebar = CSRSidebar:new(self._panel, top, bottom, self)
+end
+
+-- Feature panels: rectangular panels that open to the RIGHT of the sidebar
+-- when its Items / Modifiers / Rewards row is clicked. All three share the
+-- EXACT same region -- height == the sidebar's height, spanning the empty gap
+-- with a symmetric `padding` margin on both sides (from the sidebar and from
+-- the leftmost mission card -- user spec 2026-05-19). Built once here (hidden),
+-- toggled by visibility; lifetime is tied to self._panel, which the existing
+-- close() removes, so no extra teardown is needed (same ownership model as the
+-- sidebar). Visual recipe is the sidebar's 1:1 (0.4 black rect + test_blur_df
+-- backdrop + BoxGui frame); content is a later pass, exactly how the sidebar
+-- itself started as "just the panel".
+--
+-- Requires self._sidebar (built in _create_sidebar above) and
+-- self._buttons_panel (built in _setup before this is called) to measure the
+-- left/right bounds; both are children of self._panel, so all coordinates are
+-- in the same space.
+function CSRMissionsMenuComponent:_create_feature_panels()
+	if not self._sidebar or not self._buttons_panel then
+		return
+	end
+
+	local sb = self._sidebar:panel()
+	-- Symmetric `padding` gap on BOTH sides: from the sidebar on the left and
+	-- from the leftmost mission card on the right (user refinement 2026-05-19 --
+	-- flush-to-card was too wide).
+	local left = sb:right() + padding
+	local right = self._buttons_panel:left() - padding
+	local width = math.max(right - left, 0)
+	local px, py, ph = left, sb:top(), sb:h()
+
+	-- One panel per content category, all built identically and pinned to the
+	-- same rect (they are mutually exclusive -- see toggle_feature_panel).
+	local function build()
+		local p = self._panel:panel({
+			layer = 100,
+		})
+
+		p:set_w(width)
+		p:set_h(ph)
+		p:set_x(px)
+		p:set_y(py)
+
+		local bg = p:panel({
+			layer = -1,
+		})
+
+		bg:rect({
+			alpha = 0.4,
+			color = Color.black,
+		})
+		bg:bitmap({
+			texture = "guis/textures/test_blur_df",
+			name = "blur_bg",
+			halign = "scale",
+			layer = -1,
+			render_template = "VertexColorTexturedBlur3D",
+			valign = "scale",
+			w = bg:w(),
+			h = bg:h(),
+		})
+
+		-- Frame discarded like the sidebar's own border (anonymous, never
+		-- referenced again); the panel-tree teardown removes it.
+		BoxGuiObject:new(
+			p:panel({
+				layer = 100,
+			}),
+			{
+				sides = {
+					1,
+					1,
+					1,
+					1,
+				},
+			}
+		)
+
+		p:set_visible(false)
+
+		return p
+	end
+
+	self._feature_panels = {
+		items = build(),
+		modifiers = build(),
+		rewards = build(),
+	}
+end
+
+-- Mutually exclusive: the three panels occupy the SAME rect, so showing one
+-- hides the others; clicking the already-open row closes it (toggle off).
+function CSRMissionsMenuComponent:toggle_feature_panel(key)
+	if not self._feature_panels then
+		return
+	end
+
+	local target = self._feature_panels[key]
+
+	if not target or not alive(target) then
+		return
+	end
+
+	local show = not target:visible()
+
+	self:hide_feature_panels()
+	target:set_visible(show)
+end
+
+-- Hide every feature panel. Also driven by the sidebar's Hide Sidebar collapse
+-- (the panel is component-owned, not sidebar chrome, so CSRSidebar:set_collapsed
+-- asks the owner to hide it -- user spec 2026-05-19).
+function CSRMissionsMenuComponent:hide_feature_panels()
+	if not self._feature_panels then
+		return
+	end
+
+	for _, p in pairs(self._feature_panels) do
+		if alive(p) then
+			p:set_visible(false)
+		end
+	end
 end
 
 function CSRMissionsMenuComponent:_create_status_bar(w)
@@ -463,7 +591,6 @@ function CSRMissionsMenuComponent:_action_end_spree()
 end
 
 function CSRMissionsMenuComponent:_action_return_to_lobby()
-	log("[CSR] _action_return_to_lobby: button pressed (is_lobby=" .. tostring(self._is_lobby) .. ")")
 	MenuCallbackHandler:return_to_csr_lobby()
 end
 
@@ -1371,17 +1498,40 @@ local function csr_open_logbook()
 	end
 end
 
+-- Sidebar row callbacks are invoked as btn:callback()(owner) where owner is the
+-- CSRMissionsMenuComponent (CSRSidebar:mouse_pressed passes self._owner). The
+-- feature panels are component-owned (they span from the sidebar to the mission
+-- cards, geometry the sidebar itself doesn't know), so each row forwards to the
+-- owner with its category key. The factory returns a stateless module-level
+-- closure (captures only the constant key, no instance state -- safe to share
+-- across instances). nil/method-guarded so a missing owner is inert.
+local function csr_feature_toggle(key)
+	return function(owner)
+		if owner and owner.toggle_feature_panel then
+			owner:toggle_feature_panel(key)
+		end
+	end
+end
+
 CSRSidebar.ITEMS = {
-	{ text = "Items", icon = "sidebar_basics" },
-	{ text = "Modifiers", icon = "sidebar_mutators" },
-	{ text = "Rewards", icon = "sidebar_broker" },
+	-- Divider between the always-visible Hide/Show toggle (built before this
+	-- list, pinned to the top) and the content rows. Built in the same loop, so
+	-- it joins self._buttons and is hidden/non-interactive on collapse like the
+	-- other separators — no special-casing needed.
+	{ separator = true },
+	{ text = "Items", icon = "sidebar_basics", callback = csr_feature_toggle("items") },
+	{ text = "Modifiers", icon = "sidebar_mutators", callback = csr_feature_toggle("modifiers") },
+	{ text = "Rewards", icon = "sidebar_broker", callback = csr_feature_toggle("rewards") },
 	{ separator = true },
 	{ text = "Gage Services", icon = "sidebar_gage" },
 	{ separator = true },
 	{ text = "Logbook", icon = "sidebar_codex", callback = csr_open_logbook },
 }
 
-function CSRSidebar:init(parent, top, bottom)
+function CSRSidebar:init(parent, top, bottom, owner)
+	-- owner = the CSRMissionsMenuComponent. Stored so row callbacks can act on
+	-- component-owned UI (e.g. the Items panel) via btn:callback()(self._owner).
+	self._owner = owner
 	self._buttons = {}
 	self._panel = parent:panel({
 		w = CSRSidebar.WIDTH,
@@ -1408,8 +1558,30 @@ function CSRSidebar:init(parent, top, bottom)
 		h = self._bg_panel:h(),
 	})
 
-	local next_position = padding
+	self._collapsed = false
+
 	local item_margin = 2
+
+	-- Always-visible collapse toggle, pinned to the top of the sidebar. It is
+	-- deliberately NOT part of the collapsible content (set_collapsed never
+	-- touches it), so it stays on screen as a "SHOW_SIDEBAR" affordance once the
+	-- rest is hidden. Same CSRSidebarItem widget + vanilla "sidebar_expand" icon
+	-- (hudiconstweakdata.lua — the exact icon the live CrimeNet sidebar uses for
+	-- its collapse control) as every other row. CSRSidebarItem callbacks are
+	-- invoked as btn:callback()(owner) in mouse_pressed; this arg-less closure
+	-- ignores the owner and just forwards to self:toggle_collapsed().
+	self._toggle = CSRSidebarItem:new(self._panel, {
+		position = padding,
+		text = "Hide Sidebar",
+		icon = "sidebar_expand",
+		callback = function()
+			self:toggle_collapsed()
+		end,
+	})
+
+	table.insert(self._buttons, self._toggle)
+
+	local next_position = padding + self._toggle:panel():height() + item_margin
 
 	for _, item in ipairs(CSRSidebar.ITEMS) do
 		local btn
@@ -1432,19 +1604,55 @@ function CSRSidebar:init(parent, top, bottom)
 		table.insert(self._buttons, btn)
 	end
 
-	self._border = BoxGuiObject:new(
-		self._panel:panel({
-			layer = 100,
-		}),
-		{
-			sides = {
-				1,
-				1,
-				1,
-				1,
-			},
-		}
-	)
+	-- Stored (was an anonymous panel in vanilla) so set_collapsed can hide the
+	-- frame along with the rest of the collapsible content.
+	self._border_panel = self._panel:panel({
+		layer = 100,
+	})
+	self._border = BoxGuiObject:new(self._border_panel, {
+		sides = {
+			1,
+			1,
+			1,
+			1,
+		},
+	})
+end
+
+-- Collapse toggle. The toggle button itself is always left visible/interactive;
+-- only the backdrop, the rows, and the frame are hidden. inside() still returns
+-- geometric hits on a set_visible(false) panel, so mouse_moved/mouse_pressed
+-- gate the non-toggle rows on self._collapsed rather than on visibility.
+function CSRSidebar:toggle_collapsed()
+	self:set_collapsed(not self._collapsed)
+end
+
+function CSRSidebar:set_collapsed(collapsed)
+	self._collapsed = collapsed and true or false
+
+	if self._bg_panel then
+		self._bg_panel:set_visible(not self._collapsed)
+	end
+
+	if self._border_panel then
+		self._border_panel:set_visible(not self._collapsed)
+	end
+
+	for _, btn in ipairs(self._buttons) do
+		if btn ~= self._toggle then
+			btn:panel():set_visible(not self._collapsed)
+		end
+	end
+
+	-- Collapsing also hides the component-owned feature panel (Items/Modifiers/
+	-- Rewards) -- it is opened from a sidebar row, so it must not linger when the
+	-- sidebar is hidden (user spec 2026-05-19). Expanding does NOT reopen it; the
+	-- player re-clicks the row. owner/method-guarded (inert if absent).
+	if self._collapsed and self._owner and self._owner.hide_feature_panels then
+		self._owner:hide_feature_panels()
+	end
+
+	self._toggle:set_text(self._collapsed and "Show Sidebar" or "Hide Sidebar")
 end
 
 function CSRSidebar:panel()
@@ -1455,10 +1663,14 @@ function CSRSidebar:mouse_moved(x, y)
 	local used, pointer = false, nil
 
 	for _, btn in ipairs(self._buttons) do
-		if btn:accepts_interaction() then
+		-- While collapsed only the toggle is live (hidden rows still hit-test).
+		if (btn == self._toggle or not self._collapsed) and btn:accepts_interaction() then
 			local inside = btn:inside(x, y)
 
-			btn:set_highlight(inside, true)
+			-- No no_sound / force_update args (vanilla CrimeNetSidebarGui
+			-- :mouse_moved calls set_highlight(true)/(false) bare): the change
+			-- guard fires the hover sound once per transition, never per frame.
+			btn:set_highlight(inside)
 
 			if inside then
 				used = true
@@ -1472,8 +1684,22 @@ end
 
 function CSRSidebar:mouse_pressed(x, y)
 	for _, btn in ipairs(self._buttons) do
-		if btn:accepts_interaction() and btn:inside(x, y) and btn:callback() then
-			btn:callback()()
+		-- While collapsed only the toggle is live (hidden rows still hit-test).
+		if
+			(btn == self._toggle or not self._collapsed)
+			and btn:accepts_interaction()
+			and btn:inside(x, y)
+			and btn:callback()
+		then
+			-- Click feedback, posted centrally (vanilla scatters this into every
+			-- clbk_*; one site here covers all rows + the toggle + future
+			-- callbacks). Same event the mission cards / tabs use elsewhere in
+			-- this file. Row callbacks must therefore NOT post their own click
+			-- sound or it double-triggers.
+			managers.menu_component:post_event("menu_enter")
+			-- Pass the owning component so component-scoped rows (Items) can act
+			-- on it; the arg-less closures (toggle / csr_open_logbook) ignore it.
+			btn:callback()(self._owner)
 
 			return true
 		end
@@ -1597,13 +1823,23 @@ function CSRSidebarItem:accepts_interaction()
 	return true
 end
 
-function CSRSidebarItem:set_highlight(enabled, force_update)
+-- Signature restored to vanilla CrimeNetSidebarItem:set_highlight 1:1
+-- (enabled, no_sound, force_update). The block (and thus the hover "highlight"
+-- sound) only runs on a real state change unless force_update is set; the init
+-- call passes no_sound=true so building the sidebar is silent, exactly like
+-- vanilla (crimenetsidebargui.lua:553/584-608). managers.menu:post_event
+-- ("highlight") is the same hover event vanilla uses (verified line 604).
+function CSRSidebarItem:set_highlight(enabled, no_sound, force_update)
 	if self._highlight ~= enabled or force_update then
 		self._text:set_visible(true)
 		self._bg:set_visible(enabled)
 		self._text:set_color(enabled and Color.white or tweak_data.screen_colors.button_stage_2)
 		self._icon:set_color(enabled and Color.white or tweak_data.screen_colors.button_stage_2)
 		self._bg:set_color(Color.black)
+
+		if not no_sound then
+			managers.menu:post_event("highlight")
+		end
 
 		self._highlight = enabled
 	end

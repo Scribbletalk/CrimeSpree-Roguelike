@@ -223,7 +223,10 @@ function MenuCallbackHandler:end_csr(item, node)
 
 	-- CSR has no continental-coin entry fee, so the vanilla CS refund branch
 	-- (can_refund_entry_fee / get_start_cost) is dropped — plain confirm only.
-	dialog_data.text = managers.localization:text("dialog_are_you_sure_you_want_stop_cs")
+	-- CSR-owned key (csr_contract_wiring.lua), NOT the vanilla
+	-- dialog_are_you_sure_you_want_stop_cs: End Spree ends the run AND grants
+	-- rewards, and overriding the vanilla key would leak into vanilla CS.
+	dialog_data.text = managers.localization:text("csr_dialog_end_spree")
 
 	dialog_data.id = "stop_crime_spree"
 	local yes_button = {
@@ -258,8 +261,6 @@ end
 function MenuCallbackHandler:_dialog_end_csr_no() end
 
 function MenuCallbackHandler:return_to_csr_lobby()
-	log("[CSR] return_to_csr_lobby: invoked (state=" .. tostring(game_state_machine:current_state_name()) .. ")")
-
 	if game_state_machine:current_state_name() == "disconnected" then
 		return
 	end

@@ -135,6 +135,11 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_ContractHeaderLocalization", funct
 		csr_header_level_no_num = "Crime Spree Roguelike Level ",
 		csr_end_spree = "End Spree",
 		csr_return_to_lobby = "Return to Lobby",
+		-- CSR-owned confirm text for the End Spree button. NOT an override of
+		-- the vanilla dialog_are_you_sure_you_want_stop_cs key (that would also
+		-- rewrite vanilla CS's stop dialog -- feedback_csr_only_no_vanilla_leak).
+		-- End Spree ends the run AND grants rewards, so the copy reflects that.
+		csr_dialog_end_spree = "End your Crime Spree Roguelike run now and claim your rewards?",
 	})
 end)
 
