@@ -31,4 +31,32 @@ if _G.CSR and _G.CSR.register_item and not _G._CSR_BUILTINS_REGISTERED then
 		icon = "csr_dog_tags",
 		effect = { kind = "stat_mul", stat = "max_health", per_stack = 0.10 },
 	})
+
+	_G.CSR.register_item({
+		type = "evidence_rounds",
+		rarity = "uncommon",
+		name = "EVIDENCE ROUNDS",
+		-- Short flavor; the +10% detail belongs in the Logbook (Rule #15).
+		desc = "Increases your damage.",
+		-- per_stack mirrors the legacy CSR constant ap_rounds_damage_bonus
+		-- (0.10) -- shipping line called the variable AP rounds, the item is
+		-- "Evidence Rounds" to the player. Applied multiplicatively on top
+		-- of RaycastWeaponBase:_get_current_damage by the stat="damage"
+		-- branch of the dispatcher (csr_item_effects_weapon.lua).
+		icon = "csr_evidence_rounds",
+		effect = { kind = "stat_mul", stat = "damage", per_stack = 0.10 },
+	})
+
+	_G.CSR.register_item({
+		type = "cup_of_joe",
+		rarity = "common",
+		name = "CUP OF JOE",
+		desc = "Increases your stamina.",
+		-- per_stack mirrors the legacy CSR constant cup_of_joe_per_stack
+		-- (0.10). Applied additively on top of PlayerManager:stamina_multiplier
+		-- (vanilla returns 1 + skill_bonuses; we add 0.10*stacks). Same shape
+		-- as Dog Tags / max_health -- see csr_item_effects.lua.
+		icon = "csr_cup_of_joe",
+		effect = { kind = "stat_mul", stat = "max_stamina", per_stack = 0.10 },
+	})
 end

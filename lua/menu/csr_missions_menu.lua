@@ -1152,9 +1152,9 @@ function CSRMissionsMenuComponent:_refresh_unselected_items(allowed)
 end
 
 -- Open the forked item-selection window (csr_item_selection.lua). That file
--- owns the register/hide-chrome lifecycle and exposes _G.CSR_OpenItemSelectionDebug;
--- _G._csr_item_selection_debug is its own "is it open" flag, which we reuse as
--- the guard. CSR_OpenItemSelectionDebug is NOT idempotent -- a second call
+-- owns the register/hide-chrome lifecycle and exposes _G.CSR_OpenItemSelection;
+-- _G._csr_item_selection is its own "is it open" flag, which we reuse as
+-- the guard. CSR_OpenItemSelection is NOT idempotent -- a second call
 -- re-registers the component and overwrites its live-component-order snapshot
 -- (the "after close, CSR buttons dead" bug it documents), so only open when
 -- nothing is open yet. Nil-guarded: the window file is menu-loaded, but stay
@@ -1165,8 +1165,12 @@ function CSRMissionsMenuComponent:_on_unselected_items_clicked()
 	-- (managers.menu_component:post_event("menu_enter"), see _set_button_index_selected).
 	managers.menu_component:post_event("menu_enter")
 
-	if _G.CSR_OpenItemSelectionDebug and not _G._csr_item_selection_debug then
-		_G.CSR_OpenItemSelectionDebug()
+	if _G.CSR_OpenItemSelection and not _G._csr_item_selection then
+		-- Pass the current rank-vs-owned gap as the pick quota. The window stays
+		-- open and re-rolls between picks until quota is spent (see
+		-- csr_item_selection.lua:_advance_pick). Recomputed at click time so a
+		-- reroll/refresh that landed since the last reminder repaint is honoured.
+		_G.CSR_OpenItemSelection(self:_unselected_item_count())
 	end
 end
 
