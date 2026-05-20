@@ -363,7 +363,9 @@ local KNOWN_RARITIES = {
 }
 -- Slice 1 declarative vocabulary. Grows one entry at a time as each item that
 -- needs a new kind is ported (never speculatively).
-local KNOWN_EFFECT_KINDS = { stat_mul = true }
+--   stat_mul          -- max_health / max_stamina / damage / interaction_speed
+--   regen_max_hp_pct  -- Worn Band-Aid: hyperbolic % of max HP every N seconds
+local KNOWN_EFFECT_KINDS = { stat_mul = true, regen_max_hp_pct = true }
 
 function CSRGameManager:register_item(def)
 	if type(def) ~= "table" then

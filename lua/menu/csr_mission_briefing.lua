@@ -845,6 +845,17 @@ function CSRMissionBriefing:init(hud, workspace)
 		field(missions_s, "left", utf8.len(missions_p), utf8.len(missions_s))
 		field(rank_s, "center", utf8.len(rank_p), utf8.len(rank_s))
 		field(diff_s, "right", utf8.len(diff_p), utf8.len(diff_s))
+
+		-- Save the header reference so the unselected-items reminder
+		-- (rendered on MissionBriefingGui's saferect workspace -- see
+		-- csr_briefing_reminder_input.lua) can read world coords from it
+		-- and position itself below the difficulty column. The reminder
+		-- itself does NOT live here on the HUD workspace -- the HUD and
+		-- the menu workspaces have different coord origins, so rendering
+		-- here and hit-testing from MissionBriefingGui created a constant
+		-- saferect-Y offset between visible plate and click area. Living
+		-- on the same workspace as mouse dispatch fixes that natively.
+		self._csr_progress_header = hdr
 	end
 
 	if managers.skirmish:is_skirmish() then

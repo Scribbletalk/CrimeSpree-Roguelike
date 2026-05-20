@@ -148,6 +148,20 @@ function CSRMissionsMenuComponent:_setup()
 	self._buttons_panel:set_right(parent:right())
 	self._buttons_panel:set_bottom(bottom)
 
+	-- Abstract anchor fields so the feature-panel helpers below can be method-
+	-- borrowed by MissionBriefingGui (see csr_briefing_sidebar.lua). The
+	-- briefing screen has different concrete panels for the same conceptual
+	-- roles; the helpers read these abstract names so both screens share one
+	-- implementation:
+	--   _csr_fp_parent       -- panel where feature panels + tooltip are parented
+	--                           (lobby: full-ws self._panel; briefing: ws_panel)
+	--   _csr_fp_right_anchor -- panel whose :left() is the right boundary of the
+	--                           feature panel's allotted rect (lobby:
+	--                           _buttons_panel; briefing: vanilla self._panel,
+	--                           which is the right-half briefing column).
+	self._csr_fp_parent = self._panel
+	self._csr_fp_right_anchor = self._buttons_panel
+
 	-- Built here (not in _create_sidebar) because it measures BOTH the sidebar
 	-- and the now-positioned mission-cards panel for its left/right bounds.
 	self:_create_feature_panels()
@@ -401,7 +415,7 @@ end
 -- left/right bounds; both are children of self._panel, so all coordinates are
 -- in the same space.
 function CSRMissionsMenuComponent:_create_feature_panels()
-	if not self._sidebar or not self._buttons_panel then
+	if not self._sidebar or not self._csr_fp_right_anchor or not self._csr_fp_parent then
 		return
 	end
 
@@ -410,14 +424,15 @@ function CSRMissionsMenuComponent:_create_feature_panels()
 	-- from the leftmost mission card on the right (user refinement 2026-05-19 --
 	-- flush-to-card was too wide).
 	local left = sb:right() + padding
-	local right = self._buttons_panel:left() - padding
+	local right = self._csr_fp_right_anchor:left() - padding
 	local width = math.max(right - left, 0)
 	local px, py, ph = left, sb:top(), sb:h()
+	local parent_for_panels = self._csr_fp_parent
 
 	-- One panel per content category, all built identically and pinned to the
 	-- same rect (they are mutually exclusive -- see toggle_feature_panel).
 	local function build()
-		local p = self._panel:panel({
+		local p = parent_for_panels:panel({
 			layer = 100,
 		})
 
@@ -833,8 +848,14 @@ function CSRMissionsMenuComponent:_items_panel_mouse_moved(x, y)
 end
 
 function CSRMissionsMenuComponent:_clear_items_tooltip()
-	if self._items_tooltip and alive(self._items_tooltip) then
-		self._panel:remove(self._items_tooltip)
+	-- Tooltip parent must match where _show_items_tooltip created it (abstract
+	-- _csr_fp_parent, set in _setup): on the briefing screen the tooltip lives
+	-- on the saferect workspace panel, not on self._panel. Lobby's
+	-- _csr_fp_parent == self._panel so this is a no-behavior-change rewrite
+	-- there.
+	local parent = self._csr_fp_parent or self._panel
+	if self._items_tooltip and alive(self._items_tooltip) and parent and alive(parent) then
+		parent:remove(self._items_tooltip)
 	end
 	self._items_tooltip = nil
 end
@@ -852,12 +873,18 @@ function CSRMissionsMenuComponent:_show_items_tooltip(target)
 	local tip_w = 200
 	local name_h = tweak_data.menu.pd2_small_font_size + 2
 
+	-- Tooltip is parented and clamped to the abstract feature-panels parent
+	-- (set in _setup as _csr_fp_parent). Lobby keeps the historical behavior
+	-- (_csr_fp_parent == self._panel); the briefing screen sets it to the
+	-- saferect ws_panel so the tooltip can clamp against the full saferect.
+	local fp_parent = self._csr_fp_parent or self._panel
+
 	-- Build at placeholder height so we can host the text nodes for measurement.
 	-- BoxGuiObject and the bg rect are added AFTER the final resize -- BoxGui
 	-- bakes its corner/edge sprite positions at construction time, so creating
 	-- it pre-resize leaves the corners stranded at the placeholder dimensions
 	-- (the visible artefact the user reported as "weird corners").
-	local tip = self._panel:panel({
+	local tip = fp_parent:panel({
 		layer = 200,
 		w = tip_w,
 		h = 200,
@@ -914,12 +941,12 @@ function CSRMissionsMenuComponent:_show_items_tooltip(target)
 	})
 
 	local cell_x, cell_y = target.panel:world_position()
-	local panel_x, panel_y = self._panel:world_position()
+	local panel_x, panel_y = fp_parent:world_position()
 	local local_x = cell_x - panel_x
 	local local_y = cell_y - panel_y
 
 	local tx = local_x + items_panel_icon_size + 6
-	if tx + tip_w > self._panel:w() then
+	if tx + tip_w > fp_parent:w() then
 		tx = local_x - tip_w - 6
 	end
 	if tx < 0 then
@@ -927,8 +954,8 @@ function CSRMissionsMenuComponent:_show_items_tooltip(target)
 	end
 
 	local ty = local_y
-	if ty + tip_h > self._panel:h() then
-		ty = self._panel:h() - tip_h - 4
+	if ty + tip_h > fp_parent:h() then
+		ty = fp_parent:h() - tip_h - 4
 	end
 	if ty < 0 then
 		ty = 0

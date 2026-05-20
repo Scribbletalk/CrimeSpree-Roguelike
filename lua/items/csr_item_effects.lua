@@ -15,6 +15,9 @@
 -- is on a different script (one mod.txt entry per hook target):
 --   damage             -> csr_item_effects_weapon.lua       (Evidence Rounds)
 --   interaction_speed  -> csr_item_effects_interaction.lua  (Duct Tape)
+-- Non-stat_mul effects (event-driven / per-tick) also live in their own
+-- siblings -- they don't share the "additive return-value" shape:
+--   regen_max_hp_pct   -> csr_item_effects_regen.lua        (Worn Band-Aid)
 -- New stats are added one at a time as the item that needs them is ported
 -- (never speculatively). The two PlayerManager-side stats above share their
 -- application shape exactly -- if a third+ additive PlayerManager stat lands,

@@ -76,4 +76,26 @@ if _G.CSR and _G.CSR.register_item and not _G._CSR_BUILTINS_REGISTERED then
 		icon = "csr_duct_tape",
 		effect = { kind = "stat_mul", stat = "interaction_speed", per_stack = 0.10 },
 	})
+
+	_G.CSR.register_item({
+		type = "worn_bandaid",
+		rarity = "common",
+		name = "WORN BAND-AID",
+		-- Short flavor; the hyperbolic % / interval / cap detail is Logbook
+		-- tier (csr_logbook_worn_bandaid_effect). Per Rule #15.
+		desc = "Regenerates your health over time.",
+		icon = "csr_worn_bandaid",
+		-- first_pct / max_pct / interval mirror the 6.2 shipping line constants
+		-- (worn_bandaid_first_pct = 0.02, _max_pct = 0.20, _interval = 5). Each
+		-- tick the dispatcher (csr_item_effects_regen.lua) heals the local
+		-- player by max_hp * (max_pct * stacks / (stacks + k)) where
+		-- k = (max_pct - first_pct) / first_pct. First non-stat_mul effect ->
+		-- exercises the registry API's effect-kind extensibility.
+		effect = {
+			kind = "regen_max_hp_pct",
+			first_pct = 0.02,
+			max_pct = 0.20,
+			interval = 5,
+		},
+	})
 end

@@ -123,7 +123,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 		string.format("Increases movement speed by {g}%d%%{/} (+%d%% per stack, hyperbolic).", sn_first, sn_first)
 
 	-- WORN BAND-AID
-	local ba_first = (C.worn_bandaid_first_pct or 0.01) * 100
+	local ba_first = (C.worn_bandaid_first_pct or 0.02) * 100
 	local ba_max = (C.worn_bandaid_max_pct or 0.20) * 100
 	local ba_int = C.worn_bandaid_interval or 5
 	strings["csr_logbook_worn_bandaid_effect"] = string.format(

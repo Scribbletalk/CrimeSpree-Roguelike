@@ -700,6 +700,18 @@ function CSRItemSelectionComponent:_on_finalize_item()
 		if lobby and lobby._populate_items_panel then
 			lobby:_populate_items_panel()
 		end
+
+		-- Same idea for the briefing surface: if the selection window was
+		-- opened from the briefing reminder, the briefing's reminder must
+		-- drop one off the counter immediately. The reminder UI lives on
+		-- MissionBriefingGui (menu workspace, native hit-test) -- not on
+		-- the HUD's CSRMissionBriefing -- so we look it up through
+		-- managers.menu_component._mission_briefing_gui. Nil-safe; the
+		-- method only exists once csr_briefing_reminder_input.lua has run.
+		local mbg = mcm and mcm._mission_briefing_gui
+		if mbg and mbg._csr_refresh_reminder then
+			mbg:_csr_refresh_reminder()
+		end
 	else
 		log(
 			"[CSR][warn] item selection finalize: cannot grant (missing manager / add_item / type) "
@@ -819,6 +831,15 @@ function CSRItemSelectionComponent:_advance_pick()
 end
 
 function CSRItemSelectionComponent:_on_back()
+	-- Back-action SFX: vanilla convention is "menu_exit" (BlackMarket / LootDrop
+	-- / SearchBox all post this on back/close). Posting here -- not in
+	-- CSR_CloseItemSelection -- so a close triggered by something OTHER than
+	-- the BACK button (e.g. _advance_pick's auto-close on quota spent) stays
+	-- silent / uses its own SFX (item_buy plays on every successful pick).
+	if managers.menu_component then
+		managers.menu_component:post_event("menu_exit")
+	end
+
 	-- Do NOT close here. _on_back runs from the popup's mouse_pressed, which is
 	-- itself called from MenuComponentManager:run_return_on_all_live_components
 	-- while it ipairs-iterates _alive_components. Calling CSR_CloseItemSelection

@@ -34,6 +34,10 @@
 			"script_path": "lua/items/csr_item_effects_interaction.lua"
 		},
 		{
+			"hook_id": "lib/units/beings/player/playerdamage",
+			"script_path": "lua/items/csr_item_effects_regen.lua"
+		},
+		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",
 			"script_path": "lua/menu/csr_lobby_button.lua"
 		},
@@ -68,6 +72,14 @@
 		{
 			"hook_id": "lib/managers/hudmanagerpd2",
 			"script_path": "lua/menu/csr_briefing_wiring.lua"
+		},
+		{
+			"hook_id": "lib/managers/menu/missionbriefinggui",
+			"script_path": "lua/menu/csr_briefing_reminder_input.lua"
+		},
+		{
+			"hook_id": "lib/managers/menu/missionbriefinggui",
+			"script_path": "lua/menu/csr_briefing_sidebar.lua"
 		},
 		{
 			"hook_id": "lib/managers/menu/stageendscreengui",
@@ -124,6 +136,10 @@
 		{
 			"hook_id": "lib/managers/localizationmanager",
 			"script_path": "lua/managers/csr_localization.lua"
+		},
+		{
+			"hook_id": "lib/managers/menumanager",
+			"script_path": "lua/menu/csr_pause_menu_items.lua"
 		}
 	],
 	"keybinds": [

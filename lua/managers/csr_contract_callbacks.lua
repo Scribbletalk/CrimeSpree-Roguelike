@@ -75,9 +75,37 @@ function MenuCallbackHandler:not_show_csr_claim_rewards()
 end
 
 function MenuCallbackHandler:return_to_csr_lobby_visible()
+	-- Gate the pause-menu "Return to Lobby" button to CSR sessions only -- a
+	-- non-CSR vanilla game must never see this option (no-leak, mirrors the
+	-- gating convention used by the CSR-fork UI files).
+	if not (managers.csr and managers.csr.is_run_active and managers.csr:is_run_active()) then
+		return false
+	end
+
 	local state = game_state_machine:current_state_name()
 
-	return state == "victoryscreen" or state == "gameoverscreen"
+	-- Endscreen states: clear post-heist signal. Always show.
+	if state == "victoryscreen" or state == "gameoverscreen" then
+		return true
+	end
+
+	-- Briefing screen: vanilla puts the lobby AND the pre-heist briefing both
+	-- in `ingame_waiting_for_players` state, so the state alone can't tell
+	-- them apart. The MissionBriefingGui instance on MenuComponentManager is
+	-- the deterministic signal -- it is created when the briefing node is
+	-- entered (menucomponentmanager.lua: _create_mission_briefing_gui) and
+	-- destroyed when it exits. While it lives, we're on the briefing screen;
+	-- while it's nil and state == ingame_waiting_for_players, we're in the
+	-- lobby (where "Return to Lobby" would be a no-op and shouldn't show).
+	if
+		state == "ingame_waiting_for_players"
+		and managers.menu_component
+		and managers.menu_component._mission_briefing_gui
+	then
+		return true
+	end
+
+	return false
 end
 
 function MenuCallbackHandler:accept_csr_contract(item, node)

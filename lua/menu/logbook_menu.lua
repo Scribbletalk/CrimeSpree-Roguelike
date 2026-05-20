@@ -42,7 +42,7 @@ local ITEMS_DATA = {
 		icon = "csr_worn_bandaid",
 		rarity = "common",
 		name_en = "WORN BAND-AID",
-		effect_en = "Increases health regeneration by 5 (+5 per stack, linear) every 10 seconds.",
+		effect_en = "Regenerates 2% (+2% per stack, hyperbolic, capped at 20%) of max health every 5 seconds.",
 	},
 	{
 		id = "cup_of_joe",
