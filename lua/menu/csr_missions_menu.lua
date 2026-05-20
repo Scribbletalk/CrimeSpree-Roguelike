@@ -798,7 +798,9 @@ function CSRMissionsMenuComponent:_items_panel_mouse_moved(x, y)
 		self._items_hover_target = hovered
 		self:_clear_items_tooltip()
 		if hovered then
-			managers.menu:post_event("highlight")
+			-- No "highlight" hover SFX: items are passive inventory entries,
+			-- not selectable controls, and per-cell hover audio in a dense grid
+			-- would chatter as the cursor crosses cells (user spec 2026-05-20).
 			self:_show_items_tooltip(hovered)
 		end
 	end
