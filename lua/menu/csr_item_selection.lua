@@ -21,9 +21,16 @@
 -- smoothstep does not compound" hack — the frame is just sized off the icon
 -- inside our own update().
 --
--- Trigger: DEBUG ONLY. _G.CSR_ToggleItemSelectionDebug() (bound to a keybind)
--- registers/unregisters the component on managers.menu_component. No lobby
--- button, and deliberately NOT placed where "Start the heist" lives.
+-- Triggers (two, both call into _G.CSR_OpenItemSelectionDebug / _Close):
+--   1. Lobby "unselected items" reminder click (csr_missions_menu.lua
+--      `_on_unselected_items_clicked`). The reminder is rank-vs-owned-gated
+--      (visible only when host_rank > total_item_count), so this path is the
+--      production trigger -- it enforces "one pick per rank earned".
+--   2. Debug keybind (csr_debug_item_selection.lua) -> CSR_ToggleItemSelectionDebug.
+--      Ungated; lets the dev exercise the window outside the lobby flow.
+-- Both register/unregister the component on managers.menu_component the same
+-- way; the *Debug-suffixed global names are historical (this was originally
+-- keybind-only) and have not been renamed yet.
 
 if not RequiredScript then
 	return
@@ -561,9 +568,18 @@ function CSRItemSelectionComponent:_on_select_modifier(item)
 	end
 end
 
--- Debug shell: the selection pool / granting logic is intentionally not wired
--- (user scope). Finalize just logs the chosen item and closes the popup so the
--- whole window can be exercised end-to-end without a backend.
+-- Grant the picked item to the local peer, then close. Local-only: the count
+-- model store (`managers.csr` peer_items) is not yet MP-synced (design open
+-- item O4) -- the host doesn't yet broadcast a grant, the client doesn't yet
+-- listen. When that slice lands, this is the point that should also fire a
+-- network message.
+--
+-- Pick-cap gate: handled OUTSIDE this function via the lobby reminder. The
+-- reminder is the production trigger and is rank-vs-owned-gated (only visible
+-- while host_rank > total_item_count), so add_item is naturally bounded to the
+-- "one pick per rank earned" budget on that path. The debug keybind bypasses
+-- the gate -- intentional, dev-only escape hatch. Selection-pool weighting
+-- (60/24/4/12 per rarity) is still parked separately.
 function CSRItemSelectionComponent:_on_finalize_modifier()
 	if not self._selected_modifier then
 		managers.menu:post_event("menu_error")
@@ -572,13 +588,31 @@ function CSRItemSelectionComponent:_on_finalize_modifier()
 	end
 
 	local data = self._selected_modifier:data() or {}
-	log(
-		"[CSR][debug] item selection: would pick id="
-			.. tostring(data.id)
-			.. " rarity="
-			.. tostring(data.rarity)
-			.. " (granting logic not wired yet)"
-	)
+	local item_type = data.id
+	local mgr = managers and managers.csr
+
+	if mgr and mgr.add_item and mgr.local_peer_id and item_type then
+		local pid = mgr:local_peer_id()
+		mgr:add_item(pid, item_type)
+
+		-- Refresh the lobby's unselected-items reminder so the count drops by
+		-- one immediately (otherwise it would only repaint on the next
+		-- refresh() trigger). Component lookup is nil-safe: missing means the
+		-- popup was opened from outside the lobby (the reminder doesn't exist
+		-- to refresh), which is a no-op rather than a crash.
+		local mcm = managers and managers.menu_component
+		local lobby = mcm and mcm._crime_spree_missions
+		if lobby and lobby._refresh_unselected_items then
+			lobby:_refresh_unselected_items()
+		end
+	else
+		log(
+			"[CSR][warn] item selection finalize: cannot grant (missing manager / add_item / type) "
+				.. "type="
+				.. tostring(item_type)
+		)
+	end
+
 	managers.menu_component:post_event("item_buy")
 
 	-- Deferred: see _on_back / update for why this must not close synchronously.
