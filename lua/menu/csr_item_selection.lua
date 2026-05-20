@@ -102,7 +102,7 @@ function CSRItemSelectionButton:init(parent, data)
 	})
 	self._frame:set_center(self._image_pos.x, self._image_pos.y)
 
-	self._modifier_image = self._image:bitmap({
+	self._item_image = self._image:bitmap({
 		blend_mode = "add",
 		name = "icon",
 		valign = "grow",
@@ -151,10 +151,10 @@ function CSRItemSelectionButton:init(parent, data)
 	self._image:set_size(self._image_size * self._size_modifier, self._image_size * self._size_modifier)
 	self._image:set_center(self._image_pos.x, self._image_pos.y)
 	self:refresh()
-	self:set_modifier(data)
+	self:set_item(data)
 end
 
-function CSRItemSelectionButton:set_modifier(data)
+function CSRItemSelectionButton:set_item(data)
 	self._data = data
 
 	self._panel:set_visible(self._data ~= nil)
@@ -165,8 +165,8 @@ function CSRItemSelectionButton:set_modifier(data)
 
 	local texture, rect = tweak_data.hud_icons:get_icon_data(self._data.icon)
 
-	self._modifier_image:set_image(texture)
-	self._modifier_image:set_texture_rect(unpack(rect))
+	self._item_image:set_image(texture)
+	self._item_image:set_texture_rect(unpack(rect))
 	self._desc:set_text(self._data.desc or "")
 
 	-- Rarity frame: tint per the item's rarity (white = common).
@@ -398,11 +398,11 @@ function CSRItemSelectionComponent:_setup()
 
 	blur:animate(func)
 
-	local modifier_h = CSRItemSelectionButton.size.h
+	local item_h = CSRItemSelectionButton.size.h
 	local btn_size = tweak_data.menu.pd2_large_font_size
 
 	self._panel:set_w((CSRItemSelectionButton.size.w + padding) * count + padding)
-	self._panel:set_h(modifier_h + btn_size + padding * 3)
+	self._panel:set_h(item_h + btn_size + padding * 3)
 	self._panel:set_center_x(parent:center_x())
 	self._panel:set_center_y(parent:center_y())
 	self._panel:rect({
@@ -444,26 +444,26 @@ function CSRItemSelectionComponent:_setup()
 	self._number_header:set_left(self._panel:left())
 	self._number_header:set_bottom(self._panel:top())
 
-	self._modifiers_panel = self._panel:panel({
+	self._items_panel = self._panel:panel({
 		x = padding,
 		y = padding,
 		w = self._panel:w() - padding * 2,
-		h = modifier_h,
+		h = item_h,
 	})
 	self._button_panel = self._panel:panel({
 		x = padding,
-		y = self._modifiers_panel:bottom() + padding,
+		y = self._items_panel:bottom() + padding,
 		w = self._panel:w() - padding * 2,
 		h = btn_size,
 	})
 
 	for i = 1, count do
 		local item = items[i]
-		local btn = CSRItemSelectionButton:new(self._modifiers_panel, item)
+		local btn = CSRItemSelectionButton:new(self._items_panel, item)
 
 		btn:set_x((CSRItemSelectionButton.size.w + padding) * (i - 1))
 		btn:set_y(0)
-		btn:set_callback(callback(self, self, "_on_select_modifier", btn))
+		btn:set_callback(callback(self, self, "_on_select_item", btn))
 		table.insert(self._buttons, btn)
 	end
 
@@ -471,7 +471,7 @@ function CSRItemSelectionComponent:_setup()
 		local finalize_btn = CSRItemSelectionActionButton:new(self._button_panel)
 
 		finalize_btn:set_text(managers.localization:to_upper_text("menu_cs_select_modifier"))
-		finalize_btn:set_callback(callback(self, self, "_on_finalize_modifier"))
+		finalize_btn:set_callback(callback(self, self, "_on_finalize_item"))
 		finalize_btn:shrink_wrap_button(0, 0)
 		table.insert(self._buttons, finalize_btn)
 
@@ -550,20 +550,20 @@ function CSRItemSelectionComponent:_setup()
 	})
 end
 
-function CSRItemSelectionComponent:_on_select_modifier(item)
-	if self._selected_modifier then
-		self._selected_modifier:set_active(false)
+function CSRItemSelectionComponent:_on_select_item(item)
+	if self._picked_item then
+		self._picked_item:set_active(false)
 	end
 
-	self._selected_modifier = item
+	self._picked_item = item
 
-	if self._selected_modifier then
-		self._selected_modifier:set_active(true)
+	if self._picked_item then
+		self._picked_item:set_active(true)
 
 		if managers.menu:is_pc_controller() then
 			managers.menu_component:post_event("menu_enter")
 		else
-			self:_on_finalize_modifier()
+			self:_on_finalize_item()
 		end
 	end
 end
@@ -580,14 +580,14 @@ end
 -- "one pick per rank earned" budget on that path. The debug keybind bypasses
 -- the gate -- intentional, dev-only escape hatch. Selection-pool weighting
 -- (60/24/4/12 per rarity) is still parked separately.
-function CSRItemSelectionComponent:_on_finalize_modifier()
-	if not self._selected_modifier then
+function CSRItemSelectionComponent:_on_finalize_item()
+	if not self._picked_item then
 		managers.menu:post_event("menu_error")
 
 		return
 	end
 
-	local data = self._selected_modifier:data() or {}
+	local data = self._picked_item:data() or {}
 	local item_type = data.id
 	local mgr = managers and managers.csr
 
@@ -595,15 +595,26 @@ function CSRItemSelectionComponent:_on_finalize_modifier()
 		local pid = mgr:local_peer_id()
 		mgr:add_item(pid, item_type)
 
-		-- Refresh the lobby's unselected-items reminder so the count drops by
-		-- one immediately (otherwise it would only repaint on the next
-		-- refresh() trigger). Component lookup is nil-safe: missing means the
-		-- popup was opened from outside the lobby (the reminder doesn't exist
-		-- to refresh), which is a no-op rather than a crash.
+		-- Refresh the two lobby surfaces that read peer_items state so they
+		-- repaint immediately (otherwise they only repaint on the next refresh
+		-- trigger -- which for an already-open items feature panel means the
+		-- user has to close + reopen it to see the new x2 badge):
+		--   1. unselected-items reminder (rank-vs-owned counter above DIFFICULTY)
+		--   2. items feature panel content (per-peer icon grid)
+		-- Component lookup is nil-safe: missing == popup opened from outside the
+		-- lobby (debug keybind path), no surface to refresh, no-op rather than
+		-- crash.
+		--
+		-- TODO future cleanup: register both refresh paths as on_item_added
+		-- callbacks on managers.csr so any add_item caller drives the repaint
+		-- automatically. Direct call is fine while there's only one grant site.
 		local mcm = managers and managers.menu_component
 		local lobby = mcm and mcm._crime_spree_missions
 		if lobby and lobby._refresh_unselected_items then
 			lobby:_refresh_unselected_items()
+		end
+		if lobby and lobby._populate_items_panel then
+			lobby:_populate_items_panel()
 		end
 	else
 		log(

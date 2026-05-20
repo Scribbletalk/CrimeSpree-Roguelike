@@ -661,7 +661,12 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 			vertical = "center",
 		})
 
-		y = y + items_panel_peer_header_h + 4
+		-- Breathing room between the peer name and the grid below it. The
+		-- vertical="center" header overlaps its 22px container vertically with
+		-- ~24px medium-font glyphs, so 10px clear below the container's bottom
+		-- lands ~7px below the glyph bottom -- enough to feel deliberately
+		-- spaced rather than touching.
+		y = y + items_panel_peer_header_h + 10
 
 		local counts = mgr:player_items(pid) or {}
 		local items_list = {}
@@ -684,7 +689,10 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 				return (a.def.type or "") < (b.def.type or "")
 			end)
 
-			local grid_x = items_panel_padding + 16
+			-- Grid aligns with the peer header's left edge (items_panel_padding),
+			-- no extra indent. The frame overflow (4px) extends 4px further left
+			-- to x=items_panel_padding-4, still safely inside the panel.
+			local grid_x = items_panel_padding
 			local frame_tex, frame_rect = tweak_data.hud_icons:get_icon_data("csr_frame")
 
 			local frame_overflow = (items_panel_frame_size - items_panel_icon_size) / 2
@@ -737,12 +745,14 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 				-- Stack badge: shown unconditionally (including count == 1) per user
 				-- request -- the explicit "x1" makes the inventory parse as a
 				-- stack-count view rather than as a roster of unique entries.
-				-- Pinned top-right. y is NEGATIVE so the glyph sits on the frame's
-				-- top edge instead of inside the icon area: Diesel does not clip
-				-- panel children to parent bounds, so a -y child of the cell just
-				-- renders above the cell. Magnitude matches frame_overflow so the
-				-- badge sits flush with the visible frame top.
-				cell:text({
+				-- Rendered as a SIBLING of the cell on `content`, NOT as a cell
+				-- child: cell panels DO clip their children to their own bounds in
+				-- Diesel, so a negative-y child got its glyph top cropped at the
+				-- cell's top edge (visible artefact: top row of pixels of the "x2"
+				-- glyph cut off). Sibling positioning sidesteps the clip entirely;
+				-- layer 20 on `content` is above both the frame (5) and the cell
+				-- (10), so the badge sits on top of everything else.
+				content:text({
 					name = "stack_badge",
 					text = "x" .. tostring(entry.count),
 					font = tweak_data.menu.pd2_small_font,
@@ -750,8 +760,8 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 					color = Color.white,
 					align = "right",
 					vertical = "top",
-					x = -3,
-					y = -4,
+					x = ix - 3,
+					y = iy - 5,
 					w = items_panel_icon_size,
 					h = items_panel_icon_size,
 					layer = 20,
