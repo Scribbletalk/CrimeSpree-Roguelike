@@ -28,7 +28,7 @@ local ITEMS_DATA = {
 		icon = "csr_duct_tape",
 		rarity = "common",
 		name_en = "DUCT TAPE",
-		effect_en = "Increases interaction speed by 5% (+5% per stack, linear).\nInteraction speed affects lockpicking, bagging loot, reviving and repairing, etc.",
+		effect_en = "Increases interaction speed by 10% (+10% per stack, linear).\nAffects lockpicking, bagging loot, repairing, etc. Does not apply to reviving teammates or uncuffing.",
 	},
 	{
 		id = "escape_plan",

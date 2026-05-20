@@ -11,10 +11,15 @@
 -- stat -> vanilla method, additive class (vanilla returns 1 + sum of bonuses):
 --   max_health  -> PlayerManager:health_skill_multiplier   (Dog Tags)
 --   max_stamina -> PlayerManager:stamina_multiplier        (Cup of Joe)
+-- Other stat targets live in sibling files because their vanilla hook path
+-- is on a different script (one mod.txt entry per hook target):
+--   damage             -> csr_item_effects_weapon.lua       (Evidence Rounds)
+--   interaction_speed  -> csr_item_effects_interaction.lua  (Duct Tape)
 -- New stats are added one at a time as the item that needs them is ported
--- (never speculatively). The two stats above share their application shape
--- exactly -- if a third+ player-side additive stat lands, fold them into a
--- { stat -> method } table; two is not yet worth the abstraction.
+-- (never speculatively). The two PlayerManager-side stats above share their
+-- application shape exactly -- if a third+ additive PlayerManager stat lands,
+-- fold them into a { stat -> method } table; two is not yet worth the
+-- abstraction.
 --
 -- Critical Rule #1 exception: health_skill_multiplier RETURNS a value, which
 -- Hooks:PostHook cannot carry. Raw chain wrap is the established CSR convention

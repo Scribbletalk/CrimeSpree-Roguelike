@@ -108,7 +108,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 		string.format("Increases maximum health by {g}%g%%{/} (+%g%% per stack, linear).", dt_hp * 100, dt_hp * 100)
 
 	-- DUCT TAPE
-	local tape_spd = C.duct_tape_speed_bonus or 0.05
+	local tape_spd = C.duct_tape_speed_bonus or 0.10
 	strings["csr_logbook_duct_tape_effect"] = string.format(
 		"Increases interaction speed by {g}%g%%{/} (+%g%% per stack, linear).\nAffects lockpicking, bagging loot, repairing, etc. Does {r}not{/} apply to reviving teammates or uncuffing.",
 		tape_spd * 100,

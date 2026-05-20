@@ -59,4 +59,21 @@ if _G.CSR and _G.CSR.register_item and not _G._CSR_BUILTINS_REGISTERED then
 		icon = "csr_cup_of_joe",
 		effect = { kind = "stat_mul", stat = "max_stamina", per_stack = 0.10 },
 	})
+
+	_G.CSR.register_item({
+		type = "duct_tape",
+		rarity = "common",
+		name = "DUCT TAPE",
+		-- Short flavor; the +10% detail and the revive/uncuff exclusion live
+		-- in the Logbook (csr_logbook_duct_tape_effect). Per Rule #15 the
+		-- card desc stays short.
+		desc = "Increases your interaction speed.",
+		-- per_stack mirrors the legacy CSR constant duct_tape_speed_bonus
+		-- (0.10). Applied as time-divide by (1 + sum) on
+		-- BaseInteractionExt:_get_timer (csr_item_effects_interaction.lua).
+		-- Player-facing exclusions: "revive" and "free" interactions are
+		-- unaffected -- mirrored from 6.x.
+		icon = "csr_duct_tape",
+		effect = { kind = "stat_mul", stat = "interaction_speed", per_stack = 0.10 },
+	})
 end

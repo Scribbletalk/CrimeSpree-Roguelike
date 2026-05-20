@@ -37,21 +37,26 @@ local COMP_ID = "csr_item_selection"
 
 -- Build the item-card data set for one round of the selection window.
 --
--- Registry-driven: one card per item registered through CSR.register_item
--- (CSR's own + any addon's). Reads name/desc/icon/rarity straight off the
--- registered def as literal strings -- deliberately NOT via loc keys, so this
--- path never touches the partially-ported legacy csr_localization.lua
--- generator. The selection POOL (which weighted subset rolls per popup) lands
--- with CSRGameManager:roll_item_pool; for now it lists everything registered,
--- so :_advance_pick rebuilds the same set each step (consistent, just not yet
--- randomised). Defined at file scope (not local to a method) so :_setup AND
--- :_advance_pick both reach it -- both call it once per card refresh.
+-- Reads the LOCKED offer (frozen 3-card set) currently at the head of the
+-- peer's pending_offers via CSRGameManager:peek_offer. The first open of a
+-- given owed pick rolled the cards via ensure_offers; every subsequent open
+-- of the SAME pick (re-open after BACK, re-open after game restart) returns
+-- the same offer until the pick is spent. add_item -> pop_offer is what
+-- advances to the next stored set; BACK does not touch offers.
+--
+-- Reads name/desc/icon/rarity straight off the registered def as literal
+-- strings -- deliberately NOT via loc keys, so this path never touches the
+-- partially-ported legacy csr_localization.lua generator. Defined at file
+-- scope (not local to a method) so :_setup AND :_advance_pick both reach it.
 local function build_item_pool()
-	local items = {}
 	local mgr = managers and managers.csr
-	local reg = (mgr and mgr.registered_items and mgr:registered_items()) or {}
+	local defs = {}
+	if mgr and mgr.peek_offer and mgr.local_peer_id then
+		defs = mgr:peek_offer(mgr:local_peer_id()) or {}
+	end
 
-	for _, def in ipairs(reg) do
+	local items = {}
+	for _, def in ipairs(defs) do
 		items[#items + 1] = {
 			id = def.type,
 			icon = def.icon or "csr_dog_tags",
@@ -62,14 +67,14 @@ local function build_item_pool()
 	end
 
 	if #items == 0 then
-		-- Opened before any item registered (or none exist): keep the window
-		-- readable as "nothing yet" instead of an empty/broken layout.
+		-- No stored offer or every type in it was orphaned by addon removal.
+		-- Keep the window readable as "nothing yet" instead of an empty layout.
 		items[1] = {
 			id = "csr_none",
 			icon = "csr_dog_tags",
 			rarity = "common",
 			name = "NO ITEMS",
-			desc = "No items are registered yet.",
+			desc = "No items are available right now.",
 		}
 	end
 
@@ -665,6 +670,14 @@ function CSRItemSelectionComponent:_on_finalize_item()
 	if mgr and mgr.add_item and mgr.local_peer_id and item_type then
 		local pid = mgr:local_peer_id()
 		mgr:add_item(pid, item_type)
+		-- Consume the head offer: the player picked from THIS frozen set, so
+		-- it is spent. The OTHER two cards in that offer are discarded with
+		-- it -- intentional, "you pick one, the others don't carry over".
+		-- Future opens (and the immediate _advance_pick below) peek the next
+		-- stored offer.
+		if mgr.pop_offer then
+			mgr:pop_offer(pid)
+		end
 
 		-- Refresh the two lobby surfaces that read peer_items state so they
 		-- repaint immediately (otherwise they only repaint on the next refresh
@@ -1094,6 +1107,18 @@ function _G.CSR_OpenItemSelection(num_to_select)
 	-- num_to_select: how many picks this open is entitled to. Lobby reminder
 	-- passes host_rank - owned (the rank-vs-owned gap); the debug keybind
 	-- passes nil (defaults to 1 inside :init so the dev path stays one-shot).
+	--
+	-- Lock in N offers BEFORE the component builds its first card set, so
+	-- :init -> :_setup -> build_item_pool sees a stored offer rather than
+	-- nothing. ensure_offers is idempotent (no-op if enough are stored),
+	-- which is the property that gives us "first open's cards stay forever":
+	-- re-opening this window for the same owed pick finds the same offer
+	-- already there and never re-rolls.
+	local mgr = managers and managers.csr
+	if mgr and mgr.ensure_offers and mgr.local_peer_id then
+		mgr:ensure_offers(mgr:local_peer_id(), num_to_select or 1)
+	end
+
 	local ok, comp = pcall(
 		CSRItemSelectionComponent.new,
 		CSRItemSelectionComponent,

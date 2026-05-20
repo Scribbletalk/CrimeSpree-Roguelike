@@ -462,9 +462,195 @@ function CSRGameManager:_drop_orphan_items()
 	end
 end
 
+-- Selection-window roll: weighted rarity, no contraband, ≤1 wildcard per window.
+-- Locked design (project_csr_rebalance_design.md):
+--   common 60 / uncommon 24 / rare 4 / wildcard 12   (sum 100)
+--   contraband is EXPLICITLY 0 here -- contraband items still exist and can
+--   enter inventory via other paths (shop/scrapper, when those port), but the
+--   roguelike selection pool never offers one.
+local RARITY_WEIGHTS = {
+	common = 60,
+	uncommon = 24,
+	rare = 4,
+	wildcard = 12,
+}
+local MAX_WILDCARDS_PER_WINDOW = 1
+-- Hard size of one "pick offer". The UI renders one card per type stored in
+-- the offer (so this also caps how many cards the window shows per pick).
+local CARDS_PER_OFFER = 3
+
+local function csr_weighted_pick(weights)
+	local total = 0
+	for _, w in pairs(weights) do
+		total = total + w
+	end
+	if total <= 0 then
+		return nil
+	end
+	local r = math.random() * total
+	local cum = 0
+	for rarity, w in pairs(weights) do
+		cum = cum + w
+		if r <= cum then
+			return rarity
+		end
+	end
+	-- Float-tail fallback: r > cum by epsilon, take the last key seen.
+	local last
+	for k in pairs(weights) do
+		last = k
+	end
+	return last
+end
+
+-- peer_id is currently unused (kept in the signature for the "owns 0 wildcards"
+-- per-peer filter the design calls for once wildcards land as registered items).
+-- count clamps to >=1; the UI calls with CARDS_PER_WINDOW = 3.
+--
+-- Each roll: rarity drawn by weight, then a uniform pick inside that rarity's
+-- bucket. **No duplicates within a window** -- picked items are popped out of
+-- their bucket for the rest of this call, so if you draw common, the next
+-- roll's commons bucket is shorter by one. If a bucket empties, that rarity
+-- drops out of the live weights (the remaining N-1 rolls re-distribute across
+-- the rarities that still have items). If EVERY bucket empties before count
+-- is reached -- registry has fewer than count items in the non-contraband
+-- selection-pool -- the loop short-circuits and the result has whatever the
+-- registry can provide (UI shows however many cards came back).
+--
+-- Mutation safety: we shallow-copy each rarity's array into `buckets` before
+-- popping, so the registry's own items[] list is never touched -- only this
+-- call's local copy shrinks.
 function CSRGameManager:roll_item_pool(peer_id, count)
-	-- TODO[beta]: replaces crimespree_filter.lua overrides.
-	return {}
+	count = math.max(1, tonumber(count) or 3)
+
+	local buckets = {}
+	for _, item in ipairs(self._registry.items) do
+		local r = item.rarity
+		if r and r ~= "contraband" then
+			buckets[r] = buckets[r] or {}
+			table.insert(buckets[r], item)
+		end
+	end
+	if next(buckets) == nil then
+		return {}
+	end
+
+	local result = {}
+	local wildcards_drawn = 0
+	for _ = 1, count do
+		-- Rebuild the live weights table every roll: a bucket may have just
+		-- emptied (so its rarity drops out), or wildcards may now be capped.
+		-- 3 rebuilds per click is well within tolerable allocation cost.
+		local weights = {}
+		for rarity, w in pairs(RARITY_WEIGHTS) do
+			if w > 0 and buckets[rarity] and #buckets[rarity] > 0 then
+				if rarity ~= "wildcard" or wildcards_drawn < MAX_WILDCARDS_PER_WINDOW then
+					weights[rarity] = w
+				end
+			end
+		end
+		if next(weights) == nil then
+			break -- no eligible items left across any rarity
+		end
+		local rarity = csr_weighted_pick(weights)
+		if not rarity then
+			break
+		end
+		local bucket = buckets[rarity]
+		local item = table.remove(bucket, math.random(1, #bucket))
+		result[#result + 1] = item
+		if rarity == "wildcard" then
+			wildcards_drawn = wildcards_drawn + 1
+		end
+	end
+	return result
+end
+
+-- =====================================================
+-- Pending offers (per-peer locked picks)
+--
+-- The "owed picks" lifecycle: every rank earned grants one pick. To honour
+-- "what the first open of the window shows must stay forever", each owed pick
+-- is materialised as a STORED OFFER -- a frozen list of 3 item types --
+-- BEFORE the window first reads it. Re-opening the window for the same pick
+-- peeks the same offer; BACK never spends it; only a successful selection
+-- (add_item-from-window) pops it.
+--
+-- Storage: _state.peer_items[peer_id].pending_offers = array of arrays of
+-- type strings. JSON-safe and travels with the existing save/load path.
+-- Persists across save/load and across game restarts -- a player who closes
+-- the game mid-pick sees the same cards next session.
+-- =====================================================
+
+-- Lock in offers so the peer has AT LEAST `n` stored picks pre-rolled.
+-- Idempotent: if there are already >= n offers, this is a no-op. Never trims
+-- excess -- those stay until earned ranks catch up. Each new offer uses the
+-- live roll_item_pool with current weights + dedupe.
+function CSRGameManager:ensure_offers(peer_id, n)
+	n = math.max(0, tonumber(n) or 0)
+	local entry = get_or_create_peer_entry(self._state, peer_id)
+	entry.pending_offers = entry.pending_offers or {}
+	local needed = n - #entry.pending_offers
+	if needed <= 0 then
+		return
+	end
+	local dirty = false
+	for _ = 1, needed do
+		local rolled = self:roll_item_pool(peer_id, CARDS_PER_OFFER)
+		if #rolled == 0 then
+			-- Registry too thin to roll anything. Stop early; UI surfaces a
+			-- "NO ITEMS" placeholder via peek_offer returning nil.
+			break
+		end
+		local types = {}
+		for _, def in ipairs(rolled) do
+			types[#types + 1] = def.type
+		end
+		entry.pending_offers[#entry.pending_offers + 1] = types
+		dirty = true
+	end
+	if dirty then
+		self:save()
+	end
+end
+
+function CSRGameManager:pending_offer_count(peer_id)
+	local entry = self._state.peer_items[peer_id]
+	return (entry and entry.pending_offers and #entry.pending_offers) or 0
+end
+
+-- Read-only look at the first stored offer, resolved to live registry defs.
+-- Types whose addon vanished are filtered out (so the player never sees a
+-- card backed by nothing). Returns nil when no offer is stored. Does NOT pop.
+function CSRGameManager:peek_offer(peer_id)
+	local entry = self._state.peer_items[peer_id]
+	local offers = entry and entry.pending_offers
+	if not offers or #offers == 0 then
+		return nil
+	end
+	local types = offers[1]
+	local defs = {}
+	for _, t in ipairs(types) do
+		local def = self._registry.by_type[t]
+		if def then
+			defs[#defs + 1] = def
+		end
+	end
+	return defs
+end
+
+-- Pop the first stored offer. Called from the selection-window's finalize
+-- right after add_item, so the picked offer is consumed (the OTHER cards in
+-- that offer -- the ones the player didn't pick -- are discarded with it).
+function CSRGameManager:pop_offer(peer_id)
+	local entry = self._state.peer_items[peer_id]
+	local offers = entry and entry.pending_offers
+	if not offers or #offers == 0 then
+		return nil
+	end
+	local popped = table.remove(offers, 1)
+	self:save()
+	return popped
 end
 
 -- =====================================================
