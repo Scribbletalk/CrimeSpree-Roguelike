@@ -51,7 +51,7 @@ local RARITY_COLORS = {
 -- Frame is drawn larger than the icon so it reads as a border around it.
 -- Applied to the icon's ACTUAL (0.8-modified) size in BOTH init and update so
 -- there is no size jump on the first update tick.
-local FRAME_SCALE = 1.6
+local FRAME_SCALE = 2.0
 
 -- ===================================================================
 -- CSRItemSelectionButton — one selectable item card.
@@ -74,8 +74,17 @@ function CSRItemSelectionButton:init(parent, data)
 		h = CSRItemSelectionButton.size.h,
 	})
 
-	local top_padding = padding * 2
-	self._image_size = 128
+	-- Vertical gap above the icon (top of card to top of icon panel).
+	local top_padding = padding * 4
+	-- Vertical gap between icon-panel bottom and the description text. Kept
+	-- separate from top_padding so we can push the text further down without
+	-- moving the icon (item descriptions are short -- ~one line -- so the icon
+	-- already sits where it should and only the text needs more breathing room).
+	local desc_top_gap = padding * 6
+	-- Base icon size. Final on-screen size is _image_size * _size_modifier (idle)
+	-- or _image_size (hover/selected, per update()); the rarity frame and update
+	-- smoothstep both derive from this single value, so one knob controls all.
+	self._image_size = 96
 	self._size_modifier = 0.8
 	self._image = self._panel:panel({
 		y = top_padding,
@@ -116,11 +125,11 @@ function CSRItemSelectionButton:init(parent, data)
 		wrap_word = true,
 		text = "",
 		x = padding,
-		y = self._image:bottom() + top_padding,
+		y = self._image:bottom() + desc_top_gap,
 		w = self._panel:w() - padding * 2,
-		h = self._panel:h() - self._image:bottom() - top_padding - padding,
-		font_size = tweak_data.menu.pd2_tiny_font_size,
-		font = tweak_data.menu.pd2_tiny_font,
+		h = self._panel:h() - self._image:bottom() - desc_top_gap - padding,
+		font_size = tweak_data.menu.pd2_small_font_size,
+		font = tweak_data.menu.pd2_small_font,
 		color = tweak_data.screen_colors.text,
 	})
 	self._highlight = self._panel:rect({
@@ -163,7 +172,17 @@ function CSRItemSelectionButton:set_item(data)
 		return
 	end
 
-	local texture, rect = tweak_data.hud_icons:get_icon_data(self._data.icon)
+	-- Resolve icon: a "/" in the value means a full DB-mounted texture path
+	-- (an addon shipping its own .dds via DB:create_entry); otherwise it is a
+	-- short hud_icons id (CSR's built-in items). The direct-path branch assumes
+	-- 128x128 since hud_icons records carry that rect for every CSR icon; an
+	-- addon needing a different rect would warrant promoting `icon` to a table.
+	local texture, rect
+	if type(self._data.icon) == "string" and self._data.icon:find("/", 1, true) then
+		texture, rect = self._data.icon, { 0, 0, 128, 128 }
+	else
+		texture, rect = tweak_data.hud_icons:get_icon_data(self._data.icon)
+	end
 
 	self._item_image:set_image(texture)
 	self._item_image:set_texture_rect(unpack(rect))

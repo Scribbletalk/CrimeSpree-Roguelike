@@ -104,6 +104,13 @@ function CSRGameManager:init()
 	if _G.CSR and _G.CSR._apply_registrations then
 		_G.CSR._apply_registrations(self)
 	end
+	-- After live addons have registered, prune any owned counts whose addon is
+	-- gone. For selection-window items (only current source) this lowers
+	-- total_item_count -- the lobby reminder auto-reappears (host_rank >
+	-- owned) and the player can reselect a different item. Shop-sourced items
+	-- (when the shop ports) will branch here for a token refund instead;
+	-- source-tracking lands with the shop port.
+	self:_drop_orphan_items()
 	self:_setup_temporary_job()
 	log_csr("CSRGameManager initialised; version=" .. tostring(self._meta.version))
 end
@@ -390,6 +397,17 @@ function CSRGameManager:register_item(def)
 		return false
 	end
 
+	-- Optional human-readable addon name, used by future MP addon-mismatch
+	-- warnings and tooltip surfaces ("From: <addon>"). Absent for CSR's own
+	-- built-in items (they are core, not an addon). Tolerant of bad input:
+	-- a non-string value is logged and dropped, not a hard rejection -- the
+	-- item still registers, just without the attribution.
+	local addon = def.addon
+	if addon ~= nil and type(addon) ~= "string" then
+		log_csr("register_item: '" .. t .. "' ignoring non-string 'addon' field (got " .. type(addon) .. ")")
+		addon = nil
+	end
+
 	local entry = {
 		type = t,
 		rarity = def.rarity,
@@ -400,10 +418,12 @@ function CSRGameManager:register_item(def)
 		on_apply = def.on_apply,
 		on_remove = def.on_remove,
 		on_tick = def.on_tick,
+		addon = addon,
 	}
 	table.insert(self._registry.items, entry)
 	self._registry.by_type[t] = entry
-	log_csr("register_item: '" .. t .. "' (" .. def.rarity .. ")")
+	local from = addon and (" from '" .. addon .. "'") or ""
+	log_csr("register_item: '" .. t .. "' (" .. def.rarity .. ")" .. from)
 	return true
 end
 
@@ -411,6 +431,35 @@ end
 -- iterate this instead of hardcoded tables).
 function CSRGameManager:registered_items()
 	return self._registry.items
+end
+
+-- Remove owned counts whose `type` is no longer in the registry (addon
+-- uninstalled / disabled / renamed type). For now -- selection-window-only
+-- world -- the strategy is "drop", because dropping naturally re-arms the
+-- lobby reminder (host_rank > total_item_count) and the player gets a fresh
+-- pick window. Shop-sourced items, when the shop ports, need a different
+-- branch (refund tokens instead of just dropping); source-tracking +
+-- per-source branching lands with the shop port.
+function CSRGameManager:_drop_orphan_items()
+	local dropped = 0
+	for _, entry in pairs(self._state.peer_items) do
+		if entry.counts then
+			for type_id, n in pairs(entry.counts) do
+				if not self._registry.by_type[type_id] then
+					entry.counts[type_id] = nil
+					dropped = dropped + n
+				end
+			end
+		end
+	end
+	if dropped > 0 then
+		log_csr(
+			"_drop_orphan_items: dropped "
+				.. dropped
+				.. " stack(s) of unregistered item(s); lobby reminder will re-arm so the player can reselect"
+		)
+		self:save()
+	end
 end
 
 function CSRGameManager:roll_item_pool(peer_id, count)

@@ -696,7 +696,10 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 			local frame_tex, frame_rect = tweak_data.hud_icons:get_icon_data("csr_frame")
 
 			local frame_overflow = (items_panel_frame_size - items_panel_icon_size) / 2
-			local icon_inset = 12
+			-- Inset of the visible icon bitmap inside the 64x64 cell. The cell
+			-- (hit-test + grid step) and the frame (72x72) stay fixed; bumping
+			-- this number shrinks ONLY the icon glyph inside its rarity frame.
+			local icon_inset = 14
 
 			for i, entry in ipairs(items_list) do
 				local col = (i - 1) % items_panel_grid_cols
@@ -730,7 +733,18 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 					layer = 10,
 				})
 
-				local icon_tex, icon_rect = tweak_data.hud_icons:get_icon_data(entry.def.icon or "csr_dog_tags")
+				-- Resolve icon: a "/" means a full DB-mounted texture path (addon
+				-- shipping its own .dds via DB:create_entry); otherwise a short
+				-- hud_icons id (CSR's built-in items). Direct-path branch
+				-- assumes 128x128 -- promote `icon` to a table if an addon
+				-- needs a different rect.
+				local icon_tex, icon_rect
+				local raw_icon = entry.def.icon or "csr_dog_tags"
+				if type(raw_icon) == "string" and raw_icon:find("/", 1, true) then
+					icon_tex, icon_rect = raw_icon, { 0, 0, 128, 128 }
+				else
+					icon_tex, icon_rect = tweak_data.hud_icons:get_icon_data(raw_icon)
+				end
 				cell:bitmap({
 					name = "item_icon",
 					texture = icon_tex,

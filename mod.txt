@@ -26,6 +26,10 @@
 			"script_path": "lua/items/csr_item_effects.lua"
 		},
 		{
+			"hook_id": "lib/units/weapons/raycastweaponbase",
+			"script_path": "lua/items/csr_item_effects_weapon.lua"
+		},
+		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",
 			"script_path": "lua/menu/csr_lobby_button.lua"
 		},
