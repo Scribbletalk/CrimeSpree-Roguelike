@@ -11,7 +11,7 @@
 -- bonuses (3 stacks of +10% -> divide by 1.30, not 1.10^3). Multiplicative
 -- with all vanilla upgrade multipliers (drill skills, crew Quick, level-based,
 -- etc.); the legacy 6.x mechanic was additive-with-crew-Quick-only and
--- multiplicative with the rest, 6.3 simplifies to uniformly multiplicative
+-- multiplicative with the rest, U1 simplifies to uniformly multiplicative
 -- since the difference only matters when crew Quick is active.
 --
 -- Player-facing exclusions (mirrored from 6.x logbook contract): the bonus

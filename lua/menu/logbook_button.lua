@@ -1,5 +1,5 @@
 -- Crime Spree Roguelike - Logbook open callback
--- 6.3 refactor: opened from the CSR lobby sidebar "Logbook" button
+-- U1 refactor: opened from the CSR lobby sidebar "Logbook" button
 -- (csr_missions_menu.lua -> csr_open_logbook -> this). Registers the callback
 -- handler only; the screen itself is csr_logbook_screen (logbook_node_register
 -- + logbook_component_register + logbook_menu.lua).

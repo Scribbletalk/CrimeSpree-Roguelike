@@ -63,6 +63,9 @@ local function on_enemy_damage(cop, attack_data)
 	local heal = csr_kill_heal_internal(mgr, mgr:local_peer_id(), dmg)
 	if heal > 0 then
 		dmg:set_health(dmg:get_real_health() + heal)
+		if mgr:debug_enabled() then
+			mgr:debug_log(string.format("pink_slip heal +%.2f (internal) on kill", heal))
+		end
 	end
 end
 

@@ -15,7 +15,7 @@
 -- csr_builtin_items.lua / projects/.../csr_mod_extension_api_design.md.
 
 CSRGameManager = CSRGameManager or class()
-CSRGameManager.VERSION = "6.3-alpha.0"
+CSRGameManager.VERSION = "U1-alpha"
 
 local SAVE_FILE = "csr_save.json"
 local LEGACY_SETTINGS_FILE = "crime_spree_roguelike.json"
@@ -104,6 +104,9 @@ function CSRGameManager:init()
 	}
 	self:_migrate_legacy_save()
 	self:load()
+	-- Cache the debug-logging flag (the mod's first setting) into a plain boolean
+	-- for cheap hot-path gating; kept in sync by set_setting.
+	self._debug = (self._meta.settings and self._meta.settings.debug_mode) == true
 	-- Replay every registration (addon + csr_builtin_items.lua) into this fresh
 	-- _registry. init() runs multiple times per session and rebuilds _registry
 	-- empty each time, so this REPLAYS (idempotent via by_type), never drains.
@@ -419,6 +422,7 @@ local KNOWN_RARITIES = {
 --   heal_on_kill      -- Pink Slip: heal local player when they kill an enemy
 --   weapon_speed_streak -- Overkill Rush: kill-streak buff to fire rate + reload
 --   instakill_on_hit  -- Bonnie's Lucky Chip: chance to instakill on a bullet hit
+--   drill_timer_on_kill -- Wolf's Toolbox: kills cut active drill/saw timers
 local KNOWN_EFFECT_KINDS = {
 	stat_mul = true,
 	stat_hyperbolic = true,
@@ -426,6 +430,7 @@ local KNOWN_EFFECT_KINDS = {
 	heal_on_kill = true,
 	weapon_speed_streak = true,
 	instakill_on_hit = true,
+	drill_timer_on_kill = true,
 }
 
 function CSRGameManager:register_item(def)
@@ -560,6 +565,9 @@ function CSRGameManager:sum_stat_mul(stat)
 			end
 		end
 	end
+	if self._debug then
+		self:_debug_stat("stat_mul", stat, total)
+	end
 	return total
 end
 
@@ -589,7 +597,11 @@ function CSRGameManager:combine_stat_hyperbolic(stat)
 			end
 		end
 	end
-	return 1 - remain
+	local combined = 1 - remain
+	if self._debug then
+		self:_debug_stat("hyperbolic", stat, combined)
+	end
+	return combined
 end
 
 -- =====================================================
@@ -638,11 +650,13 @@ function CSRGameManager:reconcile_callback_items()
 		local applied = self._applied_callbacks[entry.type]
 		if should and not applied then
 			self._applied_callbacks[entry.type] = true
+			self:debug_log("callback on_apply '" .. tostring(entry.type) .. "' (count=" .. tostring(count) .. ")")
 			if entry.on_apply then
 				safe_invoke(entry.on_apply, self:_callback_ctx(entry, count), nil, entry.type, "on_apply")
 			end
 		elseif applied and not should then
 			self._applied_callbacks[entry.type] = nil
+			self:debug_log("callback on_remove '" .. tostring(entry.type) .. "'")
 			if entry.on_remove then
 				safe_invoke(entry.on_remove, self:_callback_ctx(entry, count), nil, entry.type, "on_remove")
 			end
@@ -1243,7 +1257,66 @@ end
 
 function CSRGameManager:set_setting(key, value)
 	self._meta.settings[key] = value
+	if key == "debug_mode" then
+		self._debug = value == true
+	end
 	self:save()
+end
+
+-- =====================================================
+-- Debug logging (gated on the "debug_mode" setting — the mod's first setting)
+--
+-- All CSR diagnostic logging routes through here so a single toggle silences it.
+-- debug_enabled() is a cached boolean read (cheap enough for hot paths).
+-- debug_log() is for discrete / bounded events. _debug_stat() is for continuous
+-- per-shot / per-frame stat bonuses: it logs ONLY when the value changes, so the
+-- log never floods (and allocates nothing while a value is stable / debug off).
+-- =====================================================
+
+function CSRGameManager:debug_enabled()
+	return self._debug == true
+end
+
+function CSRGameManager:debug_log(msg)
+	if self._debug then
+		log("[CSR][dbg] " .. tostring(msg))
+	end
+end
+
+function CSRGameManager:_debug_stat(group, stat, value)
+	if not self._debug then
+		return
+	end
+	local cache = self._dbg_stat
+	if not cache then
+		cache = {}
+		self._dbg_stat = cache
+	end
+	local g = cache[group]
+	if not g then
+		g = {}
+		cache[group] = g
+	end
+	if g[stat] ~= value then
+		g[stat] = value
+		log(string.format("[CSR][dbg] %s '%s' bonus -> %.4f", group, stat, value))
+	end
+end
+
+-- Debug helper (mod-options "Debug Tools"): grant the peer one of every
+-- registered item type, bypassing the selection window. add_item already
+-- persists + fires on_item_added (so callback items reconcile). Local-player by
+-- default; in MP each peer grants its own (item ownership is per-peer).
+function CSRGameManager:grant_all_items(peer_id)
+	peer_id = peer_id or self:local_peer_id()
+	local granted = 0
+	for _, item in ipairs(self._registry.items) do
+		if self:add_item(peer_id, item.type) then
+			granted = granted + 1
+		end
+	end
+	log_csr("grant_all_items: granted " .. granted .. " item type(s) to peer " .. tostring(peer_id))
+	return granted
 end
 
 -- =====================================================

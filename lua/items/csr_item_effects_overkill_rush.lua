@@ -81,6 +81,9 @@ local function on_enemy_killed(cop, attack_data)
 			end
 			s.kill_stacks = math.min(s.kill_stacks + 1, e.max_kill_stacks or 4)
 			s.last_kill_time = now
+			if mgr:debug_enabled() then
+				mgr:debug_log(string.format("overkill '%s' streak=%d", item.type, s.kill_stacks))
+			end
 		end
 	end
 end

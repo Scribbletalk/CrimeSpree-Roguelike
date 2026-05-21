@@ -32,7 +32,7 @@ Hooks:PostHook(
 	function(self, node)
 		-- No-leak gate (feedback_csr_only_no_vanilla_leak). managers.csr:is_active()
 		-- alone is NOT a safe gate here: it is a persisted csr_save.json flag and
-		-- end_run() is never driven in 6.3, so after the first start_run() it stays
+		-- end_run() is never driven in U1, so after the first start_run() it stays
 		-- true across sessions. Vanilla create_crime_spree_missions_gui is invoked
 		-- as a registered component create-callback for EVERY node that lists the
 		-- crime_spree_missions component (vanilla no-ops via its own

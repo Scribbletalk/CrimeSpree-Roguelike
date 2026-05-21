@@ -35,7 +35,7 @@ local size = 280
 local sidebar_title_gap = 16
 
 -- Items feature-panel layout. Rarity palette includes contraband even though
--- contraband items are excluded from the SELECTION-WINDOW pool (6.3 drop-rate
+-- contraband items are excluded from the SELECTION-WINDOW pool (U1 drop-rate
 -- redesign cut them from random rolls): the items themselves still exist and
 -- can reach a player's inventory through other paths (e.g. the shop when ported
 -- back), so the inventory view needs the matching frame tint. Contraband
@@ -1231,7 +1231,7 @@ end
 -- How many roguelike item picks the player still owes. The entitlement is the
 -- HOST's spree rank (user spec); subtract what the local player already owns.
 -- Items bought with Gage tokens must NOT count toward the rank quota ("это на
--- будущее"): tokens/shop are not ported in 6.3 so every owned item is currently
+-- будущее"): tokens/shop are not ported in U1 so every owned item is currently
 -- a rank item -- when the token slice lands, filter token-sourced items out of
 -- the `owned` count right here.
 function CSRMissionsMenuComponent:_unselected_item_count()

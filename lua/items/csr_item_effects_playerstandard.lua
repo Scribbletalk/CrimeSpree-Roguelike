@@ -136,5 +136,9 @@ if PlayerStandard and not _G._CSR_ITEM_EFFECTS_PLAYERSTANDARD_HOOKED then
 		self._end_running_expire_t = nil
 		self._start_running_t = t
 		self:_interupt_action_ducking(t)
+		local mgr = managers.csr
+		if mgr and mgr:debug_enabled() then
+			mgr:debug_log("jiro_last_wish: sprint during melee charge")
+		end
 	end)
 end

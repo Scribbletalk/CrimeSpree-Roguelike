@@ -167,6 +167,29 @@ if _G.CSR and _G.CSR.register_item and not _G._CSR_BUILTINS_REGISTERED then
 		effect = { kind = "heal_on_kill", base_pct = 0.01, base_flat = 4, extra_flat = 6 },
 	})
 
+	_G.CSR.register_item({
+		type = "wolfs_toolbox",
+		rarity = "uncommon",
+		name = "WOLF'S TOOLBOX",
+		desc = "Killing enemies reduces the timer\non active drills and saws.",
+		-- Icon id is "csr_toolbox" in hudicons.lua (legacy name), not csr_wolfs_toolbox.
+		icon = "csr_toolbox",
+		-- Each local-player kill cuts active drill/saw timers; always triggers (no
+		-- RNG), specials cut more. normal/special _base/_extra mirror the 6.2
+		-- constants (wolfs_toolbox_normal_base 0.2 / _normal_extra 0.1 /
+		-- _special_base 1.0 / _special_extra 0.5). Reductions SUM across owned
+		-- drill_timer_on_kill items. TimerGui drills are host-authoritative (client
+		-- kills RPC the host); saw INTERACTIONS are locally owned. Applied by
+		-- csr_item_effects_wolfs_toolbox.lua.
+		effect = {
+			kind = "drill_timer_on_kill",
+			normal_base = 0.2,
+			normal_extra = 0.1,
+			special_base = 1.0,
+			special_extra = 0.5,
+		},
+	})
+
 	-- ============ RARE ============
 
 	_G.CSR.register_item({

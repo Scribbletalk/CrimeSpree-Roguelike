@@ -21,7 +21,7 @@
 --
 -- DEFERRED: the 6.2 item also played a positional proc sound (broadcast to
 -- peers) and pushed a HUD cooldown pip. Both ride on subsystems not yet ported
--- to 6.3 (CSR_PlaySound / the HUD-compat event shims), so they are intentionally
+-- to U1 (CSR_PlaySound / the HUD-compat event shims), so they are intentionally
 -- omitted; the instakill itself is complete. Re-add the sound PostHook when the
 -- sound subsystem lands.
 
@@ -87,6 +87,9 @@ local function bonnie_chip_try_proc(cop, attack_data)
 		-- the applied damage to self._health internally, so the value just needs
 		-- to exceed current health).
 		attack_data.damage = (cop._health or 1) * 10
+		if mgr:debug_enabled() then
+			mgr:debug_log("bonnie_chip INSTAKILL proc")
+		end
 	end
 end
 

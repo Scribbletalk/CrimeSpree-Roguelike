@@ -1,6 +1,6 @@
 -- Crime Spree Roguelike - Custom icons
 --
--- 6.3 refactor port. Disk paths re-pointed to the refactor mod's new asset
+-- U1 refactor port. Disk paths re-pointed to the refactor mod's new asset
 -- layout (assets/gui/...). The fixed engine DB targets
 -- (guis/textures/pd2/crime_spree/csr_*) are UNCHANGED — the logbook and other
 -- CSR surfaces resolve icons by those DB ids, so they must not move.

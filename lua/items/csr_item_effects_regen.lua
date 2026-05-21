@@ -28,7 +28,7 @@
 -- regen-kind items via the manager's by_kind index rather than scanning the
 -- whole registry every frame.
 --
--- 6.3-alpha scope: the legacy "block_item_healing" CSR_Settings toggle and the
+-- U1-alpha scope: the legacy "block_item_healing" CSR_Settings toggle and the
 -- VHUDPlus / WFHud / PocoHud "regen cycle" buff events from
 -- player_passives.lua are NOT ported -- both depend on systems
 -- (CSR_Settings, HUD-compat) that are scoped out of this slice. They come
@@ -82,6 +82,11 @@ if PlayerDamage and not _G._CSR_ITEM_EFFECTS_REGEN_HOOKED then
 					local pct = maxp * stacks / (stacks + k)
 					max_hp_cached = max_hp_cached or self:_max_health()
 					heal_total = heal_total + max_hp_cached * pct
+					if mgr:debug_enabled() then
+						mgr:debug_log(
+							string.format("worn_bandaid tick +%.1f HP (stacks=%d)", max_hp_cached * pct, stacks)
+						)
+					end
 				end
 				self._csr_regen_timers[item.type] = timer
 			else

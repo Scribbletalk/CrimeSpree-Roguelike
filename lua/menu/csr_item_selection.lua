@@ -4,7 +4,7 @@
 -- Strategy: byte-for-byte copy with class renames + the backend decoupled from
 -- managers.crime_spree. Vanilla read the offered items from
 -- managers.crime_spree:get_loud_modifiers() and the description from
--- :make_modifier_description(); that backend is not ported in 6.3, so the
+-- :make_modifier_description(); that backend is not ported in U1, so the
 -- component is now DATA-DRIVEN — :new() takes a plain item list and each entry
 -- carries its own id / icon / rarity / name / desc. The selection-pool and
 -- "when does this open" logic is intentionally NOT wired yet (user scope:
@@ -83,7 +83,7 @@ end
 
 -- Generic rarity frame (single texture, tinted per rarity at draw time) — same
 -- mapping the pre-refactor selection overlay used, minus contraband: contraband
--- items no longer appear in the item selection (user, 6.3 drop-rate redesign).
+-- items no longer appear in the item selection (user, U1 drop-rate redesign).
 local RARITY_COLORS = {
 	common = Color.white,
 	uncommon = Color(1, 0, 0.95, 0),

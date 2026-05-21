@@ -1,8 +1,8 @@
 {
-	"name": "Crime Spree Roguelike (6.3 refactor)",
-	"description": "Refactor workspace for CSR 6.3. Foundation skeleton + Dog Tags pilot + forked CS contract popup + mission lifecycle + mission select + forked mission briefing + forked end screen (Slices 1-9). Do not ship.",
+	"name": "Crime Spree Roguelike (U1 refactor)",
+	"description": "Refactor workspace for CSR U1 (full rewrite; version resets to U1). Foundation skeleton + items via the extension API + forked CS contract popup + mission lifecycle + mission select + forked mission briefing + forked end screen. Do not ship.",
 	"author": "Candy",
-	"version": "6.3-alpha.0",
+	"version": "U1-alpha",
 	"blt_version": 2,
 	"hooks": [
 		{
@@ -64,6 +64,14 @@
 		{
 			"hook_id": "lib/units/enemies/cop/copdamage",
 			"script_path": "lua/items/csr_item_effects_bonnie_chip.lua"
+		},
+		{
+			"hook_id": "lib/units/enemies/cop/copdamage",
+			"script_path": "lua/items/csr_item_effects_wolfs_toolbox.lua"
+		},
+		{
+			"hook_id": "lib/units/props/timergui",
+			"script_path": "lua/items/csr_item_effects_wolfs_toolbox.lua"
 		},
 		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",
@@ -176,6 +184,10 @@
 		{
 			"hook_id": "lib/managers/menumanager",
 			"script_path": "lua/menu/csr_pause_menu_items.lua"
+		},
+		{
+			"hook_id": "lib/managers/menumanager",
+			"script_path": "lua/menu/csr_options_menu.lua"
 		}
 	],
 	"keybinds": [

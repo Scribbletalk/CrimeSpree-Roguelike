@@ -1,5 +1,5 @@
 -- Crime Spree Roguelike - Localization loader
--- 6.3 refactor: static strings live in loc/english.json (BAI-style flat-file
+-- U1 refactor: static strings live in loc/english.json (BAI-style flat-file
 -- pattern, loaded via loc:load_localization_file). Only the genuinely DYNAMIC
 -- strings stay in Lua here: balance-number interpolation (CSR_ItemConstants),
 -- the per-registry 200-copy key generation, the forced-modifier full-ID

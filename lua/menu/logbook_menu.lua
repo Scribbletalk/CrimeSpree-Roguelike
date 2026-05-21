@@ -5,7 +5,7 @@ if not RequiredScript then
 	return
 end
 
--- NOTE (6.3 refactor port): the original file also wrapped
+-- NOTE (U1 refactor port): the original file also wrapped
 -- CrimeSpreeDetailsMenuComponent:show_new_modifier here to suppress the vanilla
 -- "NEW LOUD MODIFIER" popup for player_* items. That block was intentionally
 -- dropped during the port — it is unrelated to viewing the logbook, depends on

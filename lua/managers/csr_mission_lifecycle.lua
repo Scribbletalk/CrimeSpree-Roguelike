@@ -19,7 +19,7 @@ local function log_csr(msg)
 end
 
 -- No-leak gate (feedback_csr_only_no_vanilla_leak). managers.csr:is_active() is
--- a persisted csr_save.json flag and end_run() is never driven in 6.3, so after
+-- a persisted csr_save.json flag and end_run() is never driven in U1, so after
 -- the first start_run() it stays true across sessions. Gating ONLY on it meant
 -- completing a VANILLA heist after a CSR run granted rank, counted a mission and
 -- rerolled the mission set for that vanilla heist (user report 2026-05-18).
