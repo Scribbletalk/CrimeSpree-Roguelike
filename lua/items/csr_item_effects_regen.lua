@@ -23,6 +23,11 @@
 -- without affecting band-aid. The map is initialised lazily on first update
 -- so a PlayerDamage:init hook is unnecessary.
 --
+-- update() runs ~60 Hz, so the per-tick work is kept minimal: bail before any
+-- allocation when no run is active / player is down, and iterate ONLY the
+-- regen-kind items via the manager's by_kind index rather than scanning the
+-- whole registry every frame.
+--
 -- 6.3-alpha scope: the legacy "block_item_healing" CSR_Settings toggle and the
 -- VHUDPlus / WFHud / PocoHud "regen cycle" buff events from
 -- player_passives.lua are NOT ported -- both depend on systems
@@ -51,7 +56,7 @@ if PlayerDamage and not _G._CSR_ITEM_EFFECTS_REGEN_HOOKED then
 		end
 
 		local mgr = managers.csr
-		if not mgr or not mgr.registered_items then
+		if not mgr or not mgr.items_of_kind then
 			return
 		end
 
@@ -61,28 +66,28 @@ if PlayerDamage and not _G._CSR_ITEM_EFFECTS_REGEN_HOOKED then
 		local pid = mgr:local_peer_id()
 		local max_hp_cached -- read once per tick, only if needed
 
-		for _, item in ipairs(mgr:registered_items()) do
+		local items = mgr:items_of_kind("regen_max_hp_pct")
+		for i = 1, #items do
+			local item = items[i]
 			local e = item.effect
-			if e and e.kind == "regen_max_hp_pct" then
-				local stacks = mgr:item_count(pid, item.type)
-				if stacks > 0 then
-					local interval = e.interval or 5
-					local timer = (self._csr_regen_timers[item.type] or 0) + dt
-					if timer >= interval then
-						timer = timer - interval
-						local first = e.first_pct or 0.01
-						local maxp = e.max_pct or 0.20
-						local k = (maxp - first) / first
-						local pct = maxp * stacks / (stacks + k)
-						max_hp_cached = max_hp_cached or self:_max_health()
-						heal_total = heal_total + max_hp_cached * pct
-					end
-					self._csr_regen_timers[item.type] = timer
-				else
-					-- Player no longer owns this item-type; reset its timer so a
-					-- re-pick doesn't immediately fire a partial cycle.
-					self._csr_regen_timers[item.type] = 0
+			local stacks = mgr:item_count(pid, item.type)
+			if stacks > 0 then
+				local interval = e.interval or 5
+				local timer = (self._csr_regen_timers[item.type] or 0) + dt
+				if timer >= interval then
+					timer = timer - interval
+					local first = e.first_pct or 0.01
+					local maxp = e.max_pct or 0.20
+					local k = (maxp - first) / first
+					local pct = maxp * stacks / (stacks + k)
+					max_hp_cached = max_hp_cached or self:_max_health()
+					heal_total = heal_total + max_hp_cached * pct
 				end
+				self._csr_regen_timers[item.type] = timer
+			else
+				-- Player no longer owns this item-type; reset its timer so a
+				-- re-pick doesn't immediately fire a partial cycle.
+				self._csr_regen_timers[item.type] = 0
 			end
 		end
 

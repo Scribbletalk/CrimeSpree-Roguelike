@@ -31,30 +31,6 @@ if not RequiredScript then
 	return
 end
 
--- Summed additive bonus for one stat across every registered stat_mul item the
--- local player owns. Zero unless a CSR run is active (item gating convention).
-local function csr_stat_mul_bonus(stat)
-	local mgr = managers and managers.csr
-	if not mgr or not mgr.is_run_active or not mgr:is_run_active() then
-		return 0
-	end
-	if not mgr.registered_items then
-		return 0
-	end
-	local pid = mgr:local_peer_id()
-	local total = 0
-	for _, item in ipairs(mgr:registered_items()) do
-		local e = item.effect
-		if e and e.kind == "stat_mul" and e.stat == stat then
-			local stacks = mgr:item_count(pid, item.type)
-			if stacks > 0 then
-				total = total + (e.per_stack or 0) * stacks
-			end
-		end
-	end
-	return total
-end
-
 if BlackMarketManager and not _G._CSR_ITEM_EFFECTS_MELEE_HOOKED then
 	_G._CSR_ITEM_EFFECTS_MELEE_HOOKED = true
 
@@ -62,7 +38,10 @@ if BlackMarketManager and not _G._CSR_ITEM_EFFECTS_MELEE_HOOKED then
 	if orig_info then
 		function BlackMarketManager:equipped_melee_weapon_damage_info(lerp_value)
 			local dmg, dmg_effect = orig_info(self, lerp_value)
-			local bonus = csr_stat_mul_bonus("damage") + csr_stat_mul_bonus("melee_damage")
+			-- "damage" (all damage) + "melee_damage" (melee only); summed on the
+			-- manager (registry-indexed). See csr_item_effects.lua.
+			local mgr = managers.csr
+			local bonus = mgr and (mgr:sum_stat_mul("damage") + mgr:sum_stat_mul("melee_damage")) or 0
 			if bonus ~= 0 and type(dmg) == "number" then
 				local mul = 1 + bonus
 				dmg = dmg * mul

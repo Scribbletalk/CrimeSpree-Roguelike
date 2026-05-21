@@ -139,6 +139,24 @@ if _G.CSR and _G.CSR.register_item and not _G._CSR_BUILTINS_REGISTERED then
 	})
 
 	_G.CSR.register_item({
+		type = "overkill_rush",
+		rarity = "uncommon",
+		name = "OVERKILL RUSH",
+		desc = "Killing enemies temporarily increases fire rate and reload speed.",
+		icon = "csr_overkill_rush",
+		-- Kill-streak buff. Each local-player kill adds a stack (max max_kill_stacks),
+		-- decaying after `duration` seconds without a kill. Active bonus =
+		-- kill_stacks * (item_stacks + 1) * bonus_per_kill, applied EQUALLY to fire
+		-- rate and reload speed (NewRaycastWeaponBase). bonus_per_kill / max_kill_stacks
+		-- / duration mirror the 6.2 constants (overkill_rush_extra_bonus = 0.01,
+		-- _max_stacks = 4, _duration = 4.0): 1 item -> +2/4/6/8% at 1-4 kills.
+		-- The legacy overkill_rush_first_bonus (0.02) was never read by the live
+		-- formula -- it equals (1+1)*0.01 incidentally -- so it is intentionally
+		-- dropped here. Streak state + consumer live in csr_item_effects_overkill_rush.lua.
+		effect = { kind = "weapon_speed_streak", bonus_per_kill = 0.01, max_kill_stacks = 4, duration = 4.0 },
+	})
+
+	_G.CSR.register_item({
 		type = "pink_slip",
 		rarity = "uncommon",
 		name = "PINK SLIP",
@@ -150,6 +168,26 @@ if _G.CSR and _G.CSR.register_item and not _G._CSR_BUILTINS_REGISTERED then
 	})
 
 	-- ============ RARE ============
+
+	_G.CSR.register_item({
+		type = "bonnie_chip",
+		rarity = "rare",
+		name = "BONNIE'S LUCKY CHIP",
+		desc = "Each hit has a small chance to instantly kill the target.",
+		icon = "csr_bonnie_chip",
+		-- Bespoke proc: a bullet hit on a non-civilian/non-converted enemy rolls
+		-- an instakill (chance per chip, combined 1-(1-chance)^stacks), and on a
+		-- win the attack's damage is amplified so vanilla damage_bullet lands the
+		-- kill itself -- which routes the death through vanilla MP networking
+		-- (client RPCs host, host syncs back) instead of a local self:die() that
+		-- would desync. chance / cooldown mirror the 6.2 constants
+		-- (bonnie_chip_chance = 0.10, _cooldown = 1.5). The cooldown is armed on
+		-- EVERY attempt (win or lose) to stop minigun spam. Logic lives in
+		-- csr_item_effects_bonnie_chip.lua. NOTE: the proc sound + its MP broadcast
+		-- are deferred until the sound subsystem (CSR_PlaySound) ports; the
+		-- instakill itself is fully functional now.
+		effect = { kind = "instakill_on_hit", chance = 0.10, cooldown = 1.5 },
+	})
 
 	_G.CSR.register_item({
 		type = "jiro_last_wish",

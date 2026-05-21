@@ -21,16 +21,13 @@ local function csr_kill_heal_internal(mgr, pid, dmg)
 	local scale = (tweak_data.gui and tweak_data.gui.stats_present_multiplier) or 10
 	local max_hp = dmg:_max_health()
 	local total = 0
-	for _, item in ipairs(mgr:registered_items()) do
-		local e = item.effect
-		if e and e.kind == "heal_on_kill" then
-			local stacks = mgr:item_count(pid, item.type)
-			if stacks > 0 then
-				local display = max_hp * scale * (e.base_pct or 0)
-					+ (e.base_flat or 0)
-					+ (stacks - 1) * (e.extra_flat or 0)
-				total = total + display / scale
-			end
+	local items = mgr:items_of_kind("heal_on_kill")
+	for i = 1, #items do
+		local e = items[i].effect
+		local stacks = mgr:item_count(pid, items[i].type)
+		if stacks > 0 then
+			local display = max_hp * scale * (e.base_pct or 0) + (e.base_flat or 0) + (stacks - 1) * (e.extra_flat or 0)
+			total = total + display / scale
 		end
 	end
 	return total
@@ -51,7 +48,7 @@ local function on_enemy_damage(cop, attack_data)
 	cop._csr_kill_handled = true
 
 	local mgr = managers.csr
-	if not mgr or not mgr.registered_items then
+	if not mgr or not mgr.items_of_kind then
 		return
 	end
 	local pu = managers.player and managers.player:player_unit()

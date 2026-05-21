@@ -38,6 +38,10 @@
 			"script_path": "lua/items/csr_item_effects_regen.lua"
 		},
 		{
+			"hook_id": "lib/units/beings/player/playerdamage",
+			"script_path": "lua/items/csr_item_effects_callbacks.lua"
+		},
+		{
 			"hook_id": "lib/managers/blackmarketmanager",
 			"script_path": "lua/items/csr_item_effects_melee.lua"
 		},
@@ -48,6 +52,18 @@
 		{
 			"hook_id": "lib/units/enemies/cop/copdamage",
 			"script_path": "lua/items/csr_item_effects_kill.lua"
+		},
+		{
+			"hook_id": "lib/units/enemies/cop/copdamage",
+			"script_path": "lua/items/csr_item_effects_overkill_rush.lua"
+		},
+		{
+			"hook_id": "lib/units/weapons/newraycastweaponbase",
+			"script_path": "lua/items/csr_item_effects_overkill_rush.lua"
+		},
+		{
+			"hook_id": "lib/units/enemies/cop/copdamage",
+			"script_path": "lua/items/csr_item_effects_bonnie_chip.lua"
 		},
 		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",

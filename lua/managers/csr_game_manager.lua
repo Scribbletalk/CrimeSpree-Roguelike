@@ -75,7 +75,9 @@ local function default_registry()
 	-- (see the Items section below).
 	return {
 		items = {},
-		by_type = {},
+		by_type = {}, -- [type] = entry (identity lookup)
+		by_kind = {}, -- [effect.kind] = { entry, ... } (effect-dispatch index; effect items only)
+		callback_items = {}, -- { entry, ... } items with on_apply/on_remove/on_tick (escape hatch)
 		constants = {
 			-- Kept for back-compat/reference; the live Dog Tags value now
 			-- travels in its effect descriptor (per_stack) via register_item.
@@ -115,6 +117,19 @@ function CSRGameManager:init()
 	-- (when the shop ports) will branch here for a token refund instead;
 	-- source-tracking lands with the shop port.
 	self:_drop_orphan_items()
+	-- Callback escape-hatch wiring: reconcile applied-state on every ownership /
+	-- run transition, and once now so items already owned in a loaded run
+	-- (save-reload) get on_apply. Listeners go into the fresh _callbacks table
+	-- (rebuilt each init), so a re-init never stacks duplicate listeners.
+	self._applied_callbacks = {}
+	local function reconcile_cb()
+		self:reconcile_callback_items()
+	end
+	self:on_mission_started(reconcile_cb)
+	self:on_mission_completed(reconcile_cb)
+	self:on_item_added(reconcile_cb)
+	self:on_item_removed(reconcile_cb)
+	self:reconcile_callback_items()
 	self:_setup_temporary_job()
 	log_csr("CSRGameManager initialised; version=" .. tostring(self._meta.version))
 end
@@ -402,7 +417,16 @@ local KNOWN_RARITIES = {
 --                        diminishing-returns curve cap*(1-1/(1+(k_num/k_den)*n))
 --   regen_max_hp_pct  -- Worn Band-Aid: hyperbolic % of max HP every N seconds
 --   heal_on_kill      -- Pink Slip: heal local player when they kill an enemy
-local KNOWN_EFFECT_KINDS = { stat_mul = true, stat_hyperbolic = true, regen_max_hp_pct = true, heal_on_kill = true }
+--   weapon_speed_streak -- Overkill Rush: kill-streak buff to fire rate + reload
+--   instakill_on_hit  -- Bonnie's Lucky Chip: chance to instakill on a bullet hit
+local KNOWN_EFFECT_KINDS = {
+	stat_mul = true,
+	stat_hyperbolic = true,
+	regen_max_hp_pct = true,
+	heal_on_kill = true,
+	weapon_speed_streak = true,
+	instakill_on_hit = true,
+}
 
 function CSRGameManager:register_item(def)
 	if type(def) ~= "table" then
@@ -461,6 +485,25 @@ function CSRGameManager:register_item(def)
 	}
 	table.insert(self._registry.items, entry)
 	self._registry.by_type[t] = entry
+	-- Index by effect kind so the hot-path dispatchers iterate only the items of
+	-- the kind they care about instead of scanning the whole registry every call.
+	-- Callback-only items (no effect) are not effect-dispatched, so they are not
+	-- indexed here. Rebuilt empty on each init() (default_registry) and refilled
+	-- by the registration replay, in lockstep with by_type.
+	if effect then
+		local bucket = self._registry.by_kind[effect.kind]
+		if not bucket then
+			bucket = {}
+			self._registry.by_kind[effect.kind] = bucket
+		end
+		bucket[#bucket + 1] = entry
+	end
+	-- Index callback-escape-hatch items (any of on_apply/on_remove/on_tick) for
+	-- the lifecycle reconcile + throttled tick. An item may be BOTH effect- and
+	-- callback-driven, so this is independent of the by_kind index above.
+	if entry.on_apply or entry.on_remove or entry.on_tick then
+		self._registry.callback_items[#self._registry.callback_items + 1] = entry
+	end
 	local from = addon and (" from '" .. addon .. "'") or ""
 	log_csr("register_item: '" .. t .. "' (" .. def.rarity .. ")" .. from)
 	return true
@@ -470,6 +513,160 @@ end
 -- iterate this instead of hardcoded tables).
 function CSRGameManager:registered_items()
 	return self._registry.items
+end
+
+-- =====================================================
+-- Effect dispatch helpers
+--
+-- The "scan owned items of an effect kind and fold their effect" logic used to
+-- be copy-pasted into every dispatcher file under lua/items/ -- a SuperBLT chunk
+-- that is hooked on N targets loads N times and file-locals are not shared, so
+-- each file (and each load) had its own identical copy. These three methods are
+-- the single home for that logic; dispatchers now delegate here. All three are
+-- LOCAL-PLAYER-scoped (local_peer_id) and gated on is_run_active(), so they
+-- return a neutral value (0 / empty) outside a run -- the dispatcher call sites
+-- only need a `managers.csr` nil-guard.
+-- =====================================================
+
+local EMPTY_ITEM_LIST = {}
+
+-- Read-only list of registered entries whose effect.kind == kind (empty list if
+-- none). Backed by the by_kind index, so this is an O(1) lookup; callers loop
+-- the (short) returned list. Bespoke dispatchers (kill / streak / chip) use this
+-- and apply their own per-item math.
+function CSRGameManager:items_of_kind(kind)
+	return self._registry.by_kind[kind] or EMPTY_ITEM_LIST
+end
+
+-- Summed additive bonus for one stat across every owned stat_mul item targeting
+-- it: sum(per_stack * stacks). The additive convention for max_health /
+-- max_stamina / damage / melee_damage / interaction_speed. 0 outside a run.
+function CSRGameManager:sum_stat_mul(stat)
+	if not self:is_run_active() then
+		return 0
+	end
+	local items = self._registry.by_kind.stat_mul
+	if not items then
+		return 0
+	end
+	local pid = self:local_peer_id()
+	local total = 0
+	for i = 1, #items do
+		local e = items[i].effect
+		if e.stat == stat then
+			local stacks = self:item_count(pid, items[i].type)
+			if stacks > 0 then
+				total = total + (e.per_stack or 0) * stacks
+			end
+		end
+	end
+	return total
+end
+
+-- Combined diminishing-returns bonus for one stat across every owned
+-- stat_hyperbolic item targeting it. Each item contributes
+--   b = cap * (1 - 1 / (1 + (k_num/k_den) * stacks))
+-- and items combine as a probabilistic union 1 - prod(1 - b) (stays < 1, reduces
+-- to b for the single-item case). Used for movement_speed / dodge. 0 outside a run.
+function CSRGameManager:combine_stat_hyperbolic(stat)
+	if not self:is_run_active() then
+		return 0
+	end
+	local items = self._registry.by_kind.stat_hyperbolic
+	if not items then
+		return 0
+	end
+	local pid = self:local_peer_id()
+	local remain = 1
+	for i = 1, #items do
+		local e = items[i].effect
+		if e.stat == stat then
+			local stacks = self:item_count(pid, items[i].type)
+			if stacks > 0 then
+				local k = (e.k_num or 1) / (e.k_den or 1)
+				local b = (e.cap or 1) * (1 - 1 / (1 + k * stacks))
+				remain = remain * (1 - b)
+			end
+		end
+	end
+	return 1 - remain
+end
+
+-- =====================================================
+-- Callback escape-hatch dispatch (on_apply / on_remove / on_tick)
+--
+-- For mechanics that don't fit a declarative effect kind, register_item accepts
+-- on_apply/on_remove/on_tick. An item is "applied" while a run is active AND the
+-- local player owns >= 1. reconcile_callback_items() (wired to every ownership /
+-- run transition, plus once at init for save-reload) fires on_apply when an item
+-- ENTERS that state and on_remove when it LEAVES, with exactly-once semantics via
+-- _applied_callbacks. tick_callback_items(dt) drives on_tick for applied items on
+-- a throttle (the driver lives in csr_item_effects_callbacks.lua; never per-frame).
+-- Every callback is pcall-isolated: a buggy addon callback is logged, never
+-- crashes CSR. ctx = { mgr, peer_id, item_type, count, is_run_active }.
+-- =====================================================
+
+function CSRGameManager:_callback_ctx(entry, count)
+	return {
+		mgr = self,
+		peer_id = self:local_peer_id(),
+		item_type = entry.type,
+		count = count,
+		is_run_active = self:is_run_active(),
+	}
+end
+
+local function safe_invoke(fn, ctx, dt, type_id, which)
+	local ok, err = pcall(fn, ctx, dt)
+	if not ok then
+		log_csr(which .. " error for '" .. tostring(type_id) .. "': " .. tostring(err))
+	end
+end
+
+function CSRGameManager:reconcile_callback_items()
+	self._applied_callbacks = self._applied_callbacks or {}
+	local list = self._registry.callback_items
+	if #list == 0 then
+		return
+	end
+	local pid = self:local_peer_id()
+	local run_active = self:is_run_active()
+	for i = 1, #list do
+		local entry = list[i]
+		local count = self:item_count(pid, entry.type)
+		local should = run_active and count > 0
+		local applied = self._applied_callbacks[entry.type]
+		if should and not applied then
+			self._applied_callbacks[entry.type] = true
+			if entry.on_apply then
+				safe_invoke(entry.on_apply, self:_callback_ctx(entry, count), nil, entry.type, "on_apply")
+			end
+		elseif applied and not should then
+			self._applied_callbacks[entry.type] = nil
+			if entry.on_remove then
+				safe_invoke(entry.on_remove, self:_callback_ctx(entry, count), nil, entry.type, "on_remove")
+			end
+		end
+	end
+end
+
+function CSRGameManager:tick_callback_items(dt)
+	if not self:is_run_active() then
+		return
+	end
+	local applied = self._applied_callbacks
+	if not applied then
+		return
+	end
+	local list = self._registry.callback_items
+	local pid = self:local_peer_id()
+	for i = 1, #list do
+		local entry = list[i]
+		if entry.on_tick and applied[entry.type] then
+			local count = self:item_count(pid, entry.type)
+			safe_invoke(entry.on_tick, self:_callback_ctx(entry, count), dt, entry.type, "on_tick")
+		end
+	end
 end
 
 -- Remove owned counts whose `type` is no longer in the registry (addon

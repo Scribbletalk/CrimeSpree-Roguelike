@@ -26,33 +26,6 @@ if not RequiredScript then
 	return
 end
 
--- Combined hyperbolic bonus for one stat across every registered stat_hyperbolic
--- item the local player owns -- see csr_item_effects.lua for the formula notes.
--- Duplicated here per the established self-contained-file convention.
-local function csr_stat_hyperbolic_bonus(stat)
-	local mgr = managers and managers.csr
-	if not mgr or not mgr.is_run_active or not mgr:is_run_active() then
-		return 0
-	end
-	if not mgr.registered_items then
-		return 0
-	end
-	local pid = mgr:local_peer_id()
-	local remain = 1
-	for _, item in ipairs(mgr:registered_items()) do
-		local e = item.effect
-		if e and e.kind == "stat_hyperbolic" and e.stat == stat then
-			local stacks = mgr:item_count(pid, item.type)
-			if stacks > 0 then
-				local k = (e.k_num or 1) / (e.k_den or 1)
-				local b = (e.cap or 1) * (1 - 1 / (1 + k * stacks))
-				remain = remain * (1 - b)
-			end
-		end
-	end
-	return 1 - remain
-end
-
 -- True only when a run is active AND the local player owns the given item type.
 local function csr_owns(item_type)
 	local mgr = managers and managers.csr
@@ -76,7 +49,8 @@ if PlayerStandard and not _G._CSR_ITEM_EFFECTS_PLAYERSTANDARD_HOOKED then
 			if type(speed) ~= "number" then
 				return speed
 			end
-			local bonus = csr_stat_hyperbolic_bonus("movement_speed")
+			local mgr = managers.csr
+			local bonus = mgr and mgr:combine_stat_hyperbolic("movement_speed") or 0
 			if bonus ~= 0 then
 				speed = speed * (1 + bonus)
 			end

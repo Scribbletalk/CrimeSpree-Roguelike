@@ -29,28 +29,6 @@ if not RequiredScript then
 	return
 end
 
-local function csr_stat_mul_bonus(stat)
-	local mgr = managers and managers.csr
-	if not mgr or not mgr.is_run_active or not mgr:is_run_active() then
-		return 0
-	end
-	if not mgr.registered_items then
-		return 0
-	end
-	local pid = mgr:local_peer_id()
-	local total = 0
-	for _, item in ipairs(mgr:registered_items()) do
-		local e = item.effect
-		if e and e.kind == "stat_mul" and e.stat == stat then
-			local stacks = mgr:item_count(pid, item.type)
-			if stacks > 0 then
-				total = total + (e.per_stack or 0) * stacks
-			end
-		end
-	end
-	return total
-end
-
 if BaseInteractionExt and not _G._CSR_ITEM_EFFECTS_INTERACTION_HOOKED then
 	_G._CSR_ITEM_EFFECTS_INTERACTION_HOOKED = true
 
@@ -65,7 +43,8 @@ if BaseInteractionExt and not _G._CSR_ITEM_EFFECTS_INTERACTION_HOOKED then
 			if tid == "revive" or tid == "free" then
 				return t
 			end
-			local bonus = csr_stat_mul_bonus("interaction_speed")
+			local mgr = managers.csr
+			local bonus = mgr and mgr:sum_stat_mul("interaction_speed") or 0
 			if bonus <= 0 then
 				return t
 			end
