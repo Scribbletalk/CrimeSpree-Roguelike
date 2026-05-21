@@ -777,18 +777,6 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 	local y = items_panel_padding
 	local section_w = panel:w() - items_panel_padding * 2
 
-	-- DIAGNOSTIC (temporary — strip once the items-grid margin issue is resolved):
-	-- reveals whether the panel is narrower than the fixed 7-col grid (in which
-	-- case centering clamps to the left and looks unchanged).
-	log(
-		string.format(
-			"[CSR][diag] items panel: panel_w=%.0f section_w=%.0f grid_w=%d",
-			panel:w(),
-			section_w,
-			items_panel_grid_cols * items_panel_icon_size + (items_panel_grid_cols - 1) * items_panel_icon_gap
-		)
-	)
-
 	for _, peer_info in ipairs(peers_list) do
 		local pid = peer_info.id
 		local pcolor = peer_info.color
