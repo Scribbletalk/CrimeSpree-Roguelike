@@ -395,9 +395,13 @@ local KNOWN_RARITIES = {
 }
 -- Slice 1 declarative vocabulary. Grows one entry at a time as each item that
 -- needs a new kind is ported (never speculatively).
---   stat_mul          -- max_health / max_stamina / damage / interaction_speed
+--   stat_mul          -- max_health / max_stamina / damage / melee_damage /
+--                        interaction_speed: linear per_stack added to a vanilla
+--                        return-value multiplier
+--   stat_hyperbolic   -- movement_speed (Escape Plan) / dodge (Falcogini Keys):
+--                        diminishing-returns curve cap*(1-1/(1+(k_num/k_den)*n))
 --   regen_max_hp_pct  -- Worn Band-Aid: hyperbolic % of max HP every N seconds
-local KNOWN_EFFECT_KINDS = { stat_mul = true, regen_max_hp_pct = true }
+local KNOWN_EFFECT_KINDS = { stat_mul = true, stat_hyperbolic = true, regen_max_hp_pct = true }
 
 function CSRGameManager:register_item(def)
 	if type(def) ~= "table" then

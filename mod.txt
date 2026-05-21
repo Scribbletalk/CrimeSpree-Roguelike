@@ -38,6 +38,14 @@
 			"script_path": "lua/items/csr_item_effects_regen.lua"
 		},
 		{
+			"hook_id": "lib/managers/blackmarketmanager",
+			"script_path": "lua/items/csr_item_effects_melee.lua"
+		},
+		{
+			"hook_id": "lib/units/beings/player/states/playerstandard",
+			"script_path": "lua/items/csr_item_effects_playerstandard.lua"
+		},
+		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",
 			"script_path": "lua/menu/csr_lobby_button.lua"
 		},
