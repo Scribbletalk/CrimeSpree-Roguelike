@@ -46,6 +46,10 @@
 			"script_path": "lua/items/csr_item_effects_playerstandard.lua"
 		},
 		{
+			"hook_id": "lib/units/enemies/cop/copdamage",
+			"script_path": "lua/items/csr_item_effects_kill.lua"
+		},
+		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",
 			"script_path": "lua/menu/csr_lobby_button.lua"
 		},

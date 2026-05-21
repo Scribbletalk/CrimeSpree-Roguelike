@@ -138,6 +138,17 @@ if _G.CSR and _G.CSR.register_item and not _G._CSR_BUILTINS_REGISTERED then
 		effect = { kind = "stat_hyperbolic", stat = "dodge", cap = 1.0, k_num = 1, k_den = 32 },
 	})
 
+	_G.CSR.register_item({
+		type = "pink_slip",
+		rarity = "uncommon",
+		name = "PINK SLIP",
+		desc = "Killing an enemy restores health.",
+		icon = "csr_pink_slip",
+		-- Heal per local-player kill = max_hp*base_pct + (base_flat + (stacks-1)*extra_flat)
+		-- display HP, converted to internal. Applied by csr_item_effects_kill.lua.
+		effect = { kind = "heal_on_kill", base_pct = 0.01, base_flat = 4, extra_flat = 6 },
+	})
+
 	-- ============ RARE ============
 
 	_G.CSR.register_item({

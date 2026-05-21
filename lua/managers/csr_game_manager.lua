@@ -401,7 +401,8 @@ local KNOWN_RARITIES = {
 --   stat_hyperbolic   -- movement_speed (Escape Plan) / dodge (Falcogini Keys):
 --                        diminishing-returns curve cap*(1-1/(1+(k_num/k_den)*n))
 --   regen_max_hp_pct  -- Worn Band-Aid: hyperbolic % of max HP every N seconds
-local KNOWN_EFFECT_KINDS = { stat_mul = true, stat_hyperbolic = true, regen_max_hp_pct = true }
+--   heal_on_kill      -- Pink Slip: heal local player when they kill an enemy
+local KNOWN_EFFECT_KINDS = { stat_mul = true, stat_hyperbolic = true, regen_max_hp_pct = true, heal_on_kill = true }
 
 function CSRGameManager:register_item(def)
 	if type(def) ~= "table" then
