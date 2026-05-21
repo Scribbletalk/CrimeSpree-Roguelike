@@ -777,6 +777,18 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 	local y = items_panel_padding
 	local section_w = panel:w() - items_panel_padding * 2
 
+	-- DIAGNOSTIC (temporary — strip once the items-grid margin issue is resolved):
+	-- reveals whether the panel is narrower than the fixed 7-col grid (in which
+	-- case centering clamps to the left and looks unchanged).
+	log(
+		string.format(
+			"[CSR][diag] items panel: panel_w=%.0f section_w=%.0f grid_w=%d",
+			panel:w(),
+			section_w,
+			items_panel_grid_cols * items_panel_icon_size + (items_panel_grid_cols - 1) * items_panel_icon_gap
+		)
+	)
+
 	for _, peer_info in ipairs(peers_list) do
 		local pid = peer_info.id
 		local pcolor = peer_info.color
@@ -837,10 +849,18 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 				return (a.def.type or "") < (b.def.type or "")
 			end)
 
-			-- Grid aligns with the peer header's left edge (items_panel_padding),
-			-- no extra indent. The frame overflow (4px) extends 4px further left
-			-- to x=items_panel_padding-4, still safely inside the panel.
-			local grid_x = items_panel_padding
+			-- Fit the grid to the panel width, THEN center it so the left and right
+			-- margins match. `cols` is the design max (items_panel_grid_cols) capped
+			-- to however many cells actually fit in section_w — so the grid never
+			-- overflows the right edge on a narrow panel (the previous fixed 7-col
+			-- grid did, giving a left margin but no right one). Centering the fitted
+			-- grid then makes both margins equal at any panel width. Rarity frames
+			-- overflow the cell span 4px each side symmetrically.
+			local cell_step = items_panel_icon_size + items_panel_icon_gap
+			local cols =
+				math.max(1, math.min(items_panel_grid_cols, math.floor((section_w + items_panel_icon_gap) / cell_step)))
+			local grid_w = cols * items_panel_icon_size + (cols - 1) * items_panel_icon_gap
+			local grid_x = items_panel_padding + math.max(0, math.floor((section_w - grid_w) / 2))
 			local frame_tex, frame_rect = tweak_data.hud_icons:get_icon_data("csr_frame")
 
 			local frame_overflow = (items_panel_frame_size - items_panel_icon_size) / 2
@@ -850,8 +870,8 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 			local icon_inset = 14
 
 			for i, entry in ipairs(items_list) do
-				local col = (i - 1) % items_panel_grid_cols
-				local row = math.floor((i - 1) / items_panel_grid_cols)
+				local col = (i - 1) % cols
+				local row = math.floor((i - 1) / cols)
 				local ix = grid_x + col * (items_panel_icon_size + items_panel_icon_gap)
 				local iy = y + row * (items_panel_icon_size + items_panel_icon_gap)
 
@@ -936,7 +956,7 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 				}
 			end
 
-			local rows = math.ceil(#items_list / items_panel_grid_cols)
+			local rows = math.ceil(#items_list / cols)
 			y = y + rows * (items_panel_icon_size + items_panel_icon_gap) - items_panel_icon_gap + items_panel_peer_gap
 		end
 	end
