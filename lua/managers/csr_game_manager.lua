@@ -51,7 +51,11 @@ local function default_state()
 		-- failed state survives the return-to-lobby. Old saves lacking this
 		-- key inherit false here (same auto-migration as missions_completed).
 		failed = false,
-		difficulty = "overkill",
+		-- The active run's difficulty, an internal id string (e.g. "overkill_145").
+		-- nil until a run starts: start_run seeds it from the remembered preference
+		-- via _default_difficulty(), and difficulty() handles the nil case. The
+		-- player picks it on the contract screen (set_difficulty).
+		difficulty = nil,
 		seed = nil,
 		mission_set = {}, -- array of mission ids currently offered in the lobby
 		current_mission = nil, -- id of the mission the player picked to play next
@@ -212,17 +216,45 @@ function CSRGameManager:missions_completed()
 	return self._state.missions_completed or 0
 end
 
-function CSRGameManager:difficulty()
-	-- CSR has no bespoke difficulty system: a spree runs on a vanilla difficulty.
-	-- The difficulty-selection slice is not ported yet, so the truthful "current
-	-- difficulty" is the vanilla one select_mission() forces the heist to load
-	-- at, sourced from tweak_data.crime_spree.base_difficulty (see
-	-- :select_mission). _state.difficulty is a not-yet-wired stub; only fall back
-	-- to it if tweak_data is not up yet (early-load nil guard). When the
-	-- difficulty-selection slice lands it reworks this accessor to return the
-	-- player's chosen vanilla difficulty.
+function CSRGameManager:_default_difficulty()
+	-- The difficulty used before a run has chosen one: the player's remembered
+	-- preference (set on the contract screen, persisted in _meta so it survives
+	-- runs and restarts), then the static CS base difficulty, then a hard
+	-- fallback. Internal difficulty id string (a tweak_data.difficulties entry),
+	-- e.g. "overkill_145".
 	local cs_td = tweak_data and tweak_data.crime_spree
-	return (cs_td and cs_td.base_difficulty) or self._state.difficulty
+	local remembered = self._meta.settings and self._meta.settings.last_difficulty
+	return remembered or (cs_td and cs_td.base_difficulty) or "overkill_145"
+end
+
+function CSRGameManager:difficulty()
+	-- The difficulty the active run plays at, chosen by the player on the
+	-- contract screen (set_difficulty). Falls back to the remembered preference /
+	-- CS base when no run has set one. Returns an internal difficulty id string
+	-- (a tweak_data.difficulties entry) -- the shape Global.game_settings.difficulty
+	-- and tweak_data.difficulty_name_ids expect.
+	return self._state.difficulty or self:_default_difficulty()
+end
+
+function CSRGameManager:set_difficulty(diff)
+	-- Set the active run's difficulty AND remember it as the default for the next
+	-- contract open. `diff` is an internal difficulty id string (a
+	-- tweak_data.difficulties entry, e.g. "overkill_145"). Unknown ids are
+	-- rejected so we never write garbage into Global.game_settings.difficulty.
+	if type(diff) ~= "string" then
+		return false
+	end
+	local diffs = tweak_data and tweak_data.difficulties
+	if type(diffs) == "table" and not table.contains(diffs, diff) then
+		log_csr("set_difficulty: unknown difficulty '" .. tostring(diff) .. "' — ignored")
+		return false
+	end
+	self._state.difficulty = diff
+	self._meta.settings = self._meta.settings or {}
+	self._meta.settings.last_difficulty = diff
+	self:save()
+	log_csr("set_difficulty: " .. diff)
+	return true
 end
 
 function CSRGameManager:seed()
@@ -814,8 +846,9 @@ function CSRGameManager:select_mission(mission_id)
 
 	-- Engine / tweak_data wiring — mirrors vanilla CrimeSpreeManager:select_mission
 	-- (_setup_temporary_job + activate_temporary_job + _setup_global_from_mission_id).
-	-- Difficulty is forced to the vanilla CS base difficulty here; CSR's own
-	-- difficulty system is a separate REWRITE slice (crimespree_difficulty.lua).
+	-- The heist loads at the run's chosen difficulty (self:difficulty()), picked
+	-- by the player on the contract screen (set_difficulty) — no longer forced to
+	-- the static CS base difficulty.
 	local narrative_job = tweak_data
 		and tweak_data.narrative
 		and tweak_data.narrative.jobs
@@ -827,7 +860,7 @@ function CSRGameManager:select_mission(mission_id)
 		managers.job:activate_temporary_job("crime_spree", mission_data.level.level_id)
 	end
 	if Global and Global.game_settings and mission_data.level then
-		Global.game_settings.difficulty = tweak_data.crime_spree.base_difficulty
+		Global.game_settings.difficulty = self:difficulty()
 		Global.game_settings.one_down = false
 		Global.game_settings.level_id = mission_data.level.level_id
 		Global.game_settings.mission = mission_data.mission or "none"
@@ -873,8 +906,17 @@ function CSRGameManager:start_run()
 	self._state.failed = false
 	self._state.rank = 0
 	self._state.missions_completed = 0
-	self._state.difficulty = self._state.difficulty or "overkill"
+	-- Seed the run's difficulty from the player's remembered preference (the
+	-- contract screen's set_difficulty wrote it to _meta before Accept). Falls
+	-- back to the CS base difficulty for a first-ever run.
+	self._state.difficulty = self:_default_difficulty()
 	self._state.seed = math.random(1, 2 ^ 30)
+	-- Fresh run = fresh inventory. Wipes every peer's counts + pending offer
+	-- queues; the per-peer entries (with their counts/pending_offers fields)
+	-- are recreated lazily by get_or_create_peer_entry / ensure_offers the
+	-- next time those paths fire. Without this the Items panel renders stacks
+	-- carried over from a prior run (user-reported 2026-05-20).
+	self._state.peer_items = {}
 	self:generate_mission_set()
 	log_csr(
 		"start_run: new run begun (difficulty="
@@ -896,6 +938,13 @@ function CSRGameManager:end_run()
 	end
 	self._state.is_active = false
 	self._state.failed = false
+	-- Mirror the wipe start_run does: a finished run leaves no inventory
+	-- residue behind. Without this, any UI that reads player_items() while
+	-- is_run_active() is the stubbed-true value (see line ~193) keeps
+	-- rendering the prior run's stacks until the player accepts a new
+	-- contract. Stats-preserving migration is future work; for alpha,
+	-- post-run inventory IS the next-run starting state, so drop it now.
+	self._state.peer_items = {}
 	log_csr("end_run: run ended at rank=" .. tostring(self._state.rank))
 	for _, fn in ipairs(self._callbacks.on_mission_completed) do
 		fn()
@@ -999,26 +1048,44 @@ end
 -- Event registration
 -- =====================================================
 
+-- Registers `fn` into `list` and returns an unsubscribe function. UI components
+-- with finite lifetime (CSRMissionsMenuComponent, MissionBriefingGui surfaces)
+-- MUST hold the returned token and invoke it on teardown -- otherwise their
+-- closures keep firing against destroyed panels, and a player who opens the
+-- lobby N times stacks N copies of the same refresh handler. The unsub closure
+-- captures both `list` and the exact `fn` reference and removes the first
+-- match (`==`), which is safe because table.insert never duplicates the same
+-- function in one list under normal use. Idempotent: a second call on an
+-- already-removed token is a no-op.
 local function register_callback(list, fn)
-	if type(fn) == "function" then
-		table.insert(list, fn)
+	if type(fn) ~= "function" then
+		return function() end
+	end
+	table.insert(list, fn)
+	return function()
+		for i = 1, #list do
+			if list[i] == fn then
+				table.remove(list, i)
+				return
+			end
+		end
 	end
 end
 
 function CSRGameManager:on_mission_started(fn)
-	register_callback(self._callbacks.on_mission_started, fn)
+	return register_callback(self._callbacks.on_mission_started, fn)
 end
 
 function CSRGameManager:on_mission_completed(fn)
-	register_callback(self._callbacks.on_mission_completed, fn)
+	return register_callback(self._callbacks.on_mission_completed, fn)
 end
 
 function CSRGameManager:on_item_added(fn)
-	register_callback(self._callbacks.on_item_added, fn)
+	return register_callback(self._callbacks.on_item_added, fn)
 end
 
 function CSRGameManager:on_item_removed(fn)
-	register_callback(self._callbacks.on_item_removed, fn)
+	return register_callback(self._callbacks.on_item_removed, fn)
 end
 
 -- =====================================================

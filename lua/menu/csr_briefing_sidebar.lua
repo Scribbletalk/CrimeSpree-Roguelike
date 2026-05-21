@@ -64,6 +64,7 @@ local METHODS_TO_BORROW = {
 	"_create_feature_panels",
 	"toggle_feature_panel",
 	"hide_feature_panels",
+	"_csr_reopen_pinned_feature_panel",
 	"_populate_items_panel",
 	"_collect_peers_for_items_panel",
 	"_items_panel_peer_color",
@@ -151,9 +152,41 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 		if self._create_feature_panels then
 			self:_create_feature_panels()
 		end
+
+		-- Restore the pinned feature panel (set by the player on the lobby or
+		-- a previous briefing) so the same tab opens automatically here. The
+		-- helper short-circuits when no slot is pinned, so this is a no-op
+		-- for the first-ever briefing of the session.
+		if self._csr_reopen_pinned_feature_panel then
+			self:_csr_reopen_pinned_feature_panel()
+		end
+
+		-- Subscribe to CSRGameManager item-added events so the items panel
+		-- repaints itself in place when the player picks an item from the
+		-- briefing-side reminder (the reminder repaint is owned by
+		-- csr_briefing_reminder_input.lua's own subscription). Guarded with
+		-- _csr_sidebar_unsub so a build/show idempotent re-entry doesn't
+		-- stack subscriptions. _populate_items_panel short-circuits when
+		-- self._feature_panels.items is nil/dead, so it's safe to call
+		-- unconditionally on every add_item.
+		local mgr = managers and managers.csr
+		if not self._csr_sidebar_unsub and mgr and mgr.on_item_added then
+			self._csr_sidebar_unsub = mgr:on_item_added(function()
+				if self._populate_items_panel then
+					self:_populate_items_panel()
+				end
+			end)
+		end
 	end
 
 	function MissionBriefingGui:_csr_remove_sidebar()
+		-- Drop the items-panel refresh subscription before destroying the
+		-- panels it draws into. Stale callback against destroyed panels =
+		-- next add_item crashes.
+		if self._csr_sidebar_unsub then
+			self._csr_sidebar_unsub()
+			self._csr_sidebar_unsub = nil
+		end
 		-- Feature panels first: they live on _csr_fp_parent (ws_panel), not
 		-- on self._panel which vanilla MissionBriefingGui:close removes for
 		-- us. Without this they would leak across briefing open/close
@@ -207,9 +240,16 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 				p:set_visible(true)
 			end
 		end
-		-- Feature panels stay HIDDEN on show: the player must click a
-		-- sidebar row to open one (matches lobby behaviour, where the
-		-- panels are also hidden until the row click).
+		-- Re-apply the pinned feature tab so closing+reopening the briefing
+		-- (e.g. round-trip through Inventory or Skill Tree sub-screens) keeps
+		-- whatever was open. The hide hook below force-hides every panel so
+		-- they don't bleed onto sub-screens; show() restores them. Body is
+		-- a no-op when no slot is pinned (player has nothing open) -- the
+		-- prior "feature panels stay HIDDEN on show" rule is preserved in
+		-- that case.
+		if self._csr_reopen_pinned_feature_panel then
+			self:_csr_reopen_pinned_feature_panel()
+		end
 	end)
 
 	Hooks:PostHook(MissionBriefingGui, "hide", "CSR_BriefingSidebarHide", function(self)

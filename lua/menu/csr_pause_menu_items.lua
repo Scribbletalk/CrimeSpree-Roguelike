@@ -24,10 +24,11 @@
 --
 -- Hook: MenuManagerBuildCustomMenus. SuperBLT's base mod fires this hook
 -- from MenuManagerPostInitialize for both menu_main and menu_pause (see
--- mods/base/lua/MenuManager.lua _base_process_menu). We only act when
--- nodes.pause_menu exists -- that distinguishes the menu_pause call (the
--- game-state MenuManager) from the menu_main call (where nodes.pause_menu
--- is nil).
+-- mods/base/lua/MenuManager.lua _base_process_menu). The hook receives
+-- the resolved `_nodes` table for the menu being processed; for menu_pause
+-- the ROOT node is keyed `pause` (default_node="pause" in pause_menu.menu),
+-- NOT `pause_menu`. We gate on nodes.pause to distinguish the menu_pause
+-- call from menu_main (which has no `pause` node).
 --
 -- Critical Rule #1: this is Hooks:Add registration, not a function
 -- override; the listener is purely additive. The vanilla
@@ -79,11 +80,11 @@ local function find_trailing_back_index(items)
 end
 
 Hooks:Add("MenuManagerBuildCustomMenus", "CSR_PauseMenuReturnToLobby", function(menu_manager, nodes)
-	if not nodes or not nodes.pause_menu then
+	if not nodes or not nodes.pause then
 		return
 	end
 
-	local node = nodes.pause_menu
+	local node = nodes.pause
 
 	-- Idempotency: SuperBLT can fire this hook more than once across menu
 	-- lifecycle (manager re-init on reconnect / VR toggle). Skip if our
@@ -116,7 +117,7 @@ Hooks:Add("MenuManagerBuildCustomMenus", "CSR_PauseMenuReturnToLobby", function(
 	log(
 		"[CSR] csr_pause_menu_items: inserted Return to Lobby at index "
 			.. tostring(insert_at)
-			.. " of pause_menu (total items now "
+			.. " of pause node (total items now "
 			.. tostring(#node._items)
 			.. ")"
 	)

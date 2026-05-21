@@ -70,6 +70,24 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_REMINDER_INPUT_HOOKED then
 			return
 		end
 
+		-- Subscribe ONCE per MissionBriefingGui instance to CSRGameManager
+		-- item-added events: any add_item caller drives the reminder counter
+		-- repaint with no per-call-site wiring. Guarded by _csr_reminder_unsub
+		-- so the show()-driven idempotent rebuild path doesn't stack
+		-- subscriptions. Body is alive-guarded inside _csr_refresh_reminder
+		-- (it short-circuits on a dead/missing panel), so the close-time
+		-- unsub is belt-and-braces -- but it's still cheap, and required for
+		-- correctness if MissionBriefingGui is ever destroyed + recreated
+		-- (memoised-lazy today, may not be tomorrow).
+		local mgr = managers and managers.csr
+		if not self._csr_reminder_unsub and mgr and mgr.on_item_added then
+			self._csr_reminder_unsub = mgr:on_item_added(function()
+				if self._csr_refresh_reminder then
+					self:_csr_refresh_reminder()
+				end
+			end)
+		end
+
 		self._csr_reminder_panel = ws_panel:panel({
 			layer = 51,
 			visible = false,
@@ -206,6 +224,17 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_REMINDER_INPUT_HOOKED then
 	Hooks:PostHook(MissionBriefingGui, "hide", "CSR_BriefingReminderHide", function(self)
 		if self._csr_reminder_panel and alive(self._csr_reminder_panel) then
 			self._csr_reminder_panel:set_visible(false)
+		end
+	end)
+
+	-- Drop the CSRGameManager subscription when the gui closes. Belt-and-braces
+	-- against MissionBriefingGui ever becoming non-memoised (today the
+	-- MenuComponentManager lazy-creates and never closes the briefing gui mid-
+	-- session, but coupling this teardown to close keeps the contract right).
+	Hooks:PostHook(MissionBriefingGui, "close", "CSR_BriefingReminderClose", function(self)
+		if self._csr_reminder_unsub then
+			self._csr_reminder_unsub()
+			self._csr_reminder_unsub = nil
 		end
 	end)
 

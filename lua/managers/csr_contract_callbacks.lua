@@ -108,6 +108,37 @@ function MenuCallbackHandler:return_to_csr_lobby_visible()
 	return false
 end
 
+function MenuCallbackHandler:change_csr_contract_difficulty(item)
+	-- Bound to the difficulty MenuItemMultiChoice injected into the CS contract
+	-- node (csr_contract_difficulty.lua). item:value() is a tweak_data.difficulties
+	-- index; store the resolved difficulty id string on managers.csr (which also
+	-- remembers it for next time) and repaint the popup's risk-icon read-out.
+
+	-- Difficulty is locked once a run is active (chosen at run start, fixed after).
+	-- The node item is also disabled in this case, but guard here too so a stray
+	-- invocation can't mutate the active run's difficulty.
+	if managers.csr and managers.csr:is_active() then
+		return
+	end
+
+	local difficulty_id = item:value()
+	local difficulty = tweak_data:index_to_difficulty(difficulty_id)
+
+	if managers.csr and managers.csr.set_difficulty then
+		managers.csr:set_difficulty(difficulty)
+	end
+
+	-- The contract popup lives on MenuComponentManager (csr_contract_wiring's
+	-- create PostHook stores it). It may not exist yet on the node's initial
+	-- value set, so guard before refreshing.
+	local mcm = managers.menu_component
+	local comp = mcm and mcm._csr_contract_menu_comp
+
+	if comp and comp.set_difficulty_id then
+		comp:set_difficulty_id(difficulty_id)
+	end
+end
+
 function MenuCallbackHandler:accept_csr_contract(item, node)
 	log("[CSR] accept_csr_contract body running (single_player=" .. tostring(Global.game_settings.single_player) .. ")")
 	if Global.game_settings.single_player then

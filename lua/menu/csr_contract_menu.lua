@@ -9,8 +9,16 @@
 --
 -- Class renames:
 --   CrimeSpreeContractMenuComponent          -> CSRContractMenuComponent
---   CrimeSpreeStartingLevelItem              -> CSRStartingLevelItem
 --   MenuCrimeNetCrimeSpreeContractInitiator  -> MenuCSRContractInitiator
+--
+-- Diverged from the byte-copy: the vanilla starting-level picker
+-- (CrimeSpreeStartingLevelItem) + its continental-coin cost were removed per the
+-- locked rebalance (a run always starts at rank 0). In their place the popup now
+-- shows a vanilla-style difficulty selector (risk-icon bar + difficulty name +
+-- clickable < > cycle arrows). The selector is component-side, NOT a node menu
+-- item: the CS contract node returns input_focus=false (menurenderer.lua:350), so
+-- node items are non-navigable here -- the same reason vanilla CS keeps its own
+-- interactive controls in this component.
 
 CSRContractMenuComponent = CSRContractMenuComponent or class(MenuGuiComponentGeneric)
 
@@ -94,22 +102,15 @@ function CSRContractMenuComponent:_setup()
 
 	blur:animate(func)
 
-	-- Slice 8 backend swap: the header rank must come from managers.csr, not
-	-- vanilla CS. Reading managers.crime_spree:spree_level() here showed a stale
-	-- vanilla Crime Spree level (e.g. 112) carried in the PD2 save, unrelated to
-	-- the CSR run. host-side now reads our rank; the client branch
-	-- (_host_spree_level) is still vanilla-shaped and gets carved in the MP slice.
-	local in_csr_run = managers.csr and managers.csr:is_active()
-	local show_level = in_csr_run or not self:_is_host()
-	local spree_text = show_level and "csr_header_level" or "csr_header_title"
-	local spree_level = self:_is_host() and (managers.csr and managers.csr:rank() or 0) or self:_host_spree_level()
+	-- Header is always the plain title. The old "...Level $level$" variant (with
+	-- its risk-colored level number) was removed per user request, so the
+	-- show_level branch, the rank lookup, and the range-color highlight all went
+	-- with it -- there is no level number to substitute or color anymore.
 	self._contact_text_header = self._panel:text({
 		vertical = "top",
 		align = "left",
 		layer = 1,
-		text = managers.localization:to_upper_text(spree_text, {
-			level = managers.experience:cash_string(spree_level, ""),
-		}),
+		text = managers.localization:to_upper_text("csr_header_title"),
 		font_size = tweak_data.menu.pd2_large_font_size,
 		font = tweak_data.menu.pd2_large_font,
 		color = tweak_data.screen_colors.text,
@@ -118,16 +119,6 @@ function CSRContractMenuComponent:_setup()
 
 	self._contact_text_header:set_size(width, h)
 	self._contact_text_header:set_center_x(self._panel:w() * 0.5)
-
-	if show_level then
-		local range = {
-			from = utf8.len(managers.localization:text("csr_header_level_no_num")),
-			to = utf8.len(managers.localization:text(self._contact_text_header:text())),
-			color = tweak_data.screen_colors.crime_spree_risk,
-		}
-
-		self._contact_text_header:set_range_color(range.from, range.to, range.color)
-	end
 
 	self._contract_panel = self._panel:panel({
 		layer = 1,
@@ -189,180 +180,126 @@ end
 
 function CSRContractMenuComponent:_setup_new_crime_spree(text_w, text_h)
 	local padding = tweak_data.gui.crime_net.contract_gui.padding
-	self._coins_panel = self._contract_panel:panel({
-		x = padding,
-		y = padding,
-		h = tweak_data.menu.pd2_medium_font_size,
-	})
 
-	self._coins_panel:set_bottom(self._contract_panel:h() - padding)
-
-	local coins = 0
-	coins = managers.custom_safehouse:coins()
-	self._cost_text = self._coins_panel:text({
-		y = 0,
-		x = 0,
+	-- Difficulty risk-skull preview, on the LEFT just under the Crime Spree
+	-- description (inside the contract description box). The < > selector itself is
+	-- a MenuItemMultiChoice in the GAME SETTINGS box (csr_contract_difficulty.lua);
+	-- this row only shades risk skulls to match. Risk shading mirrors vanilla
+	-- CrimeNetContractGui (active when i <= id - 1). (The vanilla starting-level
+	-- picker + its coin cost were cut per the locked rebalance: run starts rank 0.)
+	local label = self._contract_panel:text({
 		layer = 1,
-		text = managers.experience:cash_string(
-			math.floor(coins),
-			managers.localization:get_default_macro("BTN_CONTINENTAL_COINS")
-		),
-		color = Color.white,
-		font = tweak_data.menu.pd2_medium_font,
-		font_size = tweak_data.menu.pd2_medium_font_size,
-	})
-
-	BlackMarketGui.make_fine_text(self, self._cost_text)
-
-	local h = CSRStartingLevelItem.size.h + padding * 2
-	self._levels_panel = self._contract_panel:panel({
-		layer = 1,
-		x = padding,
-		y = self._contract_panel:h() - h - padding * 2 - tweak_data.menu.pd2_medium_font_size,
-		w = text_w,
-		h = h,
-	})
-	local starting_text = self._contract_panel:text({
 		vertical = "top",
-		wrap = true,
 		align = "left",
-		wrap_word = true,
-		text = managers.localization:to_upper_text("cn_crime_spree_starting"),
+		text = managers.localization:to_upper_text("csr_contract_difficulty"),
 		font_size = tweak_data.menu.pd2_medium_font_size,
 		font = tweak_data.menu.pd2_medium_font,
 		color = tweak_data.screen_colors.text,
 	})
 
-	BlackMarketGui.make_fine_text(self, starting_text)
-	starting_text:set_bottom(self._levels_panel:top())
-	starting_text:set_left(self._levels_panel:left())
+	BlackMarketGui.make_fine_text(self, label)
 
-	local levels = {}
-	local highest_level = 0
+	self._difficulty_panel = self._contract_panel:panel({
+		layer = 1,
+		w = text_w,
+		h = 48,
+	})
 
-	for idx, level in ipairs(tweak_data.crime_spree.starting_levels) do
-		table.insert(levels, level)
+	-- risk_pd (i==1) is the no-risk baseline and is not drawn; each higher tier
+	-- lights up once the chosen difficulty reaches it. SKIP_OVERKILL_290 hides the
+	-- two top tiers where the platform disables them, exactly as vanilla.
+	local risks = {
+		"risk_pd",
+		"risk_swat",
+		"risk_fbi",
+		"risk_death_squad",
+		"risk_easy_wish",
+	}
 
-		highest_level = math.max(level, highest_level)
+	if not Global.SKIP_OVERKILL_290 then
+		table.insert(risks, "risk_murder_squad")
+		table.insert(risks, "risk_sm_wish")
 	end
 
-	if tweak_data.crime_spree.allow_highscore_continue then
-		local level = managers.crime_spree:highest_level()
+	self._risk_icons = {}
+	local rx = 0
 
-		if not self:_is_host() and self:_host_spree_level() < level then
-			level = self:_host_spree_level()
+	for i, name in ipairs(risks) do
+		if i ~= 1 then
+			local texture, rect = tweak_data.hud_icons:get_icon_data(name)
+			local icon = self._difficulty_panel:bitmap({
+				texture = texture,
+				texture_rect = rect,
+				y = 0,
+				x = rx,
+			})
+
+			rx = rx + icon:w() + 2
+			self._risk_icons[i] = icon
 		end
-
-		if not table.contains(levels, level) then
-			table.insert(levels, level)
-
-			highest_level = math.max(level, highest_level)
-		end
 	end
 
-	highest_level = highest_level * 1.05
+	-- Stack just under the description, left-aligned: label on top, skulls below.
+	label:set_left(padding)
+	label:set_top(self._desc_text:bottom() + padding)
+	self._difficulty_panel:set_left(padding)
+	self._difficulty_panel:set_top(label:bottom())
 
-	for idx, level in ipairs(levels) do
-		local btn = CSRStartingLevelItem:new(self._levels_panel, {
-			index = idx,
-			level = level,
-			highest_level = highest_level,
-			is_maximum = idx == #levels,
-			num_items = #levels,
-		})
+	-- Current-run status line, just under the difficulty skulls. is_active() is the
+	-- CSR run flag flipped by start_run / end_run (csr_game_manager.lua), so this
+	-- reads "active" once a run is in flight and "none" before one starts. Read
+	-- once at setup -- the run state can't change while this contract menu is open.
+	local spree_active = managers.csr and managers.csr:is_active()
+	local spree_status =
+		managers.localization:text(spree_active and "csr_current_spree_active" or "csr_current_spree_none")
+	local spree_line = self._contract_panel:text({
+		layer = 1,
+		vertical = "top",
+		align = "left",
+		text = managers.localization:to_upper_text("csr_current_spree", { status = spree_status }),
+		font_size = tweak_data.menu.pd2_medium_font_size,
+		font = tweak_data.menu.pd2_medium_font,
+		color = tweak_data.screen_colors.text,
+	})
 
-		btn:set_callback(callback(self, self, "set_active_starting_level", btn))
-		table.insert(self._buttons, btn)
+	BlackMarketGui.make_fine_text(self, spree_line)
+	spree_line:set_left(padding)
+	spree_line:set_top(self._difficulty_panel:bottom() + padding)
+
+	-- Highlight just the status word (the tail after "CURRENT SPREE: "): ACTIVE in
+	-- crime_spree yellow, NONE in a dimmed white. The status sits at the end of the
+	-- line, so its 0-based start = full length minus status length (set_range_color
+	-- is start-inclusive / end-exclusive -- vanilla, hudmissionbriefing.lua:560).
+	-- status_len uses the lowercase loc value, whose codepoint count matches the
+	-- uppercased render for these ASCII words.
+	local full_len = utf8.len(spree_line:text())
+	local status_len = utf8.len(spree_status)
+	local status_color = spree_active and tweak_data.screen_colors.crime_spree_risk or Color.white:with_alpha(0.6)
+	spree_line:set_range_color(full_len - status_len, full_len, status_color)
+
+	self:set_difficulty_id(self:_current_difficulty_id())
+end
+
+-- Current difficulty as a tweak_data.difficulties index (2..8 are selectable).
+function CSRContractMenuComponent:_current_difficulty_id()
+	local diff = managers.csr and managers.csr:difficulty() or tweak_data.crime_spree.base_difficulty
+	return tweak_data:difficulty_to_index(diff) or tweak_data.crime_spree.base_difficulty_index
+end
+
+-- Refresh the risk-skull shading for a tweak_data.difficulties index. Called once
+-- on setup and again by change_csr_contract_difficulty when the player cycles the
+-- node's difficulty multichoice. Mirrors vanilla CrimeNetContractGui:set_difficulty_id
+-- (active when i <= id - 1).
+function CSRContractMenuComponent:set_difficulty_id(difficulty_id)
+	if not self._risk_icons then
+		return
 	end
 
-	if not self:_is_host() then
-		local grow_size = 24 + padding
+	for i, icon in pairs(self._risk_icons) do
+		local active = i <= difficulty_id - 1
 
-		starting_text:set_y(starting_text:y() - grow_size)
-		self._levels_panel:set_y(self._levels_panel:y() - grow_size)
-		self._levels_panel:grow(0, grow_size)
-
-		local btn = CSRStartingLevelItem:new(self._levels_panel, {
-			num_items = 1,
-			highest_level = 1,
-			text = "",
-			x = 0,
-			level = -1,
-			y = CSRStartingLevelItem.size.h + padding * 2,
-			w = self._levels_panel:w(),
-			h = grow_size,
-			cost_text = managers.localization:to_upper_text("menu_cs_continue_without_starting"),
-		})
-
-		btn:set_callback(callback(self, self, "set_active_starting_level", btn))
-		btn._cost_text:set_center_y(btn._panel:h() * 0.5)
-
-		local coins = 0
-		coins = managers.custom_safehouse:coins()
-		local insert_pos = 1
-
-		if tweak_data.crime_spree.initial_cost <= coins then
-			insert_pos = #self._buttons
-		end
-
-		table.insert(self._buttons, insert_pos, btn)
-	end
-
-	local default_btn = self._buttons[1]
-
-	if default_btn:can_activate() then
-		self:set_active_starting_level(default_btn)
-	end
-
-	if not self:_is_host() then
-		local warning_text = self._contract_panel:text({
-			vertical = "bottom",
-			align = "left",
-			text = managers.localization:to_upper_text("menu_cs_not_in_progress_join_lobby"),
-			font_size = tweak_data.menu.pd2_medium_font_size,
-			font = tweak_data.menu.pd2_medium_font,
-			color = tweak_data.screen_colors.important_1,
-			x = padding,
-			w = text_w,
-			h = tweak_data.menu.pd2_medium_font_size,
-		})
-		local warning_desc = self._contract_panel:text({
-			vertical = "bottom",
-			wrap = true,
-			align = "left",
-			wrap_word = true,
-			text = managers.localization:text("menu_cs_not_in_progress_join_lobby_desc"),
-			font_size = tweak_data.menu.pd2_small_font_size,
-			font = tweak_data.menu.pd2_small_font,
-			color = tweak_data.screen_colors.important_1,
-			x = padding,
-			w = text_w,
-			h = text_h,
-		})
-
-		BlackMarketGui.make_fine_text(self, warning_desc)
-		BlackMarketGui.make_fine_text(self, warning_text)
-		warning_desc:set_bottom(starting_text:top() - padding)
-		warning_text:set_bottom(warning_desc:top())
-	end
-
-	if not managers.menu:is_pc_controller() then
-		local controls_text = self._contract_panel:text({
-			vertical = "top",
-			wrap = true,
-			align = "left",
-			wrap_word = true,
-			text = managers.localization:get_default_macro("BTN_X")
-				.. " / "
-				.. managers.localization:get_default_macro("BTN_Y"),
-			font_size = tweak_data.menu.pd2_medium_font_size,
-			font = tweak_data.menu.pd2_medium_font,
-			color = tweak_data.screen_colors.text,
-		})
-
-		BlackMarketGui.make_fine_text(self, controls_text)
-		controls_text:set_bottom(self._levels_panel:top())
-		controls_text:set_right(self._levels_panel:right())
+		icon:set_color(active and tweak_data.screen_colors.risk or Color.white)
+		icon:set_alpha(active and 1 or 0.25)
 	end
 end
 
@@ -509,31 +446,6 @@ function CSRContractMenuComponent:_setup_continue_client(text_w, text_h)
 	end
 end
 
-function CSRContractMenuComponent:_get_button_index(button)
-	for idx, btn in ipairs(self._buttons) do
-		if button == btn then
-			return idx
-		end
-	end
-
-	return 1
-end
-
-function CSRContractMenuComponent:set_active_starting_level(btn)
-	if btn:can_activate() then
-		for idx, btn in ipairs(self._buttons) do
-			btn:set_active(false)
-		end
-
-		btn:set_active(true)
-		managers.crime_spree:set_starting_level(btn:level())
-
-		self._selected_index = self:_get_button_index(btn)
-	else
-		managers.menu_component:post_event("menu_error")
-	end
-end
-
 function CSRContractMenuComponent:mouse_moved(o, x, y)
 	local used, pointer = nil
 
@@ -572,31 +484,9 @@ function CSRContractMenuComponent:mouse_wheel_down(x, y)
 end
 
 function CSRContractMenuComponent:special_btn_pressed(button)
-	local change = 0
-
-	if button == Idstring("menu_modify_item") then
-		change = 1
-	end
-
-	if button == Idstring("voice_message") then
-		change = -1
-	end
-
-	if change ~= 0 then
-		local new_index = (self._selected_index or 0) + change
-
-		if new_index > #self._buttons then
-			new_index = 1
-		end
-
-		if new_index < 1 then
-			new_index = #self._buttons
-		end
-
-		if self._buttons[new_index] then
-			self:set_active_starting_level(self._buttons[new_index])
-		end
-	end
+	-- Difficulty is selected via the node's difficulty MenuItemMultiChoice
+	-- (csr_contract_difficulty.lua), so this popup no longer consumes the
+	-- modify/voice special buttons.
 end
 
 function CSRContractMenuComponent:_setup_controller_input()
@@ -630,178 +520,6 @@ function CSRContractMenuComponent:update(t, dt)
 
 		self._scroll:perform_scroll(ScrollablePanel.SCROLL_SPEED * dt * 24, y)
 	end
-end
-
-CSRStartingLevelItem = CSRStartingLevelItem or class(MenuGuiItem)
-CSRStartingLevelItem.size = {
-	h = 140,
-}
-
-function CSRStartingLevelItem:init(parent, data)
-	local padding = tweak_data.gui.crime_net.contract_gui.padding
-	self._parent = parent
-	self._level = data.level or 0
-	self._start_cost = managers.crime_spree:get_start_cost(self._level)
-	local index = data.index or 1
-	local w = (parent:w() - padding * (data.num_items - 1)) / data.num_items
-	local h = 48
-	local x = padding * (index - 1) + w * (index - 1)
-	local y = padding
-	self._panel = parent:panel({
-		w = data.w or w,
-		h = data.h or CSRStartingLevelItem.size.h,
-		x = data.x or x,
-		y = data.y or y,
-	})
-
-	BoxGuiObject:new(self._panel, {
-		sides = {
-			1,
-			1,
-			1,
-			1,
-		},
-	})
-
-	self._bg = self._panel:rect({
-		alpha = 0.4,
-		layer = -1,
-		color = Color.black,
-	})
-	self._highlight = self._panel:rect({
-		blend_mode = "add",
-		layer = 1,
-		color = tweak_data.screen_colors.button_stage_3,
-	})
-	self._active_bg = self._panel:rect({
-		alpha = 0.8,
-		blend_mode = "add",
-		layer = 0,
-		color = tweak_data.screen_colors.button_stage_3,
-	})
-	local level_w = self._level / (data.highest_level or 100)
-	level_w = level_w == 0 and 10 or self._panel:w() * level_w
-	self._level_bg = self._panel:rect({
-		blend_mode = "add",
-		alpha = 0.2,
-		layer = -1,
-		color = Color.white,
-		w = level_w,
-	})
-
-	self._level_bg:set_visible(false)
-
-	self._text = self._panel:text({
-		halign = "center",
-		vertical = "center",
-		layer = 1,
-		align = "center",
-		x = 0,
-		valign = "center",
-		text = data.text or managers.localization:text("menu_cs_level", {
-			level = self._level,
-		}),
-		y = self._panel:h() * 0.25,
-		h = tweak_data.menu.pd2_large_font_size,
-		color = tweak_data.screen_colors.crime_spree_risk,
-		font = tweak_data.menu.pd2_large_font,
-		font_size = tweak_data.menu.pd2_large_font_size,
-	})
-	self._cost_text = self._panel:text({
-		layer = 1,
-		vertical = "center",
-		halign = "center",
-		align = "center",
-		valign = "center",
-		text = data.cost_text or managers.localization:text("menu_cs_coin_cost", {
-			coins = managers.experience:cash_string(math.floor(self._start_cost), ""),
-		}),
-		y = self._panel:h() - padding * 2 - tweak_data.menu.pd2_medium_font_size,
-		h = tweak_data.menu.pd2_medium_font_size,
-		color = Color.white,
-		font = tweak_data.menu.pd2_medium_font,
-		font_size = tweak_data.menu.pd2_medium_font_size,
-	})
-
-	if data.is_maximum then
-		self._maximum_text = self._panel:text({
-			layer = 1,
-			vertical = "center",
-			halign = "center",
-			alpha = 0.6,
-			align = "center",
-			valign = "center",
-			text = managers.localization:to_upper_text("menu_cs_maximum"),
-			y = self._text:top() - tweak_data.menu.pd2_medium_font_size - 5,
-			h = tweak_data.menu.pd2_medium_font_size,
-			color = Color.white,
-			font = tweak_data.menu.pd2_medium_font,
-			font_size = tweak_data.menu.pd2_medium_font_size,
-		})
-	end
-
-	local coins = 0
-	coins = managers.custom_safehouse:coins()
-
-	if coins < self._start_cost then
-		self._highlight:set_color(tweak_data.screen_colors.important_1)
-		self._active_bg:set_color(tweak_data.screen_colors.important_1)
-		self._cost_text:set_color(tweak_data.screen_colors.important_1)
-	end
-
-	self._outline_panel = self._panel:panel({})
-
-	BoxGuiObject:new(self._outline_panel, {
-		sides = {
-			2,
-			2,
-			2,
-			2,
-		},
-	})
-	self:refresh()
-end
-
-function CSRStartingLevelItem:refresh()
-	self._bg:set_visible(not self:is_selected())
-	self._highlight:set_visible(not self:is_active() and self:is_selected())
-	self._active_bg:set_visible(self:is_active())
-	self._outline_panel:set_visible(self:is_active())
-
-	local coins = 0
-	coins = managers.custom_safehouse:coins()
-
-	if coins < self._start_cost then
-		self._level_bg:set_color(tweak_data.screen_colors.important_1)
-		self._highlight:set_alpha(self:is_selected() and 0.6 or 0.2)
-	else
-		self._level_bg:set_color(self:is_active() and tweak_data.screen_colors.button_stage_3 or Color.white)
-		self._level_bg:set_alpha(self:is_active() and 1 or 0.2)
-	end
-end
-
-function CSRStartingLevelItem:can_activate()
-	return self._start_cost <= managers.custom_safehouse:coins()
-end
-
-function CSRStartingLevelItem:inside(x, y)
-	return self._panel:inside(x, y)
-end
-
-function CSRStartingLevelItem:callback()
-	return self._callback
-end
-
-function CSRStartingLevelItem:set_callback(clbk)
-	self._callback = clbk
-end
-
-function CSRStartingLevelItem:level()
-	return self._level
-end
-
-function CSRStartingLevelItem:panel()
-	return self._panel
 end
 
 MenuCSRContractInitiator = MenuCSRContractInitiator or class()

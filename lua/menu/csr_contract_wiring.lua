@@ -62,6 +62,15 @@ Hooks:PostHook(MenuComponentManager, "close_crime_spree_contract_gui", "CSR_Swap
 		self._csr_contract_menu_comp = nil
 
 		self:unregister_component("crimenet_crime_spree_contract")
+
+		-- Re-enable CrimeNet ourselves. Vanilla create_crime_spree_contract_gui
+		-- disables CrimeNet (menucomponentmanager.lua:5170) and vanilla
+		-- close_crime_spree_contract_gui re-enables it -- but ONLY inside
+		-- `if self._crime_spree_contract_menu_comp`. Our create PostHook nil'd that
+		-- vanilla field, so vanilla's close skips the whole block, including
+		-- enable_crimenet(). Without this CrimeNet stays disabled after closing the
+		-- contract -> the whole map freezes (user-reported 2026-05-21).
+		self:enable_crimenet()
 		log("[CSR] wiring: CSRContractMenuComponent closed")
 	end
 end)
@@ -131,10 +140,20 @@ end)
 Hooks:Add("LocalizationManagerPostInit", "CSR_ContractHeaderLocalization", function(loc)
 	loc:add_localized_strings({
 		csr_header_title = "Crime Spree Roguelike",
-		csr_header_level = "Crime Spree Roguelike Level $level$",
-		csr_header_level_no_num = "Crime Spree Roguelike Level ",
 		csr_end_spree = "End Spree",
 		csr_return_to_lobby = "Return to Lobby",
+		-- "DIFFICULTY" label above the contract popup's difficulty selector
+		-- (csr_contract_menu.lua). The difficulty NAMES themselves reuse vanilla's
+		-- tweak_data.difficulty_name_ids, so only this label is CSR-owned.
+		csr_contract_difficulty = "Difficulty",
+		-- Current-run status line under the difficulty skulls (csr_contract_menu.lua
+		-- _setup_new_crime_spree). SuperBLT macros are single-$ with an optional ";"
+		-- terminator (mods/base/lua/LocalizationManager.lua:19 -- pattern
+		-- "$([%w_-]+);?"), so $status takes ONE dollar sign; a trailing $ would be
+		-- left as a literal in-game.
+		csr_current_spree = "Current Spree: $status",
+		csr_current_spree_active = "active",
+		csr_current_spree_none = "none",
 		-- CSR-owned confirm text for the End Spree button. NOT an override of
 		-- the vanilla dialog_are_you_sure_you_want_stop_cs key (that would also
 		-- rewrite vanilla CS's stop dialog -- feedback_csr_only_no_vanilla_leak).

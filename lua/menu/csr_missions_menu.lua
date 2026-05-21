@@ -95,6 +95,17 @@ function CSRMissionsMenuComponent:init(ws, fullscreen_ws, node)
 end
 
 function CSRMissionsMenuComponent:close()
+	-- Drop our CSRGameManager subscriptions before the panels die: an active
+	-- callback against destroyed panels would crash on the next add_item.
+	-- Each entry is the unsubscribe closure returned by mgr:on_item_added().
+	if self._csr_unsubs then
+		for _, unsub in ipairs(self._csr_unsubs) do
+			if type(unsub) == "function" then
+				unsub()
+			end
+		end
+		self._csr_unsubs = nil
+	end
 	WalletGuiObject.close_wallet(self._ws:panel())
 	self._ws:panel():remove(self._panel)
 	self._fullscreen_ws:panel():remove(self._fullscreen_panel)
@@ -308,6 +319,48 @@ function CSRMissionsMenuComponent:_setup()
 	self._actions_bg:set_right(self._buttons_panel:right())
 	self._actions_bg:set_bottom(start_panel:bottom() + actions_vpad)
 	self:refresh()
+
+	-- Restore the pinned feature panel (if any) AFTER everything is built --
+	-- the helper short-circuits when self._sidebar is absent (end-screen surface),
+	-- so this is safe on every CSRMissionsMenuComponent build site.
+	self:_csr_reopen_pinned_feature_panel()
+
+	-- Subscribe to CSRGameManager.on_item_added so the unselected-items reminder
+	-- and the items feature panel repaint themselves whenever ANY grant site
+	-- (selection-window finalize, future rank-up auto-grant, scrapper payoff)
+	-- calls add_item. The unsubscribe handles live in self._csr_unsubs and are
+	-- drained in close() so destroyed panels never get touched by a stale
+	-- callback. alive(self._panel) guards the body for the race where a
+	-- callback fires after close() but before the unsub closure runs (close
+	-- order is deterministic today but cheap to harden).
+	--
+	-- _setup() may be called more than once on the same instance (the
+	-- alive(self._panel) guard at the top of _setup handles a reset path); in
+	-- that case any prior subscription is no longer valid (its closure points
+	-- at the now-replaced panels). Drain first, then re-register.
+	if self._csr_unsubs then
+		for _, unsub in ipairs(self._csr_unsubs) do
+			if type(unsub) == "function" then
+				unsub()
+			end
+		end
+	end
+	self._csr_unsubs = {}
+	local mgr = managers and managers.csr
+	if mgr and mgr.on_item_added then
+		local function refresh_lobby_surfaces()
+			if not alive(self._panel) then
+				return
+			end
+			if self._refresh_unselected_items then
+				self:_refresh_unselected_items()
+			end
+			if self._populate_items_panel then
+				self:_populate_items_panel()
+			end
+		end
+		table.insert(self._csr_unsubs, mgr:on_item_added(refresh_lobby_surfaces))
+	end
 end
 
 function CSRMissionsMenuComponent:_create_title()
@@ -511,9 +564,80 @@ function CSRMissionsMenuComponent:toggle_feature_panel(key)
 	self:hide_feature_panels()
 	target:set_visible(show)
 
+	-- Persist the player's pinned tab across surface transitions (lobby <->
+	-- briefing) and across sub-screen blanking (Inventory etc., which call
+	-- hide_feature_panels via the briefing hide hook). MUST be Global.*,
+	-- NOT _G.*: lobby (menu_main) and briefing (ingame_waiting_for_players)
+	-- live in different Lua states with a full reinit between them, so a
+	-- _G flag set in the lobby would be nil by the time briefing reads it
+	-- (see pd2_g_vs_global_cross_lua_state). Global survives the reinit.
+	-- Closing the panel (toggle-off) drops the slot so the next surface
+	-- stays closed -- a deliberate close-on-this-surface = closed everywhere.
+	-- hide_feature_panels does NOT touch the slot (sub-screen blanking /
+	-- sidebar collapse should not look like a user-driven close).
+	Global._csr_pinned_feature = show and key or nil
+	log(
+		"[CSR][pinned-tab] toggle: key="
+			.. tostring(key)
+			.. " show="
+			.. tostring(show)
+			.. " -> slot="
+			.. tostring(Global._csr_pinned_feature)
+	)
+
+	-- Mirror the open/closed state onto the sidebar so the active row's persistent
+	-- highlight tracks the visible panel (nil on toggle-off clears it).
+	if self._sidebar and self._sidebar.set_active_feature then
+		self._sidebar:set_active_feature(show and key or nil)
+	end
+
 	if show and key == "items" then
 		-- Rebuild on toggle-on so newly granted items or peer joins are reflected
 		-- without needing to leave/re-enter the lobby. Cheap (≤ 28 items × N peers).
+		self:_populate_items_panel()
+	end
+end
+
+-- Re-apply the pinned feature panel (Global._csr_pinned_feature) on this
+-- surface. Called after build (_setup for lobby / _csr_build_sidebar for
+-- briefing) and on briefing show() so closing+reopening the briefing -- or
+-- transitioning lobby <-> briefing -- restores whatever tab the player had
+-- open. No-op when no slot is pinned, when the sidebar wasn't built (e.g.
+-- end-screen surface, where _is_lobby=false skips sidebar but
+-- _create_feature_panels still runs and we DO NOT want stray panels appearing
+-- without a way to dismiss), or when the target panel is missing. Bypasses
+-- toggle_feature_panel to avoid flipping the slot: a programmatic re-open is
+-- not a user-toggle.
+--
+-- Borrowed by MissionBriefingGui via METHODS_TO_BORROW in csr_briefing_sidebar.lua
+-- so both surfaces share the same logic.
+function CSRMissionsMenuComponent:_csr_reopen_pinned_feature_panel()
+	local pinned = Global and Global._csr_pinned_feature
+	if not pinned then
+		return
+	end
+	if not self._sidebar then
+		return
+	end
+	if not self._feature_panels then
+		return
+	end
+	local target = self._feature_panels[pinned]
+	if not target or not alive(target) then
+		return
+	end
+	if target:visible() then
+		return
+	end
+
+	self:hide_feature_panels()
+	target:set_visible(true)
+	-- self._sidebar verified non-nil above; light up the restored row so a freshly
+	-- built / re-shown surface matches the pinned tab state.
+	if self._sidebar.set_active_feature then
+		self._sidebar:set_active_feature(pinned)
+	end
+	if pinned == "items" and self._populate_items_panel then
 		self:_populate_items_panel()
 	end
 end
@@ -536,6 +660,15 @@ function CSRMissionsMenuComponent:hide_feature_panels()
 	-- not linger on top of the sidebar / mission cards.
 	self:_clear_items_tooltip()
 	self._items_hover_target = nil
+
+	-- Single choke point for "all panels closed": clear the active-row highlight.
+	-- Covers sidebar collapse and sub-screen blanking (where the pinned slot
+	-- persists but no panel is visible); toggle / reopen re-set it right after
+	-- when they bring a panel back up. Guarded for the end-screen surface, which
+	-- builds feature panels without a sidebar.
+	if self._sidebar and self._sidebar.set_active_feature then
+		self._sidebar:set_active_feature(nil)
+	end
 end
 
 -- Resolve a per-peer accent color (4-arg Color form, per Critical Rule #6).
@@ -2256,9 +2389,11 @@ CSRSidebar.ITEMS = {
 	-- it joins self._buttons and is hidden/non-interactive on collapse like the
 	-- other separators — no special-casing needed.
 	{ separator = true },
-	{ text = "Items", icon = "sidebar_basics", callback = csr_feature_toggle("items") },
-	{ text = "Modifiers", icon = "sidebar_mutators", callback = csr_feature_toggle("modifiers") },
-	{ text = "Rewards", icon = "sidebar_broker", callback = csr_feature_toggle("rewards") },
+	-- key tags the row with its feature-panel id so CSRSidebar:set_active_feature
+	-- can light up whichever row owns the currently-visible panel.
+	{ text = "Items", icon = "sidebar_basics", key = "items", callback = csr_feature_toggle("items") },
+	{ text = "Modifiers", icon = "sidebar_mutators", key = "modifiers", callback = csr_feature_toggle("modifiers") },
+	{ text = "Rewards", icon = "sidebar_broker", key = "rewards", callback = csr_feature_toggle("rewards") },
 	{ separator = true },
 	{ text = "Gage Services", icon = "sidebar_gage" },
 	{ separator = true },
@@ -2334,6 +2469,9 @@ function CSRSidebar:init(parent, top, bottom, owner)
 				icon = item.icon,
 				callback = item.callback,
 			})
+			-- nil for rows without a feature panel (Gage Services, Logbook); only
+			-- the three content rows carry a key, so only they can light up.
+			btn._feature_key = item.key
 		end
 
 		next_position = next_position + btn:panel():height() + item_margin
@@ -2449,6 +2587,20 @@ function CSRSidebar:update(t, dt)
 	end
 end
 
+-- Light up the row that owns the currently-open feature panel. `key` is the
+-- feature id ("items"/"modifiers"/"rewards") or nil when none is open. Each
+-- content row tagged its _feature_key at build time; the toggle button has none
+-- (so it never lights) and separators lack set_selected entirely (skipped).
+-- Idempotent via CSRSidebarItem:set_selected's change-guard, so callers can fire
+-- it freely (e.g. hide_feature_panels clearing, then a toggle re-setting).
+function CSRSidebar:set_active_feature(key)
+	for _, btn in ipairs(self._buttons) do
+		if btn.set_selected then
+			btn:set_selected(btn._feature_key ~= nil and btn._feature_key == key)
+		end
+	end
+end
+
 -- CSRSidebarSeparator — fork of vanilla CrimeNetSidebarSeparator
 -- (crimenetsidebargui.lua:457-491), 1:1 minus the collapse width-swap (we have
 -- no collapse). A non-interactive 10px row with the vanilla dotted divider
@@ -2541,6 +2693,10 @@ function CSRSidebarItem:init(panel, parameters)
 		color = Color.black,
 	})
 
+	-- Active-tab marker, orthogonal to hover. Set true by set_selected when this
+	-- row's feature panel is the visible one (see CSRSidebar:set_active_feature).
+	self._selected = false
+
 	self:set_highlight(false, true)
 end
 
@@ -2565,20 +2721,60 @@ end
 -- sound) only runs on a real state change unless force_update is set; the init
 -- call passes no_sound=true so building the sidebar is silent, exactly like
 -- vanilla (crimenetsidebargui.lua:553/584-608). managers.menu:post_event
--- ("highlight") is the same hover event vanilla uses (verified line 604).
+-- ("highlight") is the same hover event vanilla uses (verified line 604). The
+-- look itself is computed in _apply_visual so hover (_highlight) and the
+-- active-tab marker (_selected) compose into one consistent appearance.
 function CSRSidebarItem:set_highlight(enabled, no_sound, force_update)
 	if self._highlight ~= enabled or force_update then
-		self._text:set_visible(true)
-		self._bg:set_visible(enabled)
-		self._text:set_color(enabled and Color.white or tweak_data.screen_colors.button_stage_2)
-		self._icon:set_color(enabled and Color.white or tweak_data.screen_colors.button_stage_2)
-		self._bg:set_color(Color.black)
+		self._highlight = enabled
+		self:_apply_visual()
 
 		if not no_sound then
 			managers.menu:post_event("highlight")
 		end
+	end
+end
 
-		self._highlight = enabled
+-- Persistent "active tab" marker, independent of hover. Driven by
+-- CSRSidebar:set_active_feature when a feature panel (Items/Modifiers/Rewards)
+-- opens or closes, so the row whose panel is visible stays lit even when the
+-- cursor is elsewhere. Silent + change-guarded (a programmatic selection must
+-- not fire the hover sound).
+function CSRSidebarItem:set_selected(enabled)
+	enabled = enabled and true or false
+	if self._selected ~= enabled then
+		self._selected = enabled
+		self:_apply_visual()
+	end
+end
+
+-- Compose the row's look from hover (_highlight) and active-tab (_selected).
+-- Selected wins on the backdrop: a persistent risk-gold tint, a touch brighter
+-- while also hovered so the active row still acknowledges hover. A plain row
+-- keeps the vanilla recipe -- black backdrop on hover only, cyan resting
+-- text/icon. Color AND alpha are set explicitly every pass: in Diesel set_color
+-- writes RGB only and leaves alpha as set at panel creation, so swapping between
+-- the gold (0.5/0.7) and black (0.66) backdrops needs the alpha re-applied each
+-- time or the carried-over value bleeds across states.
+function CSRSidebarItem:_apply_visual()
+	self._text:set_visible(true)
+
+	if self._selected then
+		-- Deliberately faint: the active-tab marker should be barely noticeable
+		-- (user spec), so the gold wash sits at a low alpha -- a touch stronger
+		-- while also hovered since hover feedback is transient and expected.
+		self._bg:set_visible(true)
+		self._bg:set_color(tweak_data.screen_colors.risk)
+		self._bg:set_alpha(self._highlight and 0.22 or 0.1)
+		self._text:set_color(Color.white)
+		self._icon:set_color(Color.white)
+	else
+		local col = self._highlight and Color.white or tweak_data.screen_colors.button_stage_2
+		self._bg:set_visible(self._highlight)
+		self._bg:set_color(Color.black)
+		self._bg:set_alpha(0.66)
+		self._text:set_color(col)
+		self._icon:set_color(col)
 	end
 end
 

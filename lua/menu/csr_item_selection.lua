@@ -669,6 +669,12 @@ function CSRItemSelectionComponent:_on_finalize_item()
 
 	if mgr and mgr.add_item and mgr.local_peer_id and item_type then
 		local pid = mgr:local_peer_id()
+		-- add_item fans out via CSRGameManager.on_item_added callbacks: each
+		-- interested surface (lobby reminder, lobby items panel, briefing
+		-- reminder, briefing items panel) subscribes on build and unsubscribes
+		-- on close. We no longer hand-roll the refresh dispatch from here --
+		-- a new grant site (rank-up auto-grant, scrapper payoff) gets the same
+		-- repaint for free as long as it calls add_item.
 		mgr:add_item(pid, item_type)
 		-- Consume the head offer: the player picked from THIS frozen set, so
 		-- it is spent. The OTHER two cards in that offer are discarded with
@@ -677,40 +683,6 @@ function CSRItemSelectionComponent:_on_finalize_item()
 		-- stored offer.
 		if mgr.pop_offer then
 			mgr:pop_offer(pid)
-		end
-
-		-- Refresh the two lobby surfaces that read peer_items state so they
-		-- repaint immediately (otherwise they only repaint on the next refresh
-		-- trigger -- which for an already-open items feature panel means the
-		-- user has to close + reopen it to see the new x2 badge):
-		--   1. unselected-items reminder (rank-vs-owned counter above DIFFICULTY)
-		--   2. items feature panel content (per-peer icon grid)
-		-- Component lookup is nil-safe: missing == popup opened from outside the
-		-- lobby (debug keybind path), no surface to refresh, no-op rather than
-		-- crash.
-		--
-		-- TODO future cleanup: register both refresh paths as on_item_added
-		-- callbacks on managers.csr so any add_item caller drives the repaint
-		-- automatically. Direct call is fine while there's only one grant site.
-		local mcm = managers and managers.menu_component
-		local lobby = mcm and mcm._crime_spree_missions
-		if lobby and lobby._refresh_unselected_items then
-			lobby:_refresh_unselected_items()
-		end
-		if lobby and lobby._populate_items_panel then
-			lobby:_populate_items_panel()
-		end
-
-		-- Same idea for the briefing surface: if the selection window was
-		-- opened from the briefing reminder, the briefing's reminder must
-		-- drop one off the counter immediately. The reminder UI lives on
-		-- MissionBriefingGui (menu workspace, native hit-test) -- not on
-		-- the HUD's CSRMissionBriefing -- so we look it up through
-		-- managers.menu_component._mission_briefing_gui. Nil-safe; the
-		-- method only exists once csr_briefing_reminder_input.lua has run.
-		local mbg = mcm and mcm._mission_briefing_gui
-		if mbg and mbg._csr_refresh_reminder then
-			mbg:_csr_refresh_reminder()
 		end
 	else
 		log(
