@@ -586,7 +586,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Alpha1_Localization", function(loc
 		"INTERNAL MEMORANDUM\nTo: Evidence Storage Supervisor, Unit 4\nFrom: Detective R. Hughes\nRe: Missing evidence\n\nDuring a routine inspection, a shortage was found in box №14 (section D):\n- Non-standard ammunition, $rounds round(s) (case PD-2014-11847)\n\nNo signs of forced entry. Last access - Sergeant P. Tucker, February 12th.\nTucker retired February 14th.\n\nPlease initiate an internal investigation."
 
 	-- FALCOGINI KEYS
-	local keys_first = math.floor(100 / (1 + (C.car_keys_k_den or 32)) + 0.5)
+	local keys_first = math.floor((1-C.car_keys_k)*100)
 	strings["csr_logbook_falcogini_keys_name"] = "FALCOGINI KEYS"
 	strings["csr_logbook_falcogini_keys_effect"] = string.format(
 		"Increases chance to dodge by {g}%d%%{/} (+%d%% per stack, hyperbolic).\nSuccessful dodging blocks incoming damage (does not work on self-inflicted damage).",

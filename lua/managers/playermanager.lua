@@ -97,8 +97,9 @@ function CSR_RefreshItemBuffFlags()
 	if keys_stacks > 0 then
 		CSR_ActiveBuffs.car_keys = true
 		CSR_ActiveBuffs.car_keys_stacks = keys_stacks
-		local k = 1.0 / (C.car_keys_k_den or 32)
-		CSR_ActiveBuffs.car_keys_dodge_bonus = 1 - 1 / (1 + k * keys_stacks)
+--		local k = 1.0 / (C.car_keys_k_den or 32)
+--		CSR_ActiveBuffs.car_keys_dodge_bonus = 1 - 1 / (1 + k * keys_stacks)
+		CSR_ActiveBuffs.car_keys_dodge_bonus = 1 - (C.car_keys_k^keys_stacks)
 	else
 		clear("car_keys", "car_keys_stacks", "car_keys_dodge_bonus")
 	end

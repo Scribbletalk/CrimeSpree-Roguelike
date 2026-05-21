@@ -96,7 +96,7 @@ _G.CSR_ItemConstants = {
 	ap_rounds_damage_bonus = 0.10, -- +10% to ALL damage per stack
 
 	-- FALCOGINI KEYS
-	car_keys_k_den = 32, -- Hyperbolic formula: k = 1/k_den, first stack ≈ 3%
+	car_keys_k = 0.97, -- ok but you could just k^count
 
 	-- WOLF'S TOOLBOX
 	wolfs_toolbox_normal_base = 0.2, -- -0.2s base from drill/saw per normal kill

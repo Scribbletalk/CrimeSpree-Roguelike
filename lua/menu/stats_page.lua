@@ -271,7 +271,7 @@ function CrimeSpreePlayerStatsPage:_setup_stats()
 	-- Dodge (hyperbolic)
 	local dodge_bonus = 0
 	if keys_stacks > 0 then
-		dodge_bonus = (1 - 1 / (1 + keys_stacks / (C.car_keys_k_den or 32))) * 100
+		dodge_bonus = (1 - (C.car_keys_k^keys_stacks)) * 100
 	end
 	local dodge_penalty = dozer_stacks * (C.dozer_dodge_penalty or 5)
 	local total_dodge = math.max(0, dodge_bonus - dodge_penalty)
