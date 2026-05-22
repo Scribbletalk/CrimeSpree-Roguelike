@@ -1,6 +1,9 @@
--- CSR item-effect dispatcher — PlayerManager-side stat hooks.
+-- CSR item-effect dispatcher — player stat bonuses (PlayerManager-side).
 --
--- Wires PlayerManager return-value methods to the shared, registry-indexed
+-- Items that add to a player CHARACTERISTIC routed through a PlayerManager
+-- return-value method live here. NOT a catch-all for every item effect — it is
+-- one dispatcher among several (siblings handle weapon/melee/movement/etc. on
+-- their own hook targets). Wires those methods to the shared, registry-indexed
 -- effect math on the manager (managers.csr:sum_stat_mul / combine_stat_hyperbolic):
 --   max_health  -> health_skill_multiplier  + sum_stat_mul("max_health")   (Dog Tags)
 --   max_stamina -> stamina_multiplier        + sum_stat_mul("max_stamina")  (Cup of Joe)
@@ -22,8 +25,8 @@ if not RequiredScript then
 	return
 end
 
-if PlayerManager and not _G._CSR_ITEM_EFFECTS_HOOKED then
-	_G._CSR_ITEM_EFFECTS_HOOKED = true
+if PlayerManager and not _G._CSR_ITEM_EFFECTS_PLAYERSTATS_HOOKED then
+	_G._CSR_ITEM_EFFECTS_PLAYERSTATS_HOOKED = true
 
 	local orig_health = PlayerManager.health_skill_multiplier
 	if orig_health then

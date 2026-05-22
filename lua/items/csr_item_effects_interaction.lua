@@ -1,6 +1,6 @@
 -- CSR generic item-effect dispatcher - interaction-speed side (BaseInteractionExt).
 --
--- Sibling of csr_item_effects.lua (PlayerManager-side) and
+-- Sibling of csr_item_effects_playerstats.lua (PlayerManager-side) and
 -- csr_item_effects_weapon.lua (RaycastWeaponBase-side). Split because each is
 -- hooked on a different vanilla file path in mod.txt.
 --

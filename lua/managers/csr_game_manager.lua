@@ -423,6 +423,7 @@ local KNOWN_RARITIES = {
 --   weapon_speed_streak -- Overkill Rush: kill-streak buff to fire rate + reload
 --   instakill_on_hit  -- Bonnie's Lucky Chip: chance to instakill on a bullet hit
 --   drill_timer_on_kill -- Wolf's Toolbox: kills cut active drill/saw timers
+--   first_hit_damage  -- Piece of Rebar: bonus damage on the first hit per enemy
 local KNOWN_EFFECT_KINDS = {
 	stat_mul = true,
 	stat_hyperbolic = true,
@@ -431,6 +432,7 @@ local KNOWN_EFFECT_KINDS = {
 	weapon_speed_streak = true,
 	instakill_on_hit = true,
 	drill_timer_on_kill = true,
+	first_hit_damage = true,
 }
 
 function CSRGameManager:register_item(def)

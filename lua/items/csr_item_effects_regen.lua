@@ -1,6 +1,6 @@
 -- CSR generic item-effect dispatcher - regen-on-tick side (PlayerDamage).
 --
--- Sibling of csr_item_effects.lua (PlayerManager stat_mul),
+-- Sibling of csr_item_effects_playerstats.lua (PlayerManager stat_mul),
 -- csr_item_effects_weapon.lua (RaycastWeaponBase stat_mul) and
 -- csr_item_effects_interaction.lua (BaseInteractionExt stat_mul). Split
 -- because each is hooked on a different vanilla file path in mod.txt.

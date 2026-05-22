@@ -3,7 +3,7 @@
 -- This is the dogfooding contract: if CSR.register_item can't express a CSR
 -- item, it can't express a modder's either, and we find out here first. Slice
 -- 1 ships Dog Tags only; lua/items/dogtags.lua is deleted and its mechanic now
--- flows through the generic stat_mul dispatcher (csr_item_effects.lua) driven
+-- flows through the generic stat_mul dispatcher (csr_item_effects_playerstats.lua) driven
 -- by this registration.
 --
 -- Runs at file-load (lib/setups/setup) — _G.CSR exists by then (the API shim
@@ -33,7 +33,7 @@ if _G.CSR and _G.CSR.register_item and not _G._CSR_BUILTINS_REGISTERED then
 		-- per_stack mirrors the legacy CSR constant cup_of_joe_per_stack
 		-- (0.10). Applied additively on top of PlayerManager:stamina_multiplier
 		-- (vanilla returns 1 + skill_bonuses; we add 0.10*stacks). Same shape
-		-- as Dog Tags / max_health -- see csr_item_effects.lua.
+		-- as Dog Tags / max_health -- see csr_item_effects_playerstats.lua.
 		icon = "csr_cup_of_joe",
 		effect = { kind = "stat_mul", stat = "max_stamina", per_stack = 0.10 },
 	})
@@ -81,6 +81,23 @@ if _G.CSR and _G.CSR.register_item and not _G._CSR_BUILTINS_REGISTERED then
 		-- ~3% at 1 stack, asymptotes to 50%. Applied multiplicatively on
 		-- PlayerStandard:_get_max_walk_speed (csr_item_effects_playerstandard.lua).
 		effect = { kind = "stat_hyperbolic", stat = "movement_speed", cap = 0.50, k_num = 3, k_den = 47 },
+	})
+
+	_G.CSR.register_item({
+		type = "rebar",
+		rarity = "common",
+		name = "PIECE OF REBAR",
+		-- Short flavor, verbatim from the 6.2 authored source (Rule #15). The
+		-- +15%/+10%-per-stack breakdown is Logbook-tier, not the card.
+		desc = "Your first hit on an enemy deals bonus damage.",
+		icon = "csr_rebar",
+		-- First-hit-per-enemy damage amplifier: the first time the local player
+		-- damages a given enemy, that hit is multiplied by (1 + base_bonus +
+		-- (stacks-1)*extra_bonus). base_bonus / extra_bonus mirror the 6.2
+		-- constants (rebar_base_bonus = 0.15, rebar_extra_bonus = 0.10): 1 stack
+		-- = +15%, 2 = +25%, 3 = +35%. Applied by csr_item_effects_weapon.lua
+		-- (the weapon-damage dispatcher, alongside Evidence Rounds).
+		effect = { kind = "first_hit_damage", base_bonus = 0.15, extra_bonus = 0.10 },
 	})
 
 	_G.CSR.register_item({
@@ -134,7 +151,7 @@ if _G.CSR and _G.CSR.register_item and not _G._CSR_BUILTINS_REGISTERED then
 		-- dodge = 1 - 1/(1 + (1/32)*stacks), ~3% at 1 stack, approaches but
 		-- never reaches 100%. Combined with vanilla dodge probabilistically
 		-- (1 - (1-base)*(1-bonus)) on PlayerManager:skill_dodge_chance
-		-- (csr_item_effects.lua).
+		-- (csr_item_effects_playerstats.lua).
 		effect = { kind = "stat_hyperbolic", stat = "dodge", cap = 1.0, k_num = 1, k_den = 32 },
 	})
 
@@ -152,7 +169,7 @@ if _G.CSR and _G.CSR.register_item and not _G._CSR_BUILTINS_REGISTERED then
 		-- _max_stacks = 4, _duration = 4.0): 1 item -> +2/4/6/8% at 1-4 kills.
 		-- The legacy overkill_rush_first_bonus (0.02) was never read by the live
 		-- formula -- it equals (1+1)*0.01 incidentally -- so it is intentionally
-		-- dropped here. Streak state + consumer live in csr_item_effects_overkill_rush.lua.
+		-- dropped here. Streak state + consumer live in csr_item_effects_kill.lua.
 		effect = { kind = "weapon_speed_streak", bonus_per_kill = 0.01, max_kill_stacks = 4, duration = 4.0 },
 	})
 
@@ -180,7 +197,7 @@ if _G.CSR and _G.CSR.register_item and not _G._CSR_BUILTINS_REGISTERED then
 		-- _special_base 1.0 / _special_extra 0.5). Reductions SUM across owned
 		-- drill_timer_on_kill items. TimerGui drills are host-authoritative (client
 		-- kills RPC the host); saw INTERACTIONS are locally owned. Applied by
-		-- csr_item_effects_wolfs_toolbox.lua.
+		-- csr_item_effects_kill.lua.
 		effect = {
 			kind = "drill_timer_on_kill",
 			normal_base = 0.2,
@@ -206,7 +223,7 @@ if _G.CSR and _G.CSR.register_item and not _G._CSR_BUILTINS_REGISTERED then
 		-- would desync. chance / cooldown mirror the 6.2 constants
 		-- (bonnie_chip_chance = 0.10, _cooldown = 1.5). The cooldown is armed on
 		-- EVERY attempt (win or lose) to stop minigun spam. Logic lives in
-		-- csr_item_effects_bonnie_chip.lua. NOTE: the proc sound + its MP broadcast
+		-- csr_item_effects_weapon.lua. NOTE: the proc sound + its MP broadcast
 		-- are deferred until the sound subsystem (CSR_PlaySound) ports; the
 		-- instakill itself is fully functional now.
 		effect = { kind = "instakill_on_hit", chance = 0.10, cooldown = 1.5 },

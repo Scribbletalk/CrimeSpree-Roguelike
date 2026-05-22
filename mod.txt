@@ -23,10 +23,14 @@
 		},
 		{
 			"hook_id": "lib/managers/playermanager",
-			"script_path": "lua/items/csr_item_effects.lua"
+			"script_path": "lua/items/csr_item_effects_playerstats.lua"
 		},
 		{
 			"hook_id": "lib/units/weapons/raycastweaponbase",
+			"script_path": "lua/items/csr_item_effects_weapon.lua"
+		},
+		{
+			"hook_id": "lib/units/enemies/cop/copdamage",
 			"script_path": "lua/items/csr_item_effects_weapon.lua"
 		},
 		{
@@ -54,24 +58,12 @@
 			"script_path": "lua/items/csr_item_effects_kill.lua"
 		},
 		{
-			"hook_id": "lib/units/enemies/cop/copdamage",
-			"script_path": "lua/items/csr_item_effects_overkill_rush.lua"
-		},
-		{
 			"hook_id": "lib/units/weapons/newraycastweaponbase",
-			"script_path": "lua/items/csr_item_effects_overkill_rush.lua"
-		},
-		{
-			"hook_id": "lib/units/enemies/cop/copdamage",
-			"script_path": "lua/items/csr_item_effects_bonnie_chip.lua"
-		},
-		{
-			"hook_id": "lib/units/enemies/cop/copdamage",
-			"script_path": "lua/items/csr_item_effects_wolfs_toolbox.lua"
+			"script_path": "lua/items/csr_item_effects_kill.lua"
 		},
 		{
 			"hook_id": "lib/units/props/timergui",
-			"script_path": "lua/items/csr_item_effects_wolfs_toolbox.lua"
+			"script_path": "lua/items/csr_item_effects_kill.lua"
 		},
 		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",

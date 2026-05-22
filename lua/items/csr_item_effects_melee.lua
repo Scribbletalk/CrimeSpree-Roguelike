@@ -39,7 +39,7 @@ if BlackMarketManager and not _G._CSR_ITEM_EFFECTS_MELEE_HOOKED then
 		function BlackMarketManager:equipped_melee_weapon_damage_info(lerp_value)
 			local dmg, dmg_effect = orig_info(self, lerp_value)
 			-- "damage" (all damage) + "melee_damage" (melee only); summed on the
-			-- manager (registry-indexed). See csr_item_effects.lua.
+			-- manager (registry-indexed). See csr_item_effects_playerstats.lua.
 			local mgr = managers.csr
 			local bonus = mgr and (mgr:sum_stat_mul("damage") + mgr:sum_stat_mul("melee_damage")) or 0
 			if bonus ~= 0 and type(dmg) == "number" then
