@@ -1424,6 +1424,28 @@ function CSRGameManager:load()
 	return true
 end
 
+-- Read one persisted setting WITHOUT a live instance. The Mod Options menu is
+-- populated during MenuManager:init, which runs BEFORE the Setup:init_managers
+-- PostHook that creates managers.csr -- so the instance is nil at populate time
+-- and a toggle/slider reading managers.csr would always fall back to its
+-- default (e.g. Debug Logging showing OFF every launch even when saved ON).
+-- This static reader lets the menu show the saved value. Read-only; nil on any
+-- error. The live instance stays the source of truth once it exists.
+function CSRGameManager.peek_setting(key)
+	local f = io.open(save_path(SAVE_FILE), "r")
+	if not f then
+		return nil
+	end
+	local raw = f:read("*all")
+	f:close()
+	local ok, decoded = pcall(json.decode, raw)
+	if not ok or type(decoded) ~= "table" then
+		return nil
+	end
+	local settings = decoded.meta and decoded.meta.settings
+	return settings and settings[key]
+end
+
 -- =====================================================
 -- Legacy-save migrator (stub — logs only)
 -- =====================================================

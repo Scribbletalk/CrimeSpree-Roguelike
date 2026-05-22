@@ -22,6 +22,10 @@
 			"script_path": "lua/items/csr_builtin_items.lua"
 		},
 		{
+			"hook_id": "lib/setups/setup",
+			"script_path": "lua/core/csr_sound.lua"
+		},
+		{
 			"hook_id": "lib/managers/playermanager",
 			"script_path": "lua/items/csr_item_effects_playerstats.lua"
 		},

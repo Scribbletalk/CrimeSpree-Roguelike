@@ -148,9 +148,11 @@ end
 -- Fully composable: any number of instakill_on_hit items roll independently on
 -- their own chance + cooldown. A single item reduces to the legacy 6.2 behaviour.
 --
--- DEFERRED: the 6.2 item also played a positional proc sound (broadcast to peers)
--- and a HUD cooldown pip. Both ride on subsystems not yet ported (CSR_PlaySound /
--- HUD-compat shims), so they are omitted; the instakill itself is complete.
+-- On a confirmed proc-kill the dead enemy's position plays a random chip clip
+-- via _G.CSR.play_sound (csr_sound.lua), and the position is broadcast so nearby
+-- peers hear it at the same spot (each picks its own random variant locally).
+-- The PreHook only flags the proc; the PostHook plays after vanilla confirms the
+-- kill (cop._dead). DEFERRED: the 6.2 HUD cooldown pip (HUD-compat shims unported).
 
 -- [item.type] = game time of that item's last roll attempt. File-local despite the
 -- two-load file: the proc closure is installed exactly once (copdamage load) and
@@ -206,18 +208,71 @@ local function bonnie_chip_try_proc(cop, attack_data)
 		end
 	end
 
-	if procced then
-		-- Amplify so the original damage_bullet kills the enemy (vanilla clamps the
-		-- applied damage to self._health internally, so the value just needs to
-		-- exceed current health).
-		attack_data.damage = (cop._health or 1) * 10
-		if mgr:debug_enabled() then
-			mgr:debug_log("bonnie_chip INSTAKILL proc")
-		end
+	if not procced then
+		return false
+	end
+	-- Amplify so the original damage_bullet kills the enemy (vanilla clamps the
+	-- applied damage to self._health internally, so the value just needs to
+	-- exceed current health).
+	attack_data.damage = (cop._health or 1) * 10
+	if mgr:debug_enabled() then
+		mgr:debug_log("bonnie_chip INSTAKILL proc")
+	end
+	return true
+end
+
+-- Proc-kill sound: a positional clip at the dead enemy. The source is
+-- single-sound (auto-plays, auto-closes), so nothing is tracked or stopped here.
+local BONNIE_CHIP_RPC = "CSR_ChipKill"
+
+local function bonnie_play_chip_at(pos)
+	if pos and _G.CSR and _G.CSR.play_sound then
+		_G.CSR.play_sound("bonnie_chip", { position = pos, volume = 0.7 })
+	end
+end
+
+local function bonnie_chip_play_kill_sound(dead_unit)
+	if not (dead_unit and alive(dead_unit)) then
+		return
+	end
+	local pos = dead_unit:position()
+	bonnie_play_chip_at(pos)
+	-- Broadcast the spot so other peers hear the kill. GetPeers() is empty in
+	-- solo, so gate on peer count to skip the work + log line entirely.
+	if LuaNetworking and LuaNetworking.GetNumberOfPeers and LuaNetworking:GetNumberOfPeers() > 0 then
+		local payload = string.format("%.2f,%.2f,%.2f", pos.x, pos.y, pos.z)
+		pcall(function()
+			LuaNetworking:SendToPeers(BONNIE_CHIP_RPC, payload)
+		end)
 	end
 end
 
 if CopDamage and not _G._CSR_BONNIE_CHIP_HOOKED then
 	_G._CSR_BONNIE_CHIP_HOOKED = true
-	Hooks:PreHook(CopDamage, "damage_bullet", "CSR_BonnieChip_Pre", bonnie_chip_try_proc)
+
+	-- PreHook flags the proc (and amplifies damage); PostHook plays the sound
+	-- only once vanilla has confirmed the kill landed (cop._dead).
+	Hooks:PreHook(CopDamage, "damage_bullet", "CSR_BonnieChip_Pre", function(cop, attack_data)
+		if bonnie_chip_try_proc(cop, attack_data) then
+			cop._csr_chip_proc = true
+		end
+	end)
+	Hooks:PostHook(CopDamage, "damage_bullet", "CSR_BonnieChip_Post", function(cop, attack_data)
+		if cop._csr_chip_proc and cop._dead then
+			bonnie_chip_play_kill_sound(cop._unit)
+		end
+		cop._csr_chip_proc = nil
+	end)
+
+	-- A peer's broadcast chip-kill: play it locally at the sent position.
+	Hooks:Add("NetworkReceivedData", "CSR_BonnieChip_NetKill", function(sender, id, data)
+		if id ~= BONNIE_CHIP_RPC then
+			return
+		end
+		local x, y, z = tostring(data):match("([^,]+),([^,]+),([^,]+)")
+		x, y, z = tonumber(x), tonumber(y), tonumber(z)
+		if x and y and z then
+			bonnie_play_chip_at(Vector3(x, y, z))
+		end
+	end)
 end

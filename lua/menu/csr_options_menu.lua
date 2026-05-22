@@ -15,6 +15,25 @@
 -- callbacks; SetupCustomMenus -> NewMenu; BuildCustomMenus -> BuildMenu +
 -- attach to blt_options; PopulateCustomMenus -> AddToggle.
 
+-- Read a CSR setting for the menu display. managers.csr does NOT exist yet when
+-- these menus are populated (populate runs during MenuManager:init, before the
+-- Setup:init_managers PostHook that creates the manager), so prefer the live
+-- instance but fall back to the static save reader -- otherwise every launch
+-- shows defaults (Debug Logging OFF, etc.) regardless of the saved value.
+local function csr_read_setting(key, default)
+	local mgr = managers and managers.csr
+	local v
+	if mgr and mgr.setting then
+		v = mgr:setting(key)
+	elseif CSRGameManager and CSRGameManager.peek_setting then
+		v = CSRGameManager.peek_setting(key)
+	end
+	if v == nil then
+		return default
+	end
+	return v
+end
+
 Hooks:Add("LocalizationManagerPostInit", "CSR_OptionsLocalization", function(loc)
 	loc:add_localized_strings({
 		csr_options_menu_title = "Crime Spree Roguelike",
@@ -22,6 +41,9 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_OptionsLocalization", function(loc
 		csr_debug_mode_title = "Debug Logging",
 		csr_debug_mode_desc = "Writes verbose CSR diagnostics to the BLT log (mods/logs). "
 			.. "Use it to verify items are working. No gameplay effect.",
+		csr_sfx_volume_title = "Item Sound Effects Volume",
+		csr_sfx_volume_desc = "Volume of CSR item sound effects (e.g. Bonnie's Lucky Chip proc). "
+			.. "100% = full volume, 0% = muted.",
 		csr_debug_menu_title = "Debug Tools",
 		csr_debug_menu_desc = "Testing shortcuts for development.",
 		csr_grant_items_title = "Grant All Items",
@@ -35,6 +57,14 @@ Hooks:Add("MenuManagerInitialize", "CSR_OptionsCallbacks", function(menu_manager
 		local mgr = managers.csr
 		if mgr and mgr.set_setting then
 			mgr:set_setting("debug_mode", item:value() == "on")
+		end
+	end
+
+	MenuCallbackHandler.csr_sfx_volume_changed = function(self, item)
+		local mgr = managers.csr
+		if mgr and mgr.set_setting then
+			-- Slider is 0..100; store the 0..1 fraction csr_sound.lua reads.
+			mgr:set_setting("sfx_volume", item:value() / 100)
 		end
 	end
 
@@ -65,8 +95,7 @@ Hooks:Add("MenuManagerBuildCustomMenus", "CSR_OptionsBuild", function(menu_manag
 end)
 
 Hooks:Add("MenuManagerPopulateCustomMenus", "CSR_OptionsPopulate", function(menu_manager, nodes)
-	local mgr = managers.csr
-	local debug_value = (mgr and mgr.setting and mgr:setting("debug_mode")) or false
+	local debug_value = csr_read_setting("debug_mode", false) == true
 
 	MenuHelper:AddToggle({
 		id = "csr_debug_mode",
@@ -76,6 +105,21 @@ Hooks:Add("MenuManagerPopulateCustomMenus", "CSR_OptionsPopulate", function(menu
 		value = debug_value,
 		menu_id = "csr_options_menu",
 		priority = 1,
+	})
+
+	local sfx_value = csr_read_setting("sfx_volume", 1.0)
+	MenuHelper:AddSlider({
+		id = "csr_sfx_volume",
+		title = "csr_sfx_volume_title",
+		desc = "csr_sfx_volume_desc",
+		callback = "csr_sfx_volume_changed",
+		value = sfx_value * 100,
+		min = 0,
+		max = 100,
+		step = 5,
+		show_value = true,
+		menu_id = "csr_options_menu",
+		priority = 2,
 	})
 
 	MenuHelper:AddButton({

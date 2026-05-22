@@ -36,6 +36,12 @@ _G.CSR.API_VERSION = 1
 -- Persistent: never cleared. Replayed into every CSRGameManager instance.
 _G.CSR._registrations = _G.CSR._registrations or {}
 _G.CSR._modifier_registrations = _G.CSR._modifier_registrations or {}
+-- Persistent sound registry, keyed by name (re-registration dedupes). Owned
+-- here so an addon can register a sound before csr_sound.lua loads (SuperBLT
+-- inter-mod order is non-deterministic, same reason _registrations exists).
+-- csr_sound.lua loads every entry once blt.xaudio is up, and a registration
+-- that arrives AFTER that load is loaded immediately (see register_sound).
+_G.CSR._sound_registrations = _G.CSR._sound_registrations or {}
 
 local function manager_ready()
 	return managers and managers.csr and managers.csr.register_item ~= nil
@@ -76,6 +82,37 @@ function _G.CSR._apply_registrations(mgr)
 	for _, def in ipairs(_G.CSR._registrations) do
 		mgr:register_item(def)
 	end
+end
+
+-- Register a playable sound under `name`. def = { path = "<rel.ogg>" } for a
+-- single clip, or { pattern = "<rel_$.ogg>", n = <count> } for numbered
+-- variants ($ -> 1..n; play_sound picks one at random). Paths are relative to
+-- the mod root. Safe to call at any time: the entry is recorded persistently
+-- and the actual XAudio buffer is loaded by csr_sound.lua (now if its loader is
+-- already up, otherwise when it finishes its retry loop).
+function _G.CSR.register_sound(name, def)
+	if type(name) ~= "string" or type(def) ~= "table" then
+		log("[CSR][api] register_sound: (name string, def table) required -- ignored")
+		return false
+	end
+	_G.CSR._sound_registrations[name] = def
+	-- _load_sound is installed by csr_sound.lua once its loader is ready; a late
+	-- (post-load) registration is loaded on the spot, an early one is picked up
+	-- by the loader's pass over _sound_registrations.
+	if _G.CSR._sound_loader_ready and _G.CSR._load_sound then
+		_G.CSR._load_sound(name, def)
+	end
+	return true
+end
+
+-- Play a registered sound. opts shape is documented in csr_sound.lua (which
+-- installs _play_sound). A no-op returning nil until that file's loader runs,
+-- so callers never need to guard for "sound system not up yet".
+function _G.CSR.play_sound(name, opts)
+	if _G.CSR._play_sound then
+		return _G.CSR._play_sound(name, opts)
+	end
+	return nil
 end
 
 log("[CSR] csr_extension_api.lua loaded (public _G.CSR shim, API v" .. tostring(_G.CSR.API_VERSION) .. ")")
