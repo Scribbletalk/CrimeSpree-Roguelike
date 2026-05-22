@@ -967,7 +967,13 @@ function CrimeSpreeLogbookMenuComponent:_create_icons_grid()
 			})
 		end
 
-		local this_icon_size = icon_size * (LOGBOOK_ICON_SCALE[item_data.icon] or ICON_SCALE[item_data.icon] or 1)
+		-- Per-icon scale precedence: logbook-only override (legacy; currently the
+		-- not-yet-registered wildcards) -> dead ICON_SCALE global -> the item's
+		-- registered icon_scale (managers.csr) -> 1.
+		local reg_scale = (managers.csr and managers.csr.item_icon_scale) and managers.csr:item_icon_scale(item_data.id)
+			or 1
+		local this_icon_size = icon_size
+			* (LOGBOOK_ICON_SCALE[item_data.icon] or ICON_SCALE[item_data.icon] or reg_scale)
 		local icon_offset = (frame_size - this_icon_size) / 2
 
 		if is_unlocked then
@@ -1059,17 +1065,23 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 
 	local y_pos = 20
 
-	-- Large icon
+	-- Large icon. icon_size is the fixed layout SLOT (it also positions the name
+	-- column to the icon's right); the drawn glyph is slot * icon_scale, centred
+	-- in the slot, so a per-item icon_scale never shifts the text column.
 	local icon_size = 96
 	if tweak_data.hud_icons and tweak_data.hud_icons[item_data.icon] then
 		local icon_data = tweak_data.hud_icons[item_data.icon]
+		local scale = (managers.csr and managers.csr.item_icon_scale) and managers.csr:item_icon_scale(item_data.id)
+			or 1
+		local glyph = icon_size * scale
+		local off = (icon_size - glyph) / 2
 		self._details_panel:bitmap({
 			texture = icon_data.texture,
 			texture_rect = icon_data.texture_rect,
-			w = icon_size,
-			h = icon_size,
-			x = 30,
-			y = y_pos,
+			w = glyph,
+			h = glyph,
+			x = 30 + off,
+			y = y_pos + off,
 			color = Color.white,
 			layer = 5,
 		})

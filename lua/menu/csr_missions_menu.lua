@@ -901,14 +901,20 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 				else
 					icon_tex, icon_rect = tweak_data.hud_icons:get_icon_data(raw_icon)
 				end
+				-- Optional per-item icon scale: shrink/grow ONLY the glyph inside
+				-- the fixed cell (the rarity frame size is unchanged). Default 1.0
+				-- reproduces the legacy icon size (cell - 2*icon_inset), centred.
+				local base_glyph = items_panel_icon_size - icon_inset * 2
+				local glyph = base_glyph * (entry.def.icon_scale or 1)
+				local glyph_inset = (items_panel_icon_size - glyph) / 2
 				cell:bitmap({
 					name = "item_icon",
 					texture = icon_tex,
 					texture_rect = icon_rect,
-					x = icon_inset,
-					y = icon_inset,
-					w = items_panel_icon_size - icon_inset * 2,
-					h = items_panel_icon_size - icon_inset * 2,
+					x = glyph_inset,
+					y = glyph_inset,
+					w = glyph,
+					h = glyph,
 					layer = 10,
 				})
 
@@ -2757,22 +2763,22 @@ function CSRSidebarItem:set_selected(enabled)
 end
 
 -- Compose the row's look from hover (_highlight) and active-tab (_selected).
--- Selected wins on the backdrop: a persistent risk-gold tint, a touch brighter
+-- Selected wins on the backdrop: a persistent PD2-blue tint, a touch brighter
 -- while also hovered so the active row still acknowledges hover. A plain row
 -- keeps the vanilla recipe -- black backdrop on hover only, cyan resting
 -- text/icon. Color AND alpha are set explicitly every pass: in Diesel set_color
 -- writes RGB only and leaves alpha as set at panel creation, so swapping between
--- the gold (0.5/0.7) and black (0.66) backdrops needs the alpha re-applied each
+-- the blue and black (0.66) backdrops needs the alpha re-applied each
 -- time or the carried-over value bleeds across states.
 function CSRSidebarItem:_apply_visual()
 	self._text:set_visible(true)
 
 	if self._selected then
 		-- Deliberately faint: the active-tab marker should be barely noticeable
-		-- (user spec), so the gold wash sits at a low alpha -- a touch stronger
+		-- (user spec), so the blue wash sits at a low alpha -- a touch stronger
 		-- while also hovered since hover feedback is transient and expected.
 		self._bg:set_visible(true)
-		self._bg:set_color(tweak_data.screen_colors.risk)
+		self._bg:set_color(tweak_data.screen_colors.button_stage_2)
 		self._bg:set_alpha(self._highlight and 0.22 or 0.1)
 		self._text:set_color(Color.white)
 		self._icon:set_color(Color.white)

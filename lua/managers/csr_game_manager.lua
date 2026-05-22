@@ -478,12 +478,24 @@ function CSRGameManager:register_item(def)
 		addon = nil
 	end
 
+	-- Optional per-item icon scale: a multiplier on the default icon size (1.0 =
+	-- unchanged, 0.9 = slightly smaller, 1.1 = slightly larger). Scales ONLY the
+	-- item glyph, never its rarity frame, on every surface that draws it. A
+	-- non-number is logged and dropped (the item still registers); absence -> the
+	-- 1.0 default is applied at the draw sites via item_icon_scale().
+	local icon_scale = def.icon_scale
+	if icon_scale ~= nil and type(icon_scale) ~= "number" then
+		log_csr("register_item: '" .. t .. "' ignoring non-number 'icon_scale' field (got " .. type(icon_scale) .. ")")
+		icon_scale = nil
+	end
+
 	local entry = {
 		type = t,
 		rarity = def.rarity,
 		name = def.name,
 		desc = def.desc,
 		icon = def.icon,
+		icon_scale = icon_scale,
 		effect = effect,
 		on_apply = def.on_apply,
 		on_remove = def.on_remove,
@@ -520,6 +532,14 @@ end
 -- iterate this instead of hardcoded tables).
 function CSRGameManager:registered_items()
 	return self._registry.items
+end
+
+-- Per-item icon scale multiplier (1.0 = default size). Single source of truth
+-- for every icon-drawing surface (selection window, Items panel grid, Logbook).
+-- Returns 1 for an unregistered type or an item that did not set icon_scale.
+function CSRGameManager:item_icon_scale(item_type)
+	local entry = item_type and self._registry.by_type[item_type]
+	return (entry and entry.icon_scale) or 1
 end
 
 -- =====================================================

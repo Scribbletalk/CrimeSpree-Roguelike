@@ -60,6 +60,7 @@ local function build_item_pool()
 		items[#items + 1] = {
 			id = def.type,
 			icon = def.icon or "csr_dog_tags",
+			icon_scale = def.icon_scale or 1,
 			rarity = def.rarity or "common",
 			name = def.name or string.upper(tostring(def.type)),
 			desc = def.desc or "",
@@ -153,11 +154,12 @@ function CSRItemSelectionButton:init(parent, data)
 	})
 	self._frame:set_center(self._image_pos.x, self._image_pos.y)
 
+	-- NOT grown to fill the icon panel: sized explicitly to container * icon_scale
+	-- and centred (set_item + update) so a per-item icon_scale shrinks/grows the
+	-- glyph WITHOUT touching the rarity frame, which tracks the container size.
 	self._item_image = self._image:bitmap({
 		blend_mode = "add",
 		name = "icon",
-		valign = "grow",
-		halign = "grow",
 		layer = 10,
 	})
 	self._desc = self._panel:text({
@@ -228,6 +230,10 @@ function CSRItemSelectionButton:set_item(data)
 
 	self._item_image:set_image(texture)
 	self._item_image:set_texture_rect(unpack(rect))
+	-- Per-item icon scale (1.0 default). Size the glyph now so it is correct on
+	-- the first rendered frame, before update() takes over the smoothstep.
+	self._icon_scale = self._data.icon_scale or 1
+	self:_size_icon(self._image:w())
 	self._desc:set_text(self._data.desc or "")
 
 	-- Rarity frame: tint per the item's rarity (white = common).
@@ -236,6 +242,18 @@ function CSRItemSelectionButton:set_item(data)
 	self._frame:set_texture_rect(unpack(frame_rect))
 	self._frame:set_color(RARITY_COLORS[self._data.rarity] or Color.white)
 	self._frame:set_visible(true)
+end
+
+-- Size the icon glyph to (square) container_size * icon_scale and centre it in
+-- the icon panel. The panel is square (w == h == container_size), so centring
+-- on container_size * 0.5 keeps the glyph centred at any scale.
+function CSRItemSelectionButton:_size_icon(container_size)
+	if not self._item_image then
+		return
+	end
+	local glyph = container_size * (self._icon_scale or 1)
+	self._item_image:set_size(glyph, glyph)
+	self._item_image:set_center(container_size * 0.5, container_size * 0.5)
 end
 
 function CSRItemSelectionButton:refresh()
@@ -282,6 +300,10 @@ function CSRItemSelectionButton:update(t, dt)
 	self._image:set_size(s, s)
 	self._image:set_center_x(self._image_pos.x)
 	self._image:set_center_y(self._image_pos.y)
+
+	-- Track the animated container size; icon_scale shrinks the glyph relative
+	-- to it without affecting the rarity frame below.
+	self:_size_icon(s)
 
 	-- Frame tracks the icon's animated size at an independent scale so the
 	-- border thickness stays proportional as the card grows/shrinks.
