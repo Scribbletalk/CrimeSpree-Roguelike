@@ -9,11 +9,11 @@ end
 _G.CSR.register_item({
 	type = "falcogini_keys",
 	rarity = "uncommon",
-	name = "logbook_falcogini_keys_name",
-	desc = "item_falcogini_keys_desc",
-	full_desc = "logbook_falcogini_keys_effect",
-	notes = "logbook_falcogini_keys_notes",
-	icon = "falcogini_keys",
+	name = "csr_logbook_falcogini_keys_name",
+	desc = "csr_item_falcogini_keys_desc",
+	full_desc = "csr_logbook_falcogini_keys_effect",
+	notes = "csr_logbook_falcogini_keys_notes",
+	icon = "csr_falcogini_keys",
 
 	hooks = {
 		-- Combine the item's dodge chance with vanilla dodge probabilistically

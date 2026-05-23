@@ -23,11 +23,11 @@ end
 _G.CSR.register_item({
 	type = "jiro_last_wish",
 	rarity = "rare",
-	name = "logbook_jiro_last_wish_name",
-	desc = "item_jiro_last_wish_desc",
-	full_desc = "logbook_jiro_last_wish_effect",
-	notes = "logbook_jiro_last_wish_notes",
-	icon = "jiro_last_wish",
+	name = "csr_logbook_jiro_last_wish_name",
+	desc = "csr_item_jiro_last_wish_desc",
+	full_desc = "csr_logbook_jiro_last_wish_effect",
+	notes = "csr_logbook_jiro_last_wish_notes",
+	icon = "csr_jiro_last_wish",
 
 	hooks = {
 		-- (1) Melee damage: scale equipped_melee_weapon_damage_info's dmg and

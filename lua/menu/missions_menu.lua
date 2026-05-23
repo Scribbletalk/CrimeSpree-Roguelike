@@ -380,7 +380,7 @@ function CSRMissionsMenuComponent:_create_title()
 		vertical = "top",
 		name = "title",
 		align = "left",
-		text = managers.localization:to_upper_text("header_title"),
+		text = managers.localization:to_upper_text("csr_header_title"),
 		font_size = tweak_data.menu.pd2_large_font_size,
 		font = tweak_data.menu.pd2_large_font,
 		color = tweak_data.screen_colors.text,
@@ -413,7 +413,7 @@ function CSRMissionsMenuComponent:_create_title()
 			alpha = 0.4,
 			align = "left",
 			layer = 1,
-			text = managers.localization:to_upper_text("header_title"),
+			text = managers.localization:to_upper_text("csr_header_title"),
 			font_size = tweak_data.menu.pd2_massive_font_size,
 			font = tweak_data.menu.pd2_massive_font,
 			color = tweak_data.screen_colors.button_stage_3,
@@ -849,7 +849,7 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 				math.max(1, math.min(items_panel_grid_cols, math.floor((section_w + items_panel_icon_gap) / cell_step)))
 			local grid_w = cols * items_panel_icon_size + (cols - 1) * items_panel_icon_gap
 			local grid_x = items_panel_padding + math.max(0, math.floor((section_w - grid_w) / 2))
-			local frame_tex, frame_rect = tweak_data.hud_icons:get_icon_data("frame")
+			local frame_tex, frame_rect = tweak_data.hud_icons:get_icon_data("csr_frame")
 
 			local frame_overflow = (items_panel_frame_size - items_panel_icon_size) / 2
 			-- Inset of the visible icon bitmap inside the 64x64 cell. The cell
@@ -1142,7 +1142,7 @@ function CSRMissionsMenuComponent:_create_status_bar(w)
 	-- Left anchor: how many heists were completed in the current run. Reads the
 	-- dedicated managers.csr:missions_completed() counter (NOT rank -- the two
 	-- are distinct concepts; see game_manager.lua default_state comment).
-	local missions_prefix = managers.localization:to_upper_text("lobby_missions_completed") .. ": "
+	local missions_prefix = managers.localization:to_upper_text("csr_lobby_missions_completed") .. ": "
 	local missions_str = missions_prefix .. tostring(managers.csr:missions_completed())
 	local missions_text = self._title_panel:text({
 		layer = 51,
@@ -1159,7 +1159,7 @@ function CSRMissionsMenuComponent:_create_status_bar(w)
 	missions_text:set_range_color(utf8.len(missions_prefix), utf8.len(missions_str), highlight)
 
 	-- Center anchor: spree RANK, floating between the left/right labels.
-	local rank_prefix = managers.localization:to_upper_text("lobby_rank") .. ": "
+	local rank_prefix = managers.localization:to_upper_text("csr_lobby_rank") .. ": "
 	local rank_str = rank_prefix .. tostring(managers.csr:rank()) .. " " .. cs_glyph
 	local rank_text = self._title_panel:text({
 		layer = 51,
@@ -1182,7 +1182,7 @@ function CSRMissionsMenuComponent:_create_status_bar(w)
 	-- Right-aligned on the same self._title_panel line as the rank text;
 	-- vertical/valign "bottom" matches the rank text so the baselines align.
 	-- refresh() toggles self._title_panel visibility, so this child follows it.
-	local diff_prefix = managers.localization:to_upper_text("lobby_difficulty") .. ": "
+	local diff_prefix = managers.localization:to_upper_text("csr_lobby_difficulty") .. ": "
 	local diff_full = diff_prefix .. diff_text
 	local diff_label = self._title_panel:text({
 		layer = 51,
@@ -1278,7 +1278,7 @@ function CSRMissionsMenuComponent:_refresh_unselected_items(allowed)
 	-- to_upper_text (not text): all-caps, same as the csr_lobby_rank/difficulty
 	-- labels on the status row below. It takes the macro table too (vanilla
 	-- uses to_upper_text("menu_cs_level", { ... }) the same way).
-	self._unselected_items:set_text(managers.localization:to_upper_text("lobby_unselected_items", {
+	self._unselected_items:set_text(managers.localization:to_upper_text("csr_lobby_unselected_items", {
 		count = count,
 	}))
 
@@ -1397,10 +1397,10 @@ function CSRMissionsMenuComponent:_refresh_action_buttons()
 		-- (CSR-owned wording, like csr_lobby_rank). menu_cs_continue is the
 		-- existing vanilla key (crimespreemissionendoptions.lua:80).
 		if self._is_lobby then
-			self._action_button:set_text(managers.localization:to_upper_text("end_spree"))
+			self._action_button:set_text(managers.localization:to_upper_text("csr_end_spree"))
 			self._action_button:set_callback(callback(self, self, "_action_end_spree"))
 		else
-			self._action_button:set_text(managers.localization:to_upper_text("return_to_lobby"))
+			self._action_button:set_text(managers.localization:to_upper_text("csr_return_to_lobby"))
 			self._action_button:set_callback(callback(self, self, "_action_return_to_lobby"))
 		end
 

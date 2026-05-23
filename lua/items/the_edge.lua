@@ -75,11 +75,11 @@ end
 _G.CSR.register_item({
 	type = "the_edge",
 	rarity = "uncommon",
-	name = "logbook_the_edge_name",
-	desc = "item_the_edge_desc",
-	full_desc = "logbook_the_edge_effect",
-	notes = "logbook_the_edge_notes",
-	icon = "the_edge",
+	name = "csr_logbook_the_edge_name",
+	desc = "csr_item_the_edge_desc",
+	full_desc = "csr_logbook_the_edge_effect",
+	notes = "csr_logbook_the_edge_notes",
+	icon = "csr_the_edge",
 
 	hooks = {
 		["lib/units/beings/player/playerdamage"] = function()

@@ -45,9 +45,9 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 
 	-- Glyph / utf8 keys kept in Lua so the exact byte sequences are preserved
 	-- (JSON round-trip risk for PUA glyphs / utf8.char). Verbatim from monolith.
-	strings["menu_logbook_new"] = "LOGBOOK" .. utf8.char(0xE012) .. "  "
-	strings["menu_printer_new"] = "PRINTER " .. utf8.char(0xE012)
-	strings["ready_confirmed"] = "READY \xe2\x9c\x93"
+	strings["menu_csr_logbook_new"] = "LOGBOOK" .. utf8.char(0xE012) .. "  "
+	strings["menu_csr_printer_new"] = "PRINTER " .. utf8.char(0xE012)
+	strings["csr_ready_confirmed"] = "READY \xe2\x9c\x93"
 	strings["menu_cs_next_modifier_forced"] = "NEXT MODIFIER: $next \xEE\x80\x98"
 	strings["menu_cs_next_modifier_loud"] = "NEXT GUARANTEED ITEM: $next \xEE\x80\x98"
 	strings["menu_cs_next_modifier_stealth"] = "NEXT MODIFIER: $next \xEE\x80\x98"
@@ -104,12 +104,12 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 
 	-- DOG TAGS
 	local dt_hp = C.dog_tags_hp_bonus or 0.10
-	strings["logbook_dog_tags_effect"] =
+	strings["csr_logbook_dog_tags_effect"] =
 		string.format("Increases maximum health by {g}%g%%{/} (+%g%% per stack, linear).", dt_hp * 100, dt_hp * 100)
 
 	-- DUCT TAPE
 	local tape_spd = C.duct_tape_speed_bonus or 0.10
-	strings["logbook_duct_tape_effect"] = string.format(
+	strings["csr_logbook_duct_tape_effect"] = string.format(
 		"Increases interaction speed by {g}%g%%{/} (+%g%% per stack, linear).\nAffects lockpicking, bagging loot, repairing, etc. Does {r}not{/} apply to reviving teammates or uncuffing.",
 		tape_spd * 100,
 		tape_spd * 100
@@ -119,14 +119,14 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	local sn_cap = C.escape_plan_cap or 0.50
 	local sn_k = (C.escape_plan_k_num or 3) / (C.escape_plan_k_den or 47)
 	local sn_first = math.floor(sn_cap * sn_k / (1 + sn_k) * 100 + 0.5)
-	strings["logbook_escape_plan_effect"] =
+	strings["csr_logbook_escape_plan_effect"] =
 		string.format("Increases movement speed by {g}%d%%{/} (+%d%% per stack, hyperbolic).", sn_first, sn_first)
 
 	-- WORN BAND-AID
 	local ba_first = (C.worn_bandaid_first_pct or 0.02) * 100
 	local ba_max = (C.worn_bandaid_max_pct or 0.20) * 100
 	local ba_int = C.worn_bandaid_interval or 5
-	strings["logbook_worn_bandaid_effect"] = string.format(
+	strings["csr_logbook_worn_bandaid_effect"] = string.format(
 		"Regenerates {g}%g%%{/} (+%g%% per stack, hyperbolic, capped at %g%%) of max health every %g seconds.",
 		ba_first,
 		ba_first,
@@ -138,7 +138,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	local beret_first = (C.lockes_beret_first_pct or 0.10) * 100
 	local beret_max = (C.lockes_beret_max_pct or 0.50) * 100
 	local beret_interval = C.lockes_beret_interval or 30
-	strings["logbook_lockes_beret_effect"] = string.format(
+	strings["csr_logbook_lockes_beret_effect"] = string.format(
 		"Every {g}%g{/} seconds, heals everyone on your team (you, teammates, bots, jokers, turrets) for {g}%g%%{/} (+%g%% per stack, hyperbolic, capped at %g%%) of max health.",
 		beret_interval,
 		beret_first,
@@ -148,7 +148,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 
 	-- CUP OF JOE
 	local coj_per_stack = (C.cup_of_joe_per_stack or 0.10) * 100
-	strings["logbook_cup_of_joe_effect"] = string.format(
+	strings["csr_logbook_cup_of_joe_effect"] = string.format(
 		"Increases maximum stamina by {g}%g%%{/} (+%g%% per stack, linear).",
 		coj_per_stack,
 		coj_per_stack
@@ -157,7 +157,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	-- PIECE OF REBAR
 	local rb_base = C.rebar_base_bonus or 0.15
 	local rb_extra = C.rebar_extra_bonus or 0.10
-	strings["logbook_rebar_effect"] = string.format(
+	strings["csr_logbook_rebar_effect"] = string.format(
 		"First hit on an enemy deals {g}+%g%%{/} (+%g%% per stack, linear) damage.",
 		rb_base * 100,
 		rb_extra * 100
@@ -167,7 +167,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	local hg_refill = C.half_a_glass_refill or 0.15
 	local hg_first = C.half_a_glass_max_ammo_first or 0.02
 	local hg_extra = C.half_a_glass_max_ammo_extra or 0.01
-	strings["logbook_half_a_glass_effect"] = string.format(
+	strings["csr_logbook_half_a_glass_effect"] = string.format(
 		"Picking up a Gage package instantly refills {g}%g%%{/} ammo for primary and secondary weapons and increases their max ammo by {g}%g%%{/} (+%g%% per stack, linear) for the rest of the mission.",
 		hg_refill * 100,
 		hg_first * 100,
@@ -176,7 +176,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 
 	-- EVIDENCE ROUNDS
 	local ap_dmg = C.ap_rounds_damage_bonus or 0.05
-	strings["logbook_evidence_rounds_effect"] = string.format(
+	strings["csr_logbook_evidence_rounds_effect"] = string.format(
 		"Increases damage from ALL sources by {g}%g%%{/} (+%g%% per stack, linear).",
 		ap_dmg * 100,
 		ap_dmg * 100
@@ -184,7 +184,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 
 	-- FALCOGINI KEYS
 	local keys_first = math.floor(100 / (1 + (C.car_keys_k_den or 32)) + 0.5)
-	strings["logbook_falcogini_keys_effect"] = string.format(
+	strings["csr_logbook_falcogini_keys_effect"] = string.format(
 		"Increases chance to dodge by {g}%d%%{/} (+%d%% per stack, hyperbolic).\nSuccessful dodging blocks incoming damage (does not work on self-inflicted damage).",
 		keys_first,
 		keys_first
@@ -195,7 +195,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	local wt_norm_extra = C.wolfs_toolbox_normal_extra or 0.1
 	local wt_spec_base = C.wolfs_toolbox_special_base or 1.0
 	local wt_spec_extra = C.wolfs_toolbox_special_extra or 0.5
-	strings["logbook_wolfs_toolbox_effect"] = string.format(
+	strings["csr_logbook_wolfs_toolbox_effect"] = string.format(
 		"Killing regular enemies reduces active drill/saw timer by {g}%g second(s){/} (+%gs per stack, linear).\nKilling special enemies reduces timer by {g}%g second(s){/} (+%gs per stack, linear).",
 		wt_norm_base,
 		wt_norm_extra,
@@ -207,7 +207,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	local ps_pct = (C.pink_slip_base_percent or 0.01) * 100
 	local ps_base_flat = C.pink_slip_base_flat or 4
 	local ps_heal_extra = C.pink_slip_extra_heal or 6
-	strings["logbook_pink_slip_effect"] = string.format(
+	strings["csr_logbook_pink_slip_effect"] = string.format(
 		"Killing any enemy restores {g}%g%%{/} of max health + {g}%g{/} (+%g per stack, linear) health.",
 		ps_pct,
 		ps_base_flat,
@@ -221,7 +221,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	local te_extra = C.the_edge_heal_flat_extra or 40
 	local te_invuln = C.the_edge_invuln or 0.5
 	local te_cd = C.the_edge_cooldown or 60
-	strings["logbook_the_edge_effect"] = string.format(
+	strings["csr_logbook_the_edge_effect"] = string.format(
 		"When health drops below {r}%.0f%%{/}, restores {g}%.0f%%{/} max health + {g}%g{/} (+%g per stack) and grants {g}%.1fs{/} invulnerability.\n%gs cooldown.",
 		te_threshold,
 		te_pct,
@@ -236,7 +236,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	local ok_extra = C.overkill_rush_extra_bonus or 0.01
 	local ok_stacks = C.overkill_rush_max_stacks or 4
 	local ok_dur = C.overkill_rush_duration or 4.0
-	strings["logbook_overkill_rush_effect"] = string.format(
+	strings["csr_logbook_overkill_rush_effect"] = string.format(
 		"Killing any enemy grants you a rush stack. For each rush stack your fire rate and reload speed increase by {g}%g%%{/} (+%g%% per stack, linear).\nAll rush stacks expire %g seconds after the last kill.",
 		ok_first * 100,
 		ok_extra * 100,
@@ -246,7 +246,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	-- BONNIE'S LUCKY CHIP
 	local bc_chance = C.bonnie_chip_chance or 0.10
 	local bc_cd = C.bonnie_chip_cooldown or 1.5
-	strings["logbook_bonnie_chip_effect"] = string.format(
+	strings["csr_logbook_bonnie_chip_effect"] = string.format(
 		"Gain {g}%g%%{/} (+%g%% per stack, hyperbolic) chance to instantly kill an enemy on hit.\nHas %g second cooldown.",
 		bc_chance * 100,
 		bc_chance * 100,
@@ -257,7 +257,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	local ps_heal_pct = C.plush_shark_heal_pct or 1.00
 	local ps_inv_base = C.plush_shark_invuln_base or 10
 	local ps_inv_extra = C.plush_shark_invuln_extra or 20
-	strings["logbook_plush_shark_effect"] = string.format(
+	strings["csr_logbook_plush_shark_effect"] = string.format(
 		"When have only down and your health reaches 0, this item ictivates.\nOn activation restores {g}1 down{/}, {g}%g%%{/} maximum {g}health{/} and {g}armor{/}, then grants invulnerability that lasts {g}%g seconds{/} (+%gs per stack, linear).\nCan be activated again if you were freed from custody.",
 		ps_heal_pct * 100,
 		ps_inv_base,
@@ -266,7 +266,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 
 	-- JIRO'S LAST WISH
 	local jiro_dmg_bonus = C.jiro_melee_bonus or 0.50
-	strings["logbook_jiro_last_wish_effect"] = string.format(
+	strings["csr_logbook_jiro_last_wish_effect"] = string.format(
 		"Grants an ability to sprint while charging a melee attack. Increases melee damage by {g}%d%%{/} (+%d%% per stack, linear).",
 		jiro_dmg_bonus * 100,
 		jiro_dmg_bonus * 100
@@ -277,7 +277,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	local dp_decay = C.dearest_decay_rate or 0.01666
 	-- Per-tick drain percentage (5s tick interval is hardcoded in dearestpossession.lua).
 	local dp_per_tick_pct = dp_decay * 5 * 100
-	strings["logbook_dearest_possession_effect"] = string.format(
+	strings["csr_logbook_dearest_possession_effect"] = string.format(
 		"Healing received at full HP is converted into temporary shields. Temporary shield cap: %g%% of maximum health (+%g%% per stack,linear). Temporary shields drain by %g%% every 5 seconds.",
 		dp_cap * 100,
 		dp_cap * 100,
@@ -289,7 +289,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	local vv_count = C.viklund_chain_count or 2
 	local vv_radius = (C.viklund_radius_base or 500) / 100
 	local vv_rad_step = (C.viklund_radius_step or 200) / 100
-	strings["logbook_viklund_vinyl_effect"] = string.format(
+	strings["csr_logbook_viklund_vinyl_effect"] = string.format(
 		"Gain {g}80%%{/} chance on hit to chain {g}%d{/} nearest enemies within {g}%gm{/} (+%gm per stack, linear) range. Chained enemies receive {g}%g%%{/} of the initial damage.",
 		vv_count,
 		vv_radius,
@@ -303,7 +303,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	local dz_spd = C.dozer_speed_penalty or 0.15
 	local dz_dodge = C.dozer_dodge_penalty or 5
 	local dz_min = C.dozer_speed_min or 0.40
-	strings["logbook_dozer_guide_effect"] = string.format(
+	strings["csr_logbook_dozer_guide_effect"] = string.format(
 		"Increases armor by {g}%g%%{/} (+%g%% per stack, linear) and damage by {g}%g%%{/} (+%g%% per stack, linear) from ranged and melee weapons.\nBut decreases movement speed by {r}%g%%{/} (+%g%% per stack, linear) (cannot be lower than %g%% of normal movement speed) and chance to dodge by {r}%d{/} (+%d per stack, linear).",
 		dz_armor * 100,
 		dz_armor * 100,
@@ -319,7 +319,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	-- GLASS PISTOL
 	local gp_dmg = C.glass_pistol_dmg_per_stack or 1.75
 	local gp_div = C.glass_pistol_div_per_stack or 2
-	strings["logbook_glass_pistol_effect"] = string.format(
+	strings["csr_logbook_glass_pistol_effect"] = string.format(
 		"Multiplies damage from ranged and melee weapons by {g}x%g{/} (x%g per stack, multiplicative).\nBut divides max health and armor by {r}%d{/} (+%d per stack, multiplicative).",
 		gp_dmg,
 		gp_dmg,
@@ -331,7 +331,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	local eq_bonus = C.equalizer_bonus or 0.5
 	local eq_penalty = C.equalizer_penalty or 0.5
 	local eq_penalty_mult = 1 - eq_penalty
-	strings["logbook_equalizer_effect"] = string.format(
+	strings["csr_logbook_equalizer_effect"] = string.format(
 		"Increases damage against special enemies by {g}%g%%{/} (+%g%% per stack, linear).\nBut multiplies damage against regular enemies by {r}x%g{/} (x%g per stack, multiplicative).",
 		eq_bonus * 100,
 		eq_bonus * 100,
@@ -345,7 +345,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	local dmt_radius_m = (C.dmt_base_radius or 300) / 100
 	local dmt_radius_step_m = (C.dmt_radius_per_stack or 200) / 100
 	local dmt_ally = C.dmt_ally_mult or 0.20
-	strings["logbook_dead_mans_trigger_effect"] = string.format(
+	strings["csr_logbook_dead_mans_trigger_effect"] = string.format(
 		"When going down you explode dealing {g}%g{/} (+%g per stack, linear) damage in a {g}%g{/} (+%g per stack, linear) meter radius. Damage scales with Crime Spree rank.\nBut allies within the radius take {r}%g%%{/} of the damage.",
 		dmt_dmg_display,
 		dmt_extra_display,
@@ -358,7 +358,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	local ff_radius_m = (C.familiar_friend_radius or 600) / 100
 	local ff_dmg_display = (C.familiar_friend_damage or 2000) / 5
 	local ff_cooldown = C.familiar_friend_cooldown or 60
-	strings["logbook_familiar_friend_effect"] = string.format(
+	strings["csr_logbook_familiar_friend_effect"] = string.format(
 		"Release spike nova around you in {g}%gm{/} that deals {g}%g{/} damage. Damage scales with CS rank. Cooldown {b}%gs{/}.",
 		ff_radius_m,
 		ff_dmg_display,
@@ -366,7 +366,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	)
 
 	local ss_speed_pct = ((C.side_satchel_carry_speed_mult or 1.20) - 1) * 100
-	strings["logbook_side_satchel_effect"] = string.format(
+	strings["csr_logbook_side_satchel_effect"] = string.format(
 		"{g} Doubles the amount of mission equipment you can carry{/} (ex. C4, keycards, planks, etc.). Increases movement speed while you carry a bag by {g}%g%%{/}",
 		ss_speed_pct
 	)
@@ -375,7 +375,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	local turron_dr_pct_disp = (C.turron_dr_pct or 0.33) * 100
 	local turron_dr_dur = C.turron_dr_duration or 5
 	local turron_cd = C.turron_cooldown or 90
-	strings["logbook_turron_effect"] = string.format(
+	strings["csr_logbook_turron_effect"] = string.format(
 		"Instantly heal {g}%g%% of your max health{/} and gain {g}%g%% damage reduction{/} for {b}%g{/} seconds. Cooldown {b}%g{/} seconds.",
 		turron_heal_pct_disp,
 		turron_dr_pct_disp,
@@ -387,7 +387,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	local hippo_aura_radius_m = (C.hippocratic_aura_radius or 500) / 100
 	local hippo_heal_pct_disp = (C.hippocratic_heal_pct_per_tick or 0.05) * 100
 	local hippo_respawn_min = (C.hippocratic_respawn_delay or 360) / 60
-	strings["logbook_hippocratic_oath_effect"] = string.format(
+	strings["csr_logbook_hippocratic_oath_effect"] = string.format(
 		"On loud transition, spawns a {g}medic that fights on your side{/}. Every {b}%g{/} seconds medic releases aura with {g}%gm{/} radius, that heals {g}%g%% of health{/}. After death, the medic respawns {b}%g{/} minutes later.",
 		hippo_aura_tick,
 		hippo_aura_radius_m,
@@ -440,7 +440,7 @@ function LocalizationManager:text(string_id, macros)
 
 		-- Show Total ONLY in the view menu (CSR_FilterForUI = true), NOT in the selection popup
 		if CSR_FilterForUI then
-			local total_stacks = count_modifier_stacks("less_concealment")
+			local total_stacks = count_modifier_stacks("csr_less_concealment")
 
 			if total_stacks >= 1 then
 				-- Reset counter if more than 0.5s has passed (new menu open)

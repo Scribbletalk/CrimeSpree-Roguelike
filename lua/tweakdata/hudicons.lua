@@ -2,7 +2,7 @@
 --
 -- U1 refactor port. Disk paths re-pointed to the refactor mod's new asset
 -- layout (assets/gui/...). The fixed engine DB targets
--- (guis/textures/pd2/crime_spree/*) are UNCHANGED — the logbook and other
+-- (guis/textures/pd2/crime_spree/csr_*) are UNCHANGED — the logbook and other
 -- CSR surfaces resolve icons by those DB ids, so they must not move.
 --
 -- Removed during the port (files never existed in the collected asset set, and
@@ -20,103 +20,103 @@ local mod_path = ModPath
 
 -- Item icons
 local dog_tags_file = mod_path .. "assets/gui/items/common/dog_tags.dds"
-local dog_tags_path = "guis/textures/pd2/crime_spree/dog_tags"
+local dog_tags_path = "guis/textures/pd2/crime_spree/csr_dog_tags"
 local bonnie_chip_file = mod_path .. "assets/gui/items/rare/bonnie_lucky_chip.dds"
-local bonnie_chip_path = "guis/textures/pd2/crime_spree/bonnie_chip"
+local bonnie_chip_path = "guis/textures/pd2/crime_spree/csr_bonnie_chip"
 local falcogini_keys_file = mod_path .. "assets/gui/items/uncommon/falcogini_keys.dds"
-local falcogini_keys_path = "guis/textures/pd2/crime_spree/falcogini_keys"
+local falcogini_keys_path = "guis/textures/pd2/crime_spree/csr_falcogini_keys"
 local glass_pistol_file = mod_path .. "assets/gui/items/contraband/glass_pistol.dds"
-local glass_pistol_path = "guis/textures/pd2/crime_spree/glass_pistol"
+local glass_pistol_path = "guis/textures/pd2/crime_spree/csr_glass_pistol"
 local bullets_file = mod_path .. "assets/gui/items/uncommon/evidence_rounds.dds"
-local bullets_path = "guis/textures/pd2/crime_spree/evidence_rounds"
+local bullets_path = "guis/textures/pd2/crime_spree/csr_evidence_rounds"
 local plush_shark_file = mod_path .. "assets/gui/items/rare/plush_shark.dds"
-local plush_shark_path = "guis/textures/pd2/crime_spree/plush_shark"
+local plush_shark_path = "guis/textures/pd2/crime_spree/csr_plush_shark"
 local toolbox_file = mod_path .. "assets/gui/items/uncommon/wolf_toolbox.dds"
-local toolbox_path = "guis/textures/pd2/crime_spree/toolbox"
+local toolbox_path = "guis/textures/pd2/crime_spree/csr_toolbox"
 local dozer_guide_file = mod_path .. "assets/gui/items/contraband/dozer_guide.dds"
-local dozer_guide_path = "guis/textures/pd2/crime_spree/dozer_guide"
+local dozer_guide_path = "guis/textures/pd2/crime_spree/csr_dozer_guide"
 local duct_tape_file = mod_path .. "assets/gui/items/common/duct_tape.dds"
-local duct_tape_path = "guis/textures/pd2/crime_spree/duct_tape"
+local duct_tape_path = "guis/textures/pd2/crime_spree/csr_duct_tape"
 local escape_plan_file = mod_path .. "assets/gui/items/common/escape_plan.dds"
-local escape_plan_path = "guis/textures/pd2/crime_spree/escape_plan"
+local escape_plan_path = "guis/textures/pd2/crime_spree/csr_escape_plan"
 local worn_bandaid_file = mod_path .. "assets/gui/items/common/worn_band_aid.dds"
-local worn_bandaid_path = "guis/textures/pd2/crime_spree/worn_bandaid"
+local worn_bandaid_path = "guis/textures/pd2/crime_spree/csr_worn_bandaid"
 local rebar_file = mod_path .. "assets/gui/items/common/piece_of_rebar.dds"
-local rebar_path = "guis/textures/pd2/crime_spree/rebar"
+local rebar_path = "guis/textures/pd2/crime_spree/csr_rebar"
 local overkill_rush_file = mod_path .. "assets/gui/items/uncommon/overkill_rush.dds"
-local overkill_rush_path = "guis/textures/pd2/crime_spree/overkill_rush"
+local overkill_rush_path = "guis/textures/pd2/crime_spree/csr_overkill_rush"
 local pink_slip_file = mod_path .. "assets/gui/items/uncommon/pink_slip.dds"
-local pink_slip_path = "guis/textures/pd2/crime_spree/pink_slip"
+local pink_slip_path = "guis/textures/pd2/crime_spree/csr_pink_slip"
 local the_edge_file = mod_path .. "assets/gui/items/uncommon/the_edge.dds"
-local the_edge_path = "guis/textures/pd2/crime_spree/the_edge"
+local the_edge_path = "guis/textures/pd2/crime_spree/csr_the_edge"
 local jiro_last_wish_file = mod_path .. "assets/gui/items/rare/jiro_last_wish.dds"
-local jiro_last_wish_path = "guis/textures/pd2/crime_spree/jiro_last_wish"
+local jiro_last_wish_path = "guis/textures/pd2/crime_spree/csr_jiro_last_wish"
 local dearest_possession_file = mod_path .. "assets/gui/items/rare/dearest_possession.dds"
-local dearest_possession_path = "guis/textures/pd2/crime_spree/dearest_possession"
+local dearest_possession_path = "guis/textures/pd2/crime_spree/csr_dearest_possession"
 local viklund_vinyl_file = mod_path .. "assets/gui/items/rare/viklund_vinyl.dds"
-local viklund_vinyl_path = "guis/textures/pd2/crime_spree/viklund_vinyl"
+local viklund_vinyl_path = "guis/textures/pd2/crime_spree/csr_viklund_vinyl"
 local equalizer_file = mod_path .. "assets/gui/items/contraband/equalizer.dds"
-local equalizer_path = "guis/textures/pd2/crime_spree/equalizer"
+local equalizer_path = "guis/textures/pd2/crime_spree/csr_equalizer"
 local crooked_badge_file = mod_path .. "assets/gui/items/contraband/crooked_badge.dds"
-local crooked_badge_path = "guis/textures/pd2/crime_spree/crooked_badge"
+local crooked_badge_path = "guis/textures/pd2/crime_spree/csr_crooked_badge"
 local dead_mans_trigger_file = mod_path .. "assets/gui/items/contraband/dead_mans_trigger.dds"
-local dead_mans_trigger_path = "guis/textures/pd2/crime_spree/dead_mans_trigger"
+local dead_mans_trigger_path = "guis/textures/pd2/crime_spree/csr_dead_mans_trigger"
 local half_a_glass_file = mod_path .. "assets/gui/items/common/half_a_glass.dds"
-local half_a_glass_path = "guis/textures/pd2/crime_spree/half_a_glass"
+local half_a_glass_path = "guis/textures/pd2/crime_spree/csr_half_a_glass"
 local cup_of_joe_file = mod_path .. "assets/gui/items/common/cup_of_joe.dds"
-local cup_of_joe_path = "guis/textures/pd2/crime_spree/cup_of_joe"
+local cup_of_joe_path = "guis/textures/pd2/crime_spree/csr_cup_of_joe"
 local lockes_beret_file = mod_path .. "assets/gui/items/rare/locke_beret.dds"
-local lockes_beret_path = "guis/textures/pd2/crime_spree/lockes_beret"
+local lockes_beret_path = "guis/textures/pd2/crime_spree/csr_lockes_beret"
 -- Wildcard icons
 local familiar_friend_file = mod_path .. "assets/gui/items/wildcard/familiar_friend.dds"
-local familiar_friend_path = "guis/textures/pd2/crime_spree/familiar_friend"
+local familiar_friend_path = "guis/textures/pd2/crime_spree/csr_familiar_friend"
 local side_satchel_file = mod_path .. "assets/gui/items/wildcard/side_satchel.dds"
-local side_satchel_path = "guis/textures/pd2/crime_spree/side_satchel"
+local side_satchel_path = "guis/textures/pd2/crime_spree/csr_side_satchel"
 local turron_file = mod_path .. "assets/gui/items/wildcard/turron.dds"
-local turron_path = "guis/textures/pd2/crime_spree/turron"
+local turron_path = "guis/textures/pd2/crime_spree/csr_turron"
 local hippocratic_oath_file = mod_path .. "assets/gui/items/wildcard/hippocratic_oath.dds"
-local hippocratic_oath_path = "guis/textures/pd2/crime_spree/hippocratic_oath"
+local hippocratic_oath_path = "guis/textures/pd2/crime_spree/csr_hippocratic_oath"
 -- Pre-mirrored wildcard icons. Used ONLY by hud_wildcard_slot.lua: applying
 -- texture_rect={w,0,-w,h} to a mirrored DDS un-flips the visual AND reverses
 -- the VertexColorTexturedRadial sweep direction, giving the slot a CCW
 -- recharge animation without needing to mirror the icon everywhere else.
 local familiar_friend_mirror_file = mod_path .. "assets/gui/items/wildcard/familiar_friend_mirror.dds"
-local familiar_friend_mirror_path = "guis/textures/pd2/crime_spree/familiar_friend_mirror"
+local familiar_friend_mirror_path = "guis/textures/pd2/crime_spree/csr_familiar_friend_mirror"
 local side_satchel_mirror_file = mod_path .. "assets/gui/items/wildcard/side_satchel_mirror.dds"
-local side_satchel_mirror_path = "guis/textures/pd2/crime_spree/side_satchel_mirror"
+local side_satchel_mirror_path = "guis/textures/pd2/crime_spree/csr_side_satchel_mirror"
 local turron_mirror_file = mod_path .. "assets/gui/items/wildcard/turron_mirror.dds"
-local turron_mirror_path = "guis/textures/pd2/crime_spree/turron_mirror"
+local turron_mirror_path = "guis/textures/pd2/crime_spree/csr_turron_mirror"
 local hippocratic_oath_mirror_file = mod_path .. "assets/gui/items/wildcard/hippocratic_oath_mirror.dds"
-local hippocratic_oath_mirror_path = "guis/textures/pd2/crime_spree/hippocratic_oath_mirror"
+local hippocratic_oath_mirror_path = "guis/textures/pd2/crime_spree/csr_hippocratic_oath_mirror"
 -- Modifier icons
 local guilty_conscience_file = mod_path .. "assets/gui/modifiers/guilty_conscience.dds"
-local guilty_conscience_path = "guis/textures/pd2/crime_spree/guilty_conscience"
+local guilty_conscience_path = "guis/textures/pd2/crime_spree/csr_guilty_conscience"
 local shocking_surprise_file = mod_path .. "assets/gui/modifiers/shocking_surprise.dds"
-local shocking_surprise_path = "guis/textures/pd2/crime_spree/shocking_surprise"
+local shocking_surprise_path = "guis/textures/pd2/crime_spree/csr_shocking_surprise"
 
 -- Button icons
 local btn_back_file = mod_path .. "assets/gui/buttons/back.dds"
-local btn_back_path = "guis/textures/pd2/crime_spree/btn_back"
+local btn_back_path = "guis/textures/pd2/crime_spree/csr_btn_back"
 local btn_close_file = mod_path .. "assets/gui/buttons/close.dds"
-local btn_close_path = "guis/textures/pd2/crime_spree/btn_close"
+local btn_close_path = "guis/textures/pd2/crime_spree/csr_btn_close"
 
 -- Gage token icon (used by shop counter / reroll button / card prices)
 local gage_token_file = mod_path .. "assets/gui/gage_token.dds"
-local gage_token_path = "guis/textures/pd2/crime_spree/gage_token"
+local gage_token_path = "guis/textures/pd2/crime_spree/csr_gage_token"
 
 -- Scrap icon (single texture, tinted by rarity at draw time)
 local scrap_file = mod_path .. "assets/gui/items/scrap.dds"
-local scrap_path = "guis/textures/pd2/crime_spree/scrap"
+local scrap_path = "guis/textures/pd2/crime_spree/csr_scrap"
 
 -- Generic frame (one texture, tinted per rarity at draw time by the logbook /
 -- items page / selection popup). Old per-rarity frame variants never existed.
 local frame_file = mod_path .. "assets/gui/items/item_frame.dds"
-local frame_path = "guis/textures/pd2/crime_spree/frame"
+local frame_path = "guis/textures/pd2/crime_spree/csr_frame"
 
 -- Plush Shark guardian-invuln fullscreen vignette (blue pulse). Not an item icon;
 -- referenced by lua/items/csr_item_effects_regen.lua.
 local guilt_vignette_file = mod_path .. "assets/gui/misc/vignette.texture"
-local guilt_vignette_path = "guis/textures/pd2/crime_spree/guilt_vignette"
+local guilt_vignette_path = "guis/textures/pd2/crime_spree/csr_guilt_vignette"
 
 -- Load textures
 if DB and DB.create_entry then
@@ -203,147 +203,147 @@ function HudIconsTweakData:init()
 	old_icons_init(self)
 
 	-- Add icons directly into self (not into self.textures!)
-	self.dog_tags = {
+	self.csr_dog_tags = {
 		texture = dog_tags_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.scrap = {
+	self.csr_scrap = {
 		texture = scrap_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.bonnie_chip = {
+	self.csr_bonnie_chip = {
 		texture = bonnie_chip_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.falcogini_keys = {
+	self.csr_falcogini_keys = {
 		texture = falcogini_keys_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.glass_pistol = {
+	self.csr_glass_pistol = {
 		texture = glass_pistol_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.evidence_rounds = {
+	self.csr_evidence_rounds = {
 		texture = bullets_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.plush_shark = {
+	self.csr_plush_shark = {
 		texture = plush_shark_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.toolbox = {
+	self.csr_toolbox = {
 		texture = toolbox_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.dozer_guide = {
+	self.csr_dozer_guide = {
 		texture = dozer_guide_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.duct_tape = {
+	self.csr_duct_tape = {
 		texture = duct_tape_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.escape_plan = {
+	self.csr_escape_plan = {
 		texture = escape_plan_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.jiro_last_wish = {
+	self.csr_jiro_last_wish = {
 		texture = jiro_last_wish_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.dearest_possession = {
+	self.csr_dearest_possession = {
 		texture = dearest_possession_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.worn_bandaid = {
+	self.csr_worn_bandaid = {
 		texture = worn_bandaid_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.cup_of_joe = {
+	self.csr_cup_of_joe = {
 		texture = cup_of_joe_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.rebar = {
+	self.csr_rebar = {
 		texture = rebar_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.overkill_rush = {
+	self.csr_overkill_rush = {
 		texture = overkill_rush_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.pink_slip = {
+	self.csr_pink_slip = {
 		texture = pink_slip_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
-	self.the_edge = {
+	self.csr_the_edge = {
 		texture = the_edge_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.viklund_vinyl = {
+	self.csr_viklund_vinyl = {
 		texture = viklund_vinyl_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.equalizer = {
+	self.csr_equalizer = {
 		texture = equalizer_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.crooked_badge = {
+	self.csr_crooked_badge = {
 		texture = crooked_badge_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.dead_mans_trigger = {
+	self.csr_dead_mans_trigger = {
 		texture = dead_mans_trigger_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.half_a_glass = {
+	self.csr_half_a_glass = {
 		texture = half_a_glass_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.lockes_beret = {
+	self.csr_lockes_beret = {
 		texture = lockes_beret_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
 	-- Wildcard items
-	self.familiar_friend = {
+	self.csr_familiar_friend = {
 		texture = familiar_friend_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.side_satchel = {
+	self.csr_side_satchel = {
 		texture = side_satchel_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.turron = {
+	self.csr_turron = {
 		texture = turron_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.hippocratic_oath = {
+	self.csr_hippocratic_oath = {
 		texture = hippocratic_oath_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
@@ -351,38 +351,38 @@ function HudIconsTweakData:init()
 	-- Pre-mirrored wildcard icons. The HUD slot pairs these with
 	-- texture_rect={w,0,-w,h} so the icon LOOKS un-mirrored on screen but
 	-- VertexColorTexturedRadial sweeps counterclockwise instead of clockwise.
-	self.familiar_friend_mirror = {
+	self.csr_familiar_friend_mirror = {
 		texture = familiar_friend_mirror_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.side_satchel_mirror = {
+	self.csr_side_satchel_mirror = {
 		texture = side_satchel_mirror_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.turron_mirror = {
+	self.csr_turron_mirror = {
 		texture = turron_mirror_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	self.hippocratic_oath_mirror = {
+	self.csr_hippocratic_oath_mirror = {
 		texture = hippocratic_oath_mirror_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
 	-- Generic frame (tinted per rarity at draw time)
-	self.frame = {
+	self.csr_frame = {
 		texture = frame_path,
 		texture_rect = { 0, 0, 256, 256 },
 	}
 
 	-- Modifier icons
-	self.guilty_conscience = {
+	self.csr_guilty_conscience = {
 		texture = guilty_conscience_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
-	self.shocking_surprise = {
+	self.csr_shocking_surprise = {
 		texture = shocking_surprise_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}

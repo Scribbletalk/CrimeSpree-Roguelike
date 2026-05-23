@@ -9,11 +9,11 @@ end
 _G.CSR.register_item({
 	type = "escape_plan",
 	rarity = "common",
-	name = "logbook_escape_plan_name",
-	desc = "item_escape_plan_desc",
-	full_desc = "logbook_escape_plan_effect",
-	notes = "logbook_escape_plan_notes",
-	icon = "escape_plan",
+	name = "csr_logbook_escape_plan_name",
+	desc = "csr_item_escape_plan_desc",
+	full_desc = "csr_logbook_escape_plan_effect",
+	notes = "csr_logbook_escape_plan_notes",
+	icon = "csr_escape_plan",
 
 	hooks = {
 		-- Multiply PlayerStandard:_get_max_walk_speed by (1 + bonus), where

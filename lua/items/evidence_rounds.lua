@@ -17,11 +17,11 @@ local PER_STACK = 0.10
 _G.CSR.register_item({
 	type = "evidence_rounds",
 	rarity = "uncommon",
-	name = "logbook_evidence_rounds_name",
-	desc = "item_evidence_rounds_desc",
-	full_desc = "logbook_evidence_rounds_effect",
-	notes = "logbook_evidence_rounds_notes",
-	icon = "evidence_rounds",
+	name = "csr_logbook_evidence_rounds_name",
+	desc = "csr_item_evidence_rounds_desc",
+	full_desc = "csr_logbook_evidence_rounds_effect",
+	notes = "csr_logbook_evidence_rounds_notes",
+	icon = "csr_evidence_rounds",
 
 	hooks = {
 		-- Ranged: scale RaycastWeaponBase:_get_current_damage by (1 + bonus).

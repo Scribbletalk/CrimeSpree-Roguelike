@@ -91,7 +91,7 @@ Hooks:Add("MenuManagerBuildCustomMenus", "CSR_PauseMenuReturnToLobby", function(
 	-- item is already present.
 	if node._items then
 		for _, item in ipairs(node._items) do
-			if item.parameters and item:parameters().name == "return_to_lobby" then
+			if item.parameters and item:parameters().name == "csr_return_to_lobby" then
 				return
 			end
 		end
@@ -101,9 +101,9 @@ Hooks:Add("MenuManagerBuildCustomMenus", "CSR_PauseMenuReturnToLobby", function(
 		type = "CoreMenuItem.Item",
 	}
 	local params = {
-		name = "return_to_lobby",
-		text_id = "pause_return_to_lobby",
-		help_id = "pause_return_to_lobby_desc",
+		name = "csr_return_to_lobby",
+		text_id = "csr_pause_return_to_lobby",
+		help_id = "csr_pause_return_to_lobby_desc",
 		callback = "return_to_csr_lobby",
 		visible_callback = "return_to_csr_lobby_visible",
 		localize = "true",

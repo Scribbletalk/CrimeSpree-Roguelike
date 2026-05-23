@@ -64,11 +64,11 @@ end
 _G.CSR.register_item({
 	type = "pink_slip",
 	rarity = "uncommon",
-	name = "logbook_pink_slip_name",
-	desc = "item_pink_slip_desc",
-	full_desc = "logbook_pink_slip_effect",
-	notes = "logbook_pink_slip_notes",
-	icon = "pink_slip",
+	name = "csr_logbook_pink_slip_name",
+	desc = "csr_item_pink_slip_desc",
+	full_desc = "csr_logbook_pink_slip_effect",
+	notes = "csr_logbook_pink_slip_notes",
+	icon = "csr_pink_slip",
 
 	hooks = {
 		["lib/units/enemies/cop/copdamage"] = function()

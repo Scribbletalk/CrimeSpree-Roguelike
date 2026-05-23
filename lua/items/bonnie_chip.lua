@@ -95,11 +95,11 @@ end
 _G.CSR.register_item({
 	type = "bonnie_chip",
 	rarity = "rare",
-	name = "logbook_bonnie_chip_name",
-	desc = "item_bonnie_chip_desc",
-	full_desc = "logbook_bonnie_chip_effect",
-	notes = "logbook_bonnie_chip_notes",
-	icon = "bonnie_chip",
+	name = "csr_logbook_bonnie_chip_name",
+	desc = "csr_item_bonnie_chip_desc",
+	full_desc = "csr_logbook_bonnie_chip_effect",
+	notes = "csr_logbook_bonnie_chip_notes",
+	icon = "csr_bonnie_chip",
 
 	hooks = {
 		["lib/units/enemies/cop/copdamage"] = function()

@@ -62,13 +62,13 @@ local function build_difficulty_options()
 end
 
 local function add_difficulty_item(node)
-	if node:item("contract_difficulty") then
+	if node:item("csr_contract_difficulty") then
 		return
 	end
 
 	local params = {
-		name = "contract_difficulty",
-		text_id = "contract_difficulty",
+		name = "csr_contract_difficulty",
+		text_id = "csr_contract_difficulty",
 		callback = "change_csr_contract_difficulty",
 	}
 	local item = node:create_item(build_difficulty_options(), params)

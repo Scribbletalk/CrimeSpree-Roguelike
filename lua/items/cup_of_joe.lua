@@ -19,11 +19,11 @@ end
 _G.CSR.register_item({
 	type = "cup_of_joe",
 	rarity = "common",
-	name = "logbook_cup_of_joe_name",
-	desc = "item_cup_of_joe_desc",
-	full_desc = "logbook_cup_of_joe_effect",
-	notes = "logbook_cup_of_joe_notes",
-	icon = "cup_of_joe",
+	name = "csr_logbook_cup_of_joe_name",
+	desc = "csr_item_cup_of_joe_desc",
+	full_desc = "csr_logbook_cup_of_joe_effect",
+	notes = "csr_logbook_cup_of_joe_notes",
+	icon = "csr_cup_of_joe",
 
 	hooks = {
 		-- +10% to PlayerManager:stamina_multiplier per copy owned. It RETURNS a

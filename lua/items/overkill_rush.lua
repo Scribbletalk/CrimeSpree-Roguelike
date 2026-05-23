@@ -89,11 +89,11 @@ end
 _G.CSR.register_item({
 	type = "overkill_rush",
 	rarity = "uncommon",
-	name = "logbook_overkill_rush_name",
-	desc = "item_overkill_rush_desc",
-	full_desc = "logbook_overkill_rush_effect",
-	notes = "logbook_overkill_rush_notes",
-	icon = "overkill_rush",
+	name = "csr_logbook_overkill_rush_name",
+	desc = "csr_item_overkill_rush_desc",
+	full_desc = "csr_logbook_overkill_rush_effect",
+	notes = "csr_logbook_overkill_rush_notes",
+	icon = "csr_overkill_rush",
 
 	hooks = {
 		-- Kill detection: bump the streak on a confirmed local-player kill.

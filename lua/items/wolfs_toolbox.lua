@@ -115,12 +115,12 @@ end
 _G.CSR.register_item({
 	type = "wolfs_toolbox",
 	rarity = "uncommon",
-	name = "logbook_wolfs_toolbox_name",
-	desc = "item_wolfs_toolbox_desc",
-	full_desc = "logbook_wolfs_toolbox_effect",
-	notes = "logbook_wolfs_toolbox_notes",
+	name = "csr_logbook_wolfs_toolbox_name",
+	desc = "csr_item_wolfs_toolbox_desc",
+	full_desc = "csr_logbook_wolfs_toolbox_effect",
+	notes = "csr_logbook_wolfs_toolbox_notes",
 	-- Icon id is "toolbox" in hudicons.lua (legacy name), not csr_wolfs_toolbox.
-	icon = "toolbox",
+	icon = "csr_toolbox",
 
 	hooks = {
 		["lib/units/enemies/cop/copdamage"] = function()

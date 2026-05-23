@@ -91,17 +91,17 @@ Hooks:Add("MenuManagerInitialize", "CSR_OptionsCallbacks", function(menu_manager
 end)
 
 Hooks:Add("MenuManagerSetupCustomMenus", "CSR_OptionsSetup", function(menu_manager, nodes)
-	MenuHelper:NewMenu("options_menu")
-	MenuHelper:NewMenu("debug_menu")
+	MenuHelper:NewMenu("csr_options_menu")
+	MenuHelper:NewMenu("csr_debug_menu")
 end)
 
 Hooks:Add("MenuManagerBuildCustomMenus", "CSR_OptionsBuild", function(menu_manager, nodes)
-	nodes.csr_options_menu = MenuHelper:BuildMenu("options_menu", { back_callback = "options_back" })
-	MenuHelper:AddMenuItem(nodes.blt_options, "options_menu", "options_menu_title", "options_menu_desc")
+	nodes.csr_options_menu = MenuHelper:BuildMenu("csr_options_menu", { back_callback = "csr_options_back" })
+	MenuHelper:AddMenuItem(nodes.blt_options, "csr_options_menu", "csr_options_menu_title", "csr_options_menu_desc")
 
 	-- Debug Tools sub-menu, nested under the CSR options menu.
-	nodes.csr_debug_menu = MenuHelper:BuildMenu("debug_menu", { back_callback = "options_back" })
-	MenuHelper:AddMenuItem(nodes.csr_options_menu, "debug_menu", "debug_menu_title", "debug_menu_desc")
+	nodes.csr_debug_menu = MenuHelper:BuildMenu("csr_debug_menu", { back_callback = "csr_options_back" })
+	MenuHelper:AddMenuItem(nodes.csr_options_menu, "csr_debug_menu", "csr_debug_menu_title", "csr_debug_menu_desc")
 end)
 
 Hooks:Add("MenuManagerPopulateCustomMenus", "CSR_OptionsPopulate", function(menu_manager, nodes)
@@ -109,44 +109,44 @@ Hooks:Add("MenuManagerPopulateCustomMenus", "CSR_OptionsPopulate", function(menu
 
 	MenuHelper:AddToggle({
 		id = "debug_mode",
-		title = "debug_mode_title",
-		desc = "debug_mode_desc",
-		callback = "debug_mode_changed",
+		title = "csr_debug_mode_title",
+		desc = "csr_debug_mode_desc",
+		callback = "csr_debug_mode_changed",
 		value = debug_value,
-		menu_id = "options_menu",
+		menu_id = "csr_options_menu",
 		priority = 1,
 	})
 
 	local sfx_value = csr_read_setting("sfx_volume", 1.0)
 	MenuHelper:AddSlider({
 		id = "sfx_volume",
-		title = "sfx_volume_title",
-		desc = "sfx_volume_desc",
-		callback = "sfx_volume_changed",
+		title = "csr_sfx_volume_title",
+		desc = "csr_sfx_volume_desc",
+		callback = "csr_sfx_volume_changed",
 		value = sfx_value * 100,
 		min = 0,
 		max = 100,
 		step = 5,
 		show_value = true,
-		menu_id = "options_menu",
+		menu_id = "csr_options_menu",
 		priority = 2,
 	})
 
 	MenuHelper:AddButton({
 		id = "grant_all_items",
-		title = "grant_items_title",
-		desc = "grant_items_desc",
-		callback = "grant_all_items",
-		menu_id = "debug_menu",
+		title = "csr_grant_items_title",
+		desc = "csr_grant_items_desc",
+		callback = "csr_grant_all_items",
+		menu_id = "csr_debug_menu",
 		priority = 2,
 	})
 
 	MenuHelper:AddButton({
 		id = "grant_cup_of_joe",
-		title = "grant_coj_title",
-		desc = "grant_coj_desc",
-		callback = "grant_cup_of_joe",
-		menu_id = "debug_menu",
+		title = "csr_grant_coj_title",
+		desc = "csr_grant_coj_desc",
+		callback = "csr_grant_cup_of_joe",
+		menu_id = "csr_debug_menu",
 		priority = 1,
 	})
 end)

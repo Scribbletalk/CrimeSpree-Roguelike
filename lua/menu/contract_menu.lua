@@ -110,7 +110,7 @@ function CSRContractMenuComponent:_setup()
 		vertical = "top",
 		align = "left",
 		layer = 1,
-		text = managers.localization:to_upper_text("header_title"),
+		text = managers.localization:to_upper_text("csr_header_title"),
 		font_size = tweak_data.menu.pd2_large_font_size,
 		font = tweak_data.menu.pd2_large_font,
 		color = tweak_data.screen_colors.text,
@@ -191,7 +191,7 @@ function CSRContractMenuComponent:_setup_new_crime_spree(text_w, text_h)
 		layer = 1,
 		vertical = "top",
 		align = "left",
-		text = managers.localization:to_upper_text("contract_difficulty"),
+		text = managers.localization:to_upper_text("csr_contract_difficulty"),
 		font_size = tweak_data.menu.pd2_medium_font_size,
 		font = tweak_data.menu.pd2_medium_font,
 		color = tweak_data.screen_colors.text,
@@ -250,12 +250,13 @@ function CSRContractMenuComponent:_setup_new_crime_spree(text_w, text_h)
 	-- reads "active" once a run is in flight and "none" before one starts. Read
 	-- once at setup -- the run state can't change while this contract menu is open.
 	local spree_active = managers.csr and managers.csr:is_active()
-	local spree_status = managers.localization:text(spree_active and "current_spree_active" or "current_spree_none")
+	local spree_status =
+		managers.localization:text(spree_active and "csr_current_spree_active" or "csr_current_spree_none")
 	local spree_line = self._contract_panel:text({
 		layer = 1,
 		vertical = "top",
 		align = "left",
-		text = managers.localization:to_upper_text("current_spree", { status = spree_status }),
+		text = managers.localization:to_upper_text("csr_current_spree", { status = spree_status }),
 		font_size = tweak_data.menu.pd2_medium_font_size,
 		font = tweak_data.menu.pd2_medium_font,
 		color = tweak_data.screen_colors.text,

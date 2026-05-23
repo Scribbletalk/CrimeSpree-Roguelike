@@ -285,7 +285,7 @@ function MenuCallbackHandler:end_csr(item, node)
 	-- CSR-owned key (contract_wiring.lua), NOT the vanilla
 	-- dialog_are_you_sure_you_want_stop_cs: End Spree ends the run AND grants
 	-- rewards, and overriding the vanilla key would leak into vanilla CS.
-	dialog_data.text = managers.localization:text("dialog_end_spree")
+	dialog_data.text = managers.localization:text("csr_dialog_end_spree")
 
 	dialog_data.id = "stop_crime_spree"
 	local yes_button = {

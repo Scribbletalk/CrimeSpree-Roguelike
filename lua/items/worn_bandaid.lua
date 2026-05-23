@@ -9,11 +9,11 @@ end
 _G.CSR.register_item({
 	type = "worn_bandaid",
 	rarity = "common",
-	name = "logbook_worn_bandaid_name",
-	desc = "item_worn_bandaid_desc",
-	full_desc = "logbook_worn_bandaid_effect",
-	notes = "logbook_worn_bandaid_notes",
-	icon = "worn_bandaid",
+	name = "csr_logbook_worn_bandaid_name",
+	desc = "csr_item_worn_bandaid_desc",
+	full_desc = "csr_logbook_worn_bandaid_effect",
+	notes = "csr_logbook_worn_bandaid_notes",
+	icon = "csr_worn_bandaid",
 
 	hooks = {
 		-- Heal-over-time on PlayerDamage:update (local player only -- husks use

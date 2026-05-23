@@ -251,11 +251,11 @@ local LOGBOOK_ICON_SCALE = {
 -- Rarity frame icons (same textures as items_page and selection popup)
 -- All rarities use the same frame (rare) to avoid icon sizing issues
 local RARITY_FRAMES = {
-	common = { frame = "frame", color = Color.white },
-	uncommon = { frame = "frame", color = Color(0, 0.95, 0) },
-	rare = { frame = "frame", color = Color(0.3, 0.7, 1) },
-	contraband = { frame = "frame", color = Color(1, 0.4, 0) },
-	wildcard = { frame = "frame", color = Color(1, 0.3, 0.8) },
+	common = { frame = "csr_frame", color = Color.white },
+	uncommon = { frame = "csr_frame", color = Color(0, 0.95, 0) },
+	rare = { frame = "csr_frame", color = Color(0.3, 0.7, 1) },
+	contraband = { frame = "csr_frame", color = Color(1, 0.4, 0) },
+	wildcard = { frame = "csr_frame", color = Color(1, 0.3, 0.8) },
 }
 
 CrimeSpreeLogbookMenuComponent = CrimeSpreeLogbookMenuComponent or class()
@@ -497,7 +497,7 @@ function CrimeSpreeLogbookMenuComponent:_setup_logbook()
 	self._close_btn_panel:set_y(btn_padding)
 	local close_offset = math.round((close_hitbox - close_icon_size) / 2)
 	self._close_btn_panel:bitmap({
-		texture = "guis/textures/pd2/crime_spree/btn_close",
+		texture = "guis/textures/pd2/crime_spree/csr_btn_close",
 		w = close_icon_size,
 		h = close_icon_size,
 		x = close_offset,
@@ -1136,7 +1136,7 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 	end
 
 	-- Effect alongside icon; sub-panel anchors wrap to x=0 of the sub-panel
-	local loc_key = "logbook_" .. item_data.id .. "_effect"
+	local loc_key = "csr_logbook_" .. item_data.id .. "_effect"
 	local effect_text = managers.localization:text(loc_key)
 	if not effect_text or effect_text == loc_key then
 		effect_text = item_data.effect_en
@@ -1218,7 +1218,7 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 	local notes_params = item_data.id == "evidence_rounds"
 			and { rounds = tostring(math.max(31, _G.CSR_BulletsFiredToday or 0)) }
 		or nil
-	local notes_text = managers.localization:text("logbook_" .. item_data.id .. "_notes", notes_params)
+	local notes_text = managers.localization:text("csr_logbook_" .. item_data.id .. "_notes", notes_params)
 	if notes_text and notes_text ~= "" then
 		self._details_panel:text({
 			name = "lore_title",
@@ -1260,7 +1260,7 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 	self._back_btn_panel:set_right(panel_w - btn_padding)
 	self._back_btn_panel:set_y(btn_padding)
 	self._back_btn_panel:bitmap({
-		texture = "guis/textures/pd2/crime_spree/btn_back",
+		texture = "guis/textures/pd2/crime_spree/csr_btn_back",
 		w = btn_size,
 		h = btn_size,
 		blend_mode = "add",

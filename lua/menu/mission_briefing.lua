@@ -804,9 +804,9 @@ function CSRMissionBriefing:init(hud, workspace)
 		local C = managers.csr
 		local hl = Color(1, 1, 1, 0)
 		local glyph = utf8.char(0xE018)
-		local missions_p = managers.localization:to_upper_text("lobby_missions_completed") .. ": "
-		local rank_p = managers.localization:to_upper_text("lobby_rank") .. ": "
-		local diff_p = managers.localization:to_upper_text("lobby_difficulty") .. ": "
+		local missions_p = managers.localization:to_upper_text("csr_lobby_missions_completed") .. ": "
+		local rank_p = managers.localization:to_upper_text("csr_lobby_rank") .. ": "
+		local diff_p = managers.localization:to_upper_text("csr_lobby_difficulty") .. ": "
 		local diff_id = C.difficulty and C:difficulty()
 		local diff_name_id = diff_id and tweak_data.difficulty_name_ids and tweak_data.difficulty_name_ids[diff_id]
 		local diff_str = diff_name_id and managers.localization:to_upper_text(diff_name_id) or tostring(diff_id)

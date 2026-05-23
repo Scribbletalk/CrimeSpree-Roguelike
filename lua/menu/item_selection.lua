@@ -247,7 +247,7 @@ function CSRItemSelectionButton:set_item(data)
 	self._desc:set_text(self._data.desc or "")
 
 	-- Rarity frame: tint per the item's rarity (white = common).
-	local frame_tex, frame_rect = tweak_data.hud_icons:get_icon_data("frame")
+	local frame_tex, frame_rect = tweak_data.hud_icons:get_icon_data("csr_frame")
 	self._frame:set_image(frame_tex)
 	self._frame:set_texture_rect(unpack(frame_rect))
 	self._frame:set_color(RARITY_COLORS[self._data.rarity] or Color.white)

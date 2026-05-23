@@ -52,11 +52,11 @@ end
 _G.CSR.register_item({
 	type = "rebar",
 	rarity = "common",
-	name = "logbook_rebar_name",
-	desc = "item_rebar_desc",
-	full_desc = "logbook_rebar_effect",
-	notes = "logbook_rebar_notes",
-	icon = "rebar",
+	name = "csr_logbook_rebar_name",
+	desc = "csr_item_rebar_desc",
+	full_desc = "csr_logbook_rebar_effect",
+	notes = "csr_logbook_rebar_notes",
+	icon = "csr_rebar",
 
 	hooks = {
 		["lib/units/enemies/cop/copdamage"] = function()

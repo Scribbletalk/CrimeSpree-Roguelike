@@ -10,11 +10,11 @@ end
 _G.CSR.register_item({
 	type = "dog_tags",
 	rarity = "common",
-	name = "logbook_dog_tags_name",
-	desc = "item_dog_tags_desc",
-	full_desc = "logbook_dog_tags_effect",
-	notes = "logbook_dog_tags_notes",
-	icon = "dog_tags",
+	name = "csr_logbook_dog_tags_name",
+	desc = "csr_item_dog_tags_desc",
+	full_desc = "csr_logbook_dog_tags_effect",
+	notes = "csr_logbook_dog_tags_notes",
+	icon = "csr_dog_tags",
 
 	hooks = {
 		-- +10% to PlayerManager:health_skill_multiplier per copy owned. Return-value

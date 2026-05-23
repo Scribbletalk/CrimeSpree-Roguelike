@@ -125,7 +125,7 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_REMINDER_INPUT_HOOKED then
 		end
 
 		local count = unselected_item_count()
-		self._csr_reminder_text:set_text(managers.localization:to_upper_text("lobby_unselected_items", {
+		self._csr_reminder_text:set_text(managers.localization:to_upper_text("csr_lobby_unselected_items", {
 			count = count,
 		}))
 

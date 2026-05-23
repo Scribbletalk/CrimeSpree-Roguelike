@@ -9,11 +9,11 @@ end
 _G.CSR.register_item({
 	type = "duct_tape",
 	rarity = "common",
-	name = "logbook_duct_tape_name",
-	desc = "item_duct_tape_desc",
-	full_desc = "logbook_duct_tape_effect",
-	notes = "logbook_duct_tape_notes",
-	icon = "duct_tape",
+	name = "csr_logbook_duct_tape_name",
+	desc = "csr_item_duct_tape_desc",
+	full_desc = "csr_logbook_duct_tape_effect",
+	notes = "csr_logbook_duct_tape_notes",
+	icon = "csr_duct_tape",
 
 	hooks = {
 		-- Divide BaseInteractionExt:_get_timer by (1 + 0.10*owned) -- linear CSR

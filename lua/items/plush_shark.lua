@@ -21,7 +21,7 @@ if not (_G.CSR and _G.CSR.register_item) then
 end
 
 -- Invuln vignette (DB id registered in lua/tweakdata/hudicons.lua).
-local PLUSH_VIGNETTE = "guis/textures/pd2/crime_spree/guilt_vignette"
+local PLUSH_VIGNETTE = "guis/textures/pd2/crime_spree/csr_guilt_vignette"
 
 -- True only for the local player's PlayerDamage (remote husks are ignored).
 local function is_local_pd(self)
@@ -168,11 +168,11 @@ end
 _G.CSR.register_item({
 	type = "plush_shark",
 	rarity = "rare",
-	name = "logbook_plush_shark_name",
-	desc = "item_plush_shark_desc",
-	full_desc = "logbook_plush_shark_effect",
-	notes = "logbook_plush_shark_notes",
-	icon = "plush_shark",
+	name = "csr_logbook_plush_shark_name",
+	desc = "csr_item_plush_shark_desc",
+	full_desc = "csr_logbook_plush_shark_effect",
+	notes = "csr_logbook_plush_shark_notes",
+	icon = "csr_plush_shark",
 
 	hooks = {
 		["lib/units/beings/player/playerdamage"] = function()
