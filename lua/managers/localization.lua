@@ -165,8 +165,8 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 
 	-- HALF-A-GLASS
 	local hg_refill = C.half_a_glass_refill or 0.15
-	local hg_first = C.half_a_glass_max_ammo_first or 0.02
-	local hg_extra = C.half_a_glass_max_ammo_extra or 0.01
+	local hg_first = C.half_a_glass_max_ammo_first or 0.04
+	local hg_extra = C.half_a_glass_max_ammo_extra or 0.02
 	strings["csr_logbook_half_a_glass_effect"] = string.format(
 		"Picking up a Gage package instantly refills {g}%g%%{/} ammo for primary and secondary weapons and increases their max ammo by {g}%g%%{/} (+%g%% per stack, linear) for the rest of the mission.",
 		hg_refill * 100,
@@ -285,7 +285,7 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 	)
 
 	-- VIKLUND'S VINYL
-	local vv_dmg_pct = C.viklund_chain_dmg_pct or 0.25
+	local vv_dmg_pct = C.viklund_chain_dmg_pct or 0.20
 	local vv_count = C.viklund_chain_count or 2
 	local vv_radius = (C.viklund_radius_base or 500) / 100
 	local vv_rad_step = (C.viklund_radius_step or 200) / 100
