@@ -134,6 +134,21 @@ function CSRGameManager:init()
 	self:on_item_removed(reconcile_cb)
 	self:reconcile_callback_items()
 	self:_setup_temporary_job()
+	-- Re-populate the buyable mission Assets for the loading CSR level. Vanilla CS
+	-- does this in CrimeSpreeManager:_setup right after _setup_temporary_job (gated
+	-- on its CS being active); CSR replaced that flow, so the Assets tab stayed
+	-- empty -- MissionAssetsManager:init() ran before our narrative chain was set,
+	-- so its own _setup_mission_assets early-returned on a nil level and never
+	-- re-ran. Host/SP only (the asset list is host-authoritative and synced to
+	-- clients via the host); is_run_active() leaves non-CSR sessions untouched.
+	-- Clear first: _setup_mission_assets APPENDS (the reset lives in _setup), so a
+	-- re-init would otherwise duplicate every asset.
+	if self:is_run_active() and managers.assets and managers.assets._setup_mission_assets then
+		if managers.assets._global then
+			managers.assets._global.assets = {}
+		end
+		managers.assets:_setup_mission_assets()
+	end
 	log_csr("CSRGameManager initialised; version=" .. tostring(self._meta.version))
 end
 
