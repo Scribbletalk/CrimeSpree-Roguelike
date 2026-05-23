@@ -24,19 +24,9 @@ if _G.CSR and _G.CSR.register_item and not _G._CSR_BUILTINS_REGISTERED then
 	_G._CSR_BUILTINS_REGISTERED = true
 
 	-- ============ COMMON ============
-
-	_G.CSR.register_item({
-		type = "cup_of_joe",
-		rarity = "common",
-		name = "CUP OF JOE",
-		desc = "Increases your stamina.",
-		-- per_stack mirrors the legacy CSR constant cup_of_joe_per_stack
-		-- (0.10). Applied additively on top of PlayerManager:stamina_multiplier
-		-- (vanilla returns 1 + skill_bonuses; we add 0.10*stacks). Same shape
-		-- as Dog Tags / max_health -- see csr_item_effects_playerstats.lua.
-		icon = "csr_cup_of_joe",
-		effect = { kind = "stat_mul", stat = "max_stamina", per_stack = 0.10 },
-	})
+	-- NOTE: cup_of_joe migrated to the per-item-file model (lua/item_defs/cup_of_joe.lua,
+	-- auto-loaded). Remaining items below still use the kind/dispatcher model until
+	-- they migrate too.
 
 	_G.CSR.register_item({
 		type = "dog_tags",
@@ -185,6 +175,34 @@ if _G.CSR and _G.CSR.register_item and not _G._CSR_BUILTINS_REGISTERED then
 	})
 
 	_G.CSR.register_item({
+		type = "the_edge",
+		rarity = "uncommon",
+		name = "THE EDGE",
+		-- Short flavor, verbatim from the 6.2 authored source (Rule #15). The
+		-- threshold / heal / cooldown numbers are Logbook-tier, not the card.
+		desc = "When critically low on health,\nrestores health and grants brief invulnerability.",
+		icon = "csr_the_edge",
+		-- Cooldown-gated emergency heal. When the local player's HP drops below
+		-- hp_threshold (of max) -- or a hit would be lethal -- and the cooldown is
+		-- ready, heal max_hp*heal_pct + (heal_flat + (stacks-1)*heal_flat_extra)
+		-- display HP (flat part /stats_present_multiplier to internal), then grant
+		-- `invuln` seconds of invulnerability. All values mirror the 6.2 constants
+		-- (the_edge_hp_threshold 0.10 / _heal_pct 0.20 / _heal_flat 20 /
+		-- _heal_flat_extra 40 / _invuln 1.0 / _cooldown 120). Applied by
+		-- csr_item_effects_regen.lua; the invuln shares one _chk_can_take_dmg
+		-- PostHook with Plush Shark.
+		effect = {
+			kind = "emergency_heal",
+			hp_threshold = 0.10,
+			heal_pct = 0.20,
+			heal_flat = 20,
+			heal_flat_extra = 40,
+			invuln = 1.0,
+			cooldown = 120,
+		},
+	})
+
+	_G.CSR.register_item({
 		type = "wolfs_toolbox",
 		rarity = "uncommon",
 		name = "WOLF'S TOOLBOX",
@@ -243,5 +261,30 @@ if _G.CSR and _G.CSR.register_item and not _G._CSR_BUILTINS_REGISTERED then
 		-- stat = "melee_damage" applies to melee swings only (csr_item_effects_melee.lua);
 		-- contrast stat = "damage" (Evidence Rounds) which scales bullet AND melee.
 		effect = { kind = "stat_mul", stat = "melee_damage", per_stack = 0.5 },
+	})
+
+	_G.CSR.register_item({
+		type = "plush_shark",
+		rarity = "rare",
+		name = "PLUSH SHARK",
+		desc = "Saves you from custody once per life,\nrestores 1 down, full health and armor,\nthen grants brief invulnerability.",
+		icon = "csr_plush_shark",
+		-- Guardian angel: fires on the LAST down before custody (revives == 1, the
+		-- next bleed-out would route to custody). Cancels it by healing to full,
+		-- restoring one down (revives +1, capped at the player's max lives) and
+		-- armor, then granting invuln_base + (stacks-1)*invuln_extra seconds of
+		-- invulnerability. One charge per life, refreshed on (re)spawn -- including
+		-- custody release -- but NOT on a teammate bleed-out revive. Values mirror
+		-- the 6.2 constants (plush_shark_heal_pct 1.00 / _restore_armor true /
+		-- _invuln_base 10 / _invuln_extra 20). Applied by
+		-- csr_item_effects_regen.lua; the invuln shares one _chk_can_take_dmg
+		-- PostHook with The Edge.
+		effect = {
+			kind = "guardian_revive",
+			heal_pct = 1.00,
+			restore_armor = true,
+			invuln_base = 10,
+			invuln_extra = 20,
+		},
 	})
 end

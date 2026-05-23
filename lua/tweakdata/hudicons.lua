@@ -113,6 +113,11 @@ local scrap_path = "guis/textures/pd2/crime_spree/csr_scrap"
 local frame_file = mod_path .. "assets/gui/items/item_frame.dds"
 local frame_path = "guis/textures/pd2/crime_spree/csr_frame"
 
+-- Plush Shark guardian-invuln fullscreen vignette (blue pulse). Not an item icon;
+-- referenced by lua/items/csr_item_effects_regen.lua.
+local guilt_vignette_file = mod_path .. "assets/gui/misc/vignette.texture"
+local guilt_vignette_path = "guis/textures/pd2/crime_spree/csr_guilt_vignette"
+
 -- Load textures
 if DB and DB.create_entry then
 	DB:create_entry(Idstring("texture"), Idstring(dog_tags_path), dog_tags_file)
@@ -126,6 +131,7 @@ if DB and DB.create_entry then
 	DB:create_entry(Idstring("texture"), Idstring(bullets_path), bullets_file)
 
 	DB:create_entry(Idstring("texture"), Idstring(plush_shark_path), plush_shark_file)
+	DB:create_entry(Idstring("texture"), Idstring(guilt_vignette_path), guilt_vignette_file)
 
 	DB:create_entry(Idstring("texture"), Idstring(toolbox_path), toolbox_file)
 

@@ -367,6 +367,12 @@ function CSRGameManager:has_item(peer_id, item_type)
 	return self:item_count(peer_id, item_type) > 0
 end
 
+-- Convenience for item hook code (CSR's own + addons): owned stacks of an item
+-- by the LOCAL player, so a hook doesn't repeat the local_peer_id() plumbing.
+function CSRGameManager:owned(item_type)
+	return self:item_count(self:local_peer_id(), item_type)
+end
+
 function CSRGameManager:add_item(peer_id, item_type)
 	if not self._registry.by_type[item_type] then
 		log_csr("add_item: unknown type '" .. tostring(item_type) .. "' — ignored")
@@ -424,6 +430,10 @@ local KNOWN_RARITIES = {
 --   instakill_on_hit  -- Bonnie's Lucky Chip: chance to instakill on a bullet hit
 --   drill_timer_on_kill -- Wolf's Toolbox: kills cut active drill/saw timers
 --   first_hit_damage  -- Piece of Rebar: bonus damage on the first hit per enemy
+--   emergency_heal    -- The Edge: cooldown-gated heal + brief invuln when HP drops
+--                        below a threshold (or on a lethal hit)
+--   guardian_revive   -- Plush Shark: on the last down before custody, cancel it
+--                        (heal + restore one down + armor) and grant invuln
 local KNOWN_EFFECT_KINDS = {
 	stat_mul = true,
 	stat_hyperbolic = true,
@@ -433,6 +443,8 @@ local KNOWN_EFFECT_KINDS = {
 	instakill_on_hit = true,
 	drill_timer_on_kill = true,
 	first_hit_damage = true,
+	emergency_heal = true,
+	guardian_revive = true,
 }
 
 function CSRGameManager:register_item(def)
@@ -453,8 +465,11 @@ function CSRGameManager:register_item(def)
 		log_csr("register_item: '" .. t .. "' unknown rarity '" .. tostring(def.rarity) .. "' — skipped")
 		return false
 	end
+	-- effect is OPTIONAL. Three valid item shapes: (a) a declarative effect with a
+	-- known kind, (b) callback escape-hatch (on_apply/on_remove/on_tick), or
+	-- (c) passport-only -- behavior installed externally via def.hooks by the API
+	-- shim (the per-item-file model). Only validate the kind when an effect is given.
 	local effect = def.effect
-	local has_cb = def.on_apply ~= nil or def.on_remove ~= nil or def.on_tick ~= nil
 	if effect ~= nil then
 		if type(effect) ~= "table" or not KNOWN_EFFECT_KINDS[effect.kind] then
 			log_csr(
@@ -462,9 +477,6 @@ function CSRGameManager:register_item(def)
 			)
 			return false
 		end
-	elseif not has_cb then
-		log_csr("register_item: '" .. t .. "' has neither effect nor callbacks — skipped")
-		return false
 	end
 
 	-- Optional human-readable addon name, used by future MP addon-mismatch
@@ -494,6 +506,11 @@ function CSRGameManager:register_item(def)
 		rarity = def.rarity,
 		name = def.name,
 		desc = def.desc,
+		-- Logbook-tier text (optional): full_desc = detailed effect line, notes =
+		-- flavor. Stored so the Logbook can read them from the registry instead of
+		-- a hardcoded table (the per-item file now owns its own copy).
+		full_desc = def.full_desc,
+		notes = def.notes,
 		icon = def.icon,
 		icon_scale = icon_scale,
 		effect = effect,

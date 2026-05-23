@@ -49,6 +49,9 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_OptionsLocalization", function(loc
 		csr_grant_items_title = "Grant All Items",
 		csr_grant_items_desc = "Gives your character one of every item currently in the mod "
 			.. "(bypasses the selection window). Click again to add another stack of each.",
+		csr_grant_coj_title = "Grant Cup of Joe",
+		csr_grant_coj_desc = "Gives one Cup of Joe (the per-item-file test item) to isolate its "
+			.. "effect. Click again for another stack.",
 	})
 end)
 
@@ -72,6 +75,13 @@ Hooks:Add("MenuManagerInitialize", "CSR_OptionsCallbacks", function(menu_manager
 		local mgr = managers.csr
 		if mgr and mgr.grant_all_items then
 			mgr:grant_all_items()
+		end
+	end
+
+	MenuCallbackHandler.csr_grant_cup_of_joe = function(self, item)
+		local mgr = managers.csr
+		if mgr and mgr.add_item then
+			mgr:add_item(mgr:local_peer_id(), "cup_of_joe")
 		end
 	end
 
@@ -127,6 +137,15 @@ Hooks:Add("MenuManagerPopulateCustomMenus", "CSR_OptionsPopulate", function(menu
 		title = "csr_grant_items_title",
 		desc = "csr_grant_items_desc",
 		callback = "csr_grant_all_items",
+		menu_id = "csr_debug_menu",
+		priority = 2,
+	})
+
+	MenuHelper:AddButton({
+		id = "csr_grant_cup_of_joe",
+		title = "csr_grant_coj_title",
+		desc = "csr_grant_coj_desc",
+		callback = "csr_grant_cup_of_joe",
 		menu_id = "csr_debug_menu",
 		priority = 1,
 	})
