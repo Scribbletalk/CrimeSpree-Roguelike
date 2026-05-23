@@ -4,10 +4,12 @@
 -- Local-player-scoped (each peer heals its own player on its own kills), so
 -- MP-symmetric.
 --
--- Kill detection: PostHook on CopDamage's four damage_* paths, gated on
--- cop._dead + a once-per-corpse flag (cop._csr_pinkslip_kill) + the attacker
--- being the local player. The flag rides on the CopDamage instance and is GC'd
--- with the unit, so no global table or death-cleanup is needed.
+-- Kill detection: PostHook on CopDamage:die -- it fires exactly once per death,
+-- from ANY cause (bullet/melee/fire/tase/...), carrying the killing blow's
+-- attacker. Gated on that attacker being the local player. Using die (not the
+-- four damage_* paths) is what makes this correct: damage_bullet early-returns
+-- on a dead cop but its PostHook still runs, so the old approach healed when the
+-- local player's later hit/DOT touched a corpse SOMEONE ELSE (a bot) killed.
 --
 -- Heal per kill = max_hp*base_pct + (base_flat + (stacks-1)*extra_flat) display
 -- HP, the flat part /display-scale to internal units. Values mirror the 6.2
@@ -41,12 +43,9 @@ local function apply_kill_heal(mgr, stacks)
 	end
 end
 
-local function on_enemy_damage(cop, attack_data)
+local function on_enemy_die(_cop, attack_data)
 	local mgr = managers and managers.csr
 	if not mgr or not mgr.is_run_active or not mgr:is_run_active() then
-		return
-	end
-	if not cop._dead or cop._csr_pinkslip_kill then
 		return
 	end
 	local au = attack_data and attack_data.attacker_unit
@@ -57,7 +56,6 @@ local function on_enemy_damage(cop, attack_data)
 	if stacks <= 0 then
 		return
 	end
-	cop._csr_pinkslip_kill = true
 	apply_kill_heal(mgr, stacks)
 end
 
@@ -76,16 +74,7 @@ _G.CSR.register_item({
 				return
 			end
 			_G._CSR_PINK_SLIP_HOOKED = true
-			Hooks:PostHook(CopDamage, "damage_bullet", "CSR_PinkSlip_Bullet", on_enemy_damage)
-			if CopDamage.damage_melee then
-				Hooks:PostHook(CopDamage, "damage_melee", "CSR_PinkSlip_Melee", on_enemy_damage)
-			end
-			if CopDamage.damage_explosion then
-				Hooks:PostHook(CopDamage, "damage_explosion", "CSR_PinkSlip_Explosion", on_enemy_damage)
-			end
-			if CopDamage.damage_dot then
-				Hooks:PostHook(CopDamage, "damage_dot", "CSR_PinkSlip_Dot", on_enemy_damage)
-			end
+			Hooks:PostHook(CopDamage, "die", "CSR_PinkSlip_Kill", on_enemy_die)
 		end,
 	},
 })

@@ -67,12 +67,13 @@ local function active_bonus()
 	return streak.kill_stacks * (stacks + 1) * BONUS_PER_KILL
 end
 
-local function on_enemy_damage(cop, attack_data)
+-- Fires on CopDamage:die (once per death, any cause, carrying the killing blow's
+-- attacker). Gating on die rather than the four damage_* paths avoids bumping the
+-- streak when the local player's later hit/DOT touches a corpse a bot killed (the
+-- damage_* PostHook still runs on an already-dead cop). See pink_slip.lua.
+local function on_enemy_die(_cop, attack_data)
 	local mgr = managers and managers.csr
 	if not mgr or not mgr.is_run_active or not mgr:is_run_active() then
-		return
-	end
-	if not cop._dead or cop._csr_overkill_kill then
 		return
 	end
 	local au = attack_data and attack_data.attacker_unit
@@ -82,7 +83,6 @@ local function on_enemy_damage(cop, attack_data)
 	if mgr:owned("overkill_rush") <= 0 then
 		return
 	end
-	cop._csr_overkill_kill = true
 	bump_streak(mgr)
 end
 
@@ -102,16 +102,7 @@ _G.CSR.register_item({
 				return
 			end
 			_G._CSR_OVERKILL_KILL_HOOKED = true
-			Hooks:PostHook(CopDamage, "damage_bullet", "CSR_Overkill_Bullet", on_enemy_damage)
-			if CopDamage.damage_melee then
-				Hooks:PostHook(CopDamage, "damage_melee", "CSR_Overkill_Melee", on_enemy_damage)
-			end
-			if CopDamage.damage_explosion then
-				Hooks:PostHook(CopDamage, "damage_explosion", "CSR_Overkill_Explosion", on_enemy_damage)
-			end
-			if CopDamage.damage_dot then
-				Hooks:PostHook(CopDamage, "damage_dot", "CSR_Overkill_Dot", on_enemy_damage)
-			end
+			Hooks:PostHook(CopDamage, "die", "CSR_Overkill_Kill", on_enemy_die)
 		end,
 
 		-- Consumer: scale fire rate + reload by (1 + active bonus). Return-value
