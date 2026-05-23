@@ -18,49 +18,49 @@ local ITEMS_DATA = {
 	-- COMMON
 	{
 		id = "dog_tags",
-		icon = "csr_dog_tags",
+		icon = "dog_tags",
 		rarity = "common",
 		name_en = "DOG TAGS",
 		effect_en = "Increases maximum health by 10% (+10% per stack, linear).",
 	},
 	{
 		id = "duct_tape",
-		icon = "csr_duct_tape",
+		icon = "duct_tape",
 		rarity = "common",
 		name_en = "DUCT TAPE",
 		effect_en = "Increases interaction speed by 10% (+10% per stack, linear).\nAffects lockpicking, bagging loot, repairing, etc. Does not apply to reviving teammates or uncuffing.",
 	},
 	{
 		id = "escape_plan",
-		icon = "csr_escape_plan",
+		icon = "escape_plan",
 		rarity = "common",
 		name_en = "ESCAPE PLAN",
 		effect_en = "Increases movement speed by 3% (+3% per stack, hyperbolic).",
 	},
 	{
 		id = "worn_bandaid",
-		icon = "csr_worn_bandaid",
+		icon = "worn_bandaid",
 		rarity = "common",
 		name_en = "WORN BAND-AID",
 		effect_en = "Regenerates 2% (+2% per stack, hyperbolic, capped at 20%) of max health every 5 seconds.",
 	},
 	{
 		id = "cup_of_joe",
-		icon = "csr_cup_of_joe",
+		icon = "cup_of_joe",
 		rarity = "common",
 		name_en = "CUP OF JOE",
 		effect_en = "Increases maximum stamina by 10% (+10% per stack, linear).",
 	},
 	{
 		id = "rebar",
-		icon = "csr_rebar",
+		icon = "rebar",
 		rarity = "common",
 		name_en = "PIECE OF REBAR",
 		effect_en = "First hit on an enemy deals +15% (+10% per stack, linear) damage.",
 	},
 	{
 		id = "half_a_glass",
-		icon = "csr_half_a_glass",
+		icon = "half_a_glass",
 		rarity = "common",
 		name_en = "HALF-A-GLASS",
 		effect_en = "Picking up a Gage package instantly refills 15% ammo for primary and secondary weapons and increases their max ammo by 2% (+1% per stack, linear) for the rest of the mission.",
@@ -69,42 +69,42 @@ local ITEMS_DATA = {
 	-- UNCOMMON
 	{
 		id = "evidence_rounds",
-		icon = "csr_evidence_rounds",
+		icon = "evidence_rounds",
 		rarity = "uncommon",
 		name_en = "EVIDENCE ROUNDS",
 		effect_en = "Increases damage from ALL sources by 5% (+5% per stack, linear).",
 	},
 	{
 		id = "falcogini_keys",
-		icon = "csr_falcogini_keys",
+		icon = "falcogini_keys",
 		rarity = "uncommon",
 		name_en = "FALCOGINI KEYS",
 		effect_en = "Increases chance to dodge by 5% (+5% per stack, hyperbolic).\nSuccessful dodging blocks incoming damage (does not work on self-inflicted damage).",
 	},
 	{
 		id = "wolfs_toolbox",
-		icon = "csr_toolbox",
+		icon = "toolbox",
 		rarity = "uncommon",
 		name_en = "WOLF'S TOOLBOX",
 		effect_en = "Killing regular enemies reduces active drill/saw timer by 0.2 second(s) (+0.1s per stack, linear).\nKilling special enemies reduces timer by 1 second(s) (+0.5s per stack, linear).",
 	},
 	{
 		id = "pink_slip",
-		icon = "csr_pink_slip",
+		icon = "pink_slip",
 		rarity = "uncommon",
 		name_en = "PINK SLIP",
 		effect_en = "Killing any enemy restores 5 (+2.5 per stack, linear) health.",
 	},
 	{
 		id = "the_edge",
-		icon = "csr_the_edge",
+		icon = "the_edge",
 		rarity = "uncommon",
 		name_en = "THE EDGE",
 		effect_en = "On your last down, dropping to low HP restores max HP + flat HP and grants brief invulnerability. Resets when downs are restored.",
 	},
 	{
 		id = "overkill_rush",
-		icon = "csr_overkill_rush",
+		icon = "overkill_rush",
 		rarity = "uncommon",
 		name_en = "OVERKILL RUSH",
 		effect_en = "Killing any enemy grants you a rush stack. For each rush stack your fire rate and reload speed increase by 2% (+1% per stack, linear).\nAll rush stacks expire 4 seconds after the last kill.",
@@ -113,14 +113,14 @@ local ITEMS_DATA = {
 	-- RARE
 	{
 		id = "bonnie_chip",
-		icon = "csr_bonnie_chip",
+		icon = "bonnie_chip",
 		rarity = "rare",
 		name_en = "BONNIE'S LUCKY CHIP",
 		effect_en = "Gain 10% (+10% per stack, hyperbolic) chance to instantly kill an enemy on hit.\nHas 1.5 second cooldown.",
 	},
 	{
 		id = "plush_shark",
-		icon = "csr_plush_shark",
+		icon = "plush_shark",
 		rarity = "rare",
 		name_en = "PLUSH SHARK",
 		effect_en = "Protects from lethal damage once per life.\nOn activation restores 20% maximum health and grants invulnerability that lasts 10 seconds (+20s per stack, linear).\nCan be activated again if you were freed from custody.",
@@ -128,28 +128,28 @@ local ITEMS_DATA = {
 	},
 	{
 		id = "jiro_last_wish",
-		icon = "csr_jiro_last_wish",
+		icon = "jiro_last_wish",
 		rarity = "rare",
 		name_en = "JIRO'S LAST WISH",
 		effect_en = "Grants an ability to sprint while charging a melee attack. Increases melee damage by 50% (+50% per stack, linear).",
 	},
 	{
 		id = "dearest_possession",
-		icon = "csr_dearest_possession",
+		icon = "dearest_possession",
 		rarity = "rare",
 		name_en = "DEAREST POSSESSION",
 		effect_en = "Healing received at full HP is converted into temporary shields. Shield cap: 50% of maximum health (+50% per stack, linear). Shields decay at 20% per second.",
 	},
 	{
 		id = "viklund_vinyl",
-		icon = "csr_viklund_vinyl",
+		icon = "viklund_vinyl",
 		rarity = "rare",
 		name_en = "VIKLUND'S VINYL",
 		effect_en = "Gain 80% chance on hit to chain 2 nearest enemies within 5m (+2m per stack, linear) range. Chained enemies receive 25% of the initial damage.",
 	},
 	{
 		id = "lockes_beret",
-		icon = "csr_lockes_beret",
+		icon = "lockes_beret",
 		rarity = "rare",
 		name_en = "LOCKE'S BERET",
 		effect_en = "Every 30 seconds, heals everyone on your team (you, teammates, bots, jokers, turrets) for 10% of max health (+10% per stack, hyperbolic, capped at 50%).",
@@ -158,35 +158,35 @@ local ITEMS_DATA = {
 	-- CONTRABAND
 	{
 		id = "dozer_guide",
-		icon = "csr_dozer_guide",
+		icon = "dozer_guide",
 		rarity = "contraband",
 		name_en = "DOZER GUIDE",
 		effect_en = "Increases armor by 50% (+50% per stack, linear) and damage by 5% (+5% per stack, linear) from ranged and melee weapons.\nBut decreases movement speed by 15% (+15% per stack, linear) (cannot be lower than 40% of normal movement speed) and chance to dodge by 5% (+5% per stack, linear).",
 	},
 	{
 		id = "glass_pistol",
-		icon = "csr_glass_pistol",
+		icon = "glass_pistol",
 		rarity = "contraband",
 		name_en = "GLASS PISTOL",
 		effect_en = "Multiplies damage from ranged and melee weapons by x1.75 (x1.75 per stack, multiplicative).\nBut divides max health and armor by 2 (+2 per stack, multiplicative).",
 	},
 	{
 		id = "equalizer",
-		icon = "csr_equalizer",
+		icon = "equalizer",
 		rarity = "contraband",
 		name_en = "EQUALIZER",
 		effect_en = "Increases damage against special enemies by 50% (+50% per stack, linear).\nBut reduces damage against regular enemies by 50% (-50% per stack, linear).",
 	},
 	{
 		id = "crooked_badge",
-		icon = "csr_crooked_badge",
+		icon = "crooked_badge",
 		rarity = "contraband",
 		name_en = "CROOKED BADGE",
 		effect_en = "After each assault, 30% (+20%, hyperbolic) chance to restore 1 down. Chance above 100% guarantees multiple downs.\nBut bleedout timer is reduced by 10 (+1s, hyperbolic) seconds.",
 	},
 	{
 		id = "dead_mans_trigger",
-		icon = "csr_dead_mans_trigger",
+		icon = "dead_mans_trigger",
 		rarity = "contraband",
 		name_en = "DEAD MAN'S TRIGGER",
 		effect_en = "When going down you explode dealing 480 (+240 per stack, linear) damage in a 3 (+2 per stack, linear) meter radius. Damage scales with Crime Spree rank.",
@@ -195,28 +195,28 @@ local ITEMS_DATA = {
 	-- WILDCARD
 	{
 		id = "familiar_friend",
-		icon = "csr_familiar_friend",
+		icon = "familiar_friend",
 		rarity = "wildcard",
 		name_en = "FAMILIAR FRIEND",
 		effect_en = "Active wildcard (carry-1). Press your wildcard key to fire a Spike Nova: 360° AoE damage around you. Damage scales with Crime Spree rank. 60-second cooldown. Stealth-blocked.",
 	},
 	{
 		id = "side_satchel",
-		icon = "csr_side_satchel",
+		icon = "side_satchel",
 		rarity = "wildcard",
 		name_en = "SIDE SATCHEL",
 		effect_en = "Passive wildcard (carry-1). Doubles the carry cap of mission specials (C4 4 → 8, keycards 1 → 2, drill parts 1 → 2, etc.).",
 	},
 	{
 		id = "turron",
-		icon = "csr_turron",
+		icon = "turron",
 		rarity = "wildcard",
 		name_en = "TURRON",
 		effect_en = "Active wildcard (carry-1). Press your wildcard key to instantly heal 33% of max HP and gain 20% damage reduction for 5 seconds. 90-second cooldown. Works in stealth.",
 	},
 	{
 		id = "hippocratic_oath",
-		icon = "csr_hippocratic_oath",
+		icon = "hippocratic_oath",
 		rarity = "wildcard",
 		name_en = "HIPPOCRATIC OATH",
 		effect_en = "Passive wildcard (carry-1). On loud transition, a medic spawns and joins your crew. While within 3 metres of the medic, regenerate 1% max HP per second. After death, the medic respawns 6 minutes later. Loud only.",
@@ -251,11 +251,11 @@ local LOGBOOK_ICON_SCALE = {
 -- Rarity frame icons (same textures as items_page and selection popup)
 -- All rarities use the same frame (rare) to avoid icon sizing issues
 local RARITY_FRAMES = {
-	common = { frame = "csr_frame", color = Color.white },
-	uncommon = { frame = "csr_frame", color = Color(0, 0.95, 0) },
-	rare = { frame = "csr_frame", color = Color(0.3, 0.7, 1) },
-	contraband = { frame = "csr_frame", color = Color(1, 0.4, 0) },
-	wildcard = { frame = "csr_frame", color = Color(1, 0.3, 0.8) },
+	common = { frame = "frame", color = Color.white },
+	uncommon = { frame = "frame", color = Color(0, 0.95, 0) },
+	rare = { frame = "frame", color = Color(0.3, 0.7, 1) },
+	contraband = { frame = "frame", color = Color(1, 0.4, 0) },
+	wildcard = { frame = "frame", color = Color(1, 0.3, 0.8) },
 }
 
 CrimeSpreeLogbookMenuComponent = CrimeSpreeLogbookMenuComponent or class()
@@ -438,7 +438,7 @@ function CrimeSpreeLogbookMenuComponent:_setup_logbook()
 	end
 
 	self._panel = parent:panel({
-		name = "csr_logbook_panel",
+		name = "logbook_panel",
 		layer = self._init_layer + 10,
 	})
 
@@ -497,7 +497,7 @@ function CrimeSpreeLogbookMenuComponent:_setup_logbook()
 	self._close_btn_panel:set_y(btn_padding)
 	local close_offset = math.round((close_hitbox - close_icon_size) / 2)
 	self._close_btn_panel:bitmap({
-		texture = "guis/textures/pd2/crime_spree/csr_btn_close",
+		texture = "guis/textures/pd2/crime_spree/btn_close",
 		w = close_icon_size,
 		h = close_icon_size,
 		x = close_offset,
@@ -1136,7 +1136,7 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 	end
 
 	-- Effect alongside icon; sub-panel anchors wrap to x=0 of the sub-panel
-	local loc_key = "csr_logbook_" .. item_data.id .. "_effect"
+	local loc_key = "logbook_" .. item_data.id .. "_effect"
 	local effect_text = managers.localization:text(loc_key)
 	if not effect_text or effect_text == loc_key then
 		effect_text = item_data.effect_en
@@ -1218,7 +1218,7 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 	local notes_params = item_data.id == "evidence_rounds"
 			and { rounds = tostring(math.max(31, _G.CSR_BulletsFiredToday or 0)) }
 		or nil
-	local notes_text = managers.localization:text("csr_logbook_" .. item_data.id .. "_notes", notes_params)
+	local notes_text = managers.localization:text("logbook_" .. item_data.id .. "_notes", notes_params)
 	if notes_text and notes_text ~= "" then
 		self._details_panel:text({
 			name = "lore_title",
@@ -1260,7 +1260,7 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 	self._back_btn_panel:set_right(panel_w - btn_padding)
 	self._back_btn_panel:set_y(btn_padding)
 	self._back_btn_panel:bitmap({
-		texture = "guis/textures/pd2/crime_spree/csr_btn_back",
+		texture = "guis/textures/pd2/crime_spree/btn_back",
 		w = btn_size,
 		h = btn_size,
 		blend_mode = "add",

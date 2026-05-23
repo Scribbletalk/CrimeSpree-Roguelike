@@ -7,139 +7,95 @@
 	"hooks": [
 		{
 			"hook_id": "lib/entry",
-			"script_path": "lua/core/csr_extension_api.lua"
+			"script_path": "lua/core/extension_api.lua"
 		},
 		{
 			"hook_id": "lib/setups/setup",
-			"script_path": "lua/core/csr_extension_api.lua"
+			"script_path": "lua/core/extension_api.lua"
 		},
 		{
 			"hook_id": "*",
-			"script_path": "lua/core/csr_item_dispatch.lua"
+			"script_path": "lua/core/item_dispatch.lua"
 		},
 		{
 			"hook_id": "lib/setups/setup",
-			"script_path": "lua/managers/csr_game_manager.lua"
+			"script_path": "lua/managers/game_manager.lua"
 		},
 		{
 			"hook_id": "lib/setups/setup",
-			"script_path": "lua/items/csr_builtin_items.lua"
-		},
-		{
-			"hook_id": "lib/setups/setup",
-			"script_path": "lua/core/csr_sound.lua"
-		},
-		{
-			"hook_id": "lib/managers/playermanager",
-			"script_path": "lua/items/csr_item_effects_playerstats.lua"
-		},
-		{
-			"hook_id": "lib/units/weapons/raycastweaponbase",
-			"script_path": "lua/items/csr_item_effects_weapon.lua"
-		},
-		{
-			"hook_id": "lib/units/enemies/cop/copdamage",
-			"script_path": "lua/items/csr_item_effects_weapon.lua"
-		},
-		{
-			"hook_id": "lib/units/interactions/interactionext",
-			"script_path": "lua/items/csr_item_effects_interaction.lua"
+			"script_path": "lua/core/sound.lua"
 		},
 		{
 			"hook_id": "lib/units/beings/player/playerdamage",
-			"script_path": "lua/items/csr_item_effects_regen.lua"
-		},
-		{
-			"hook_id": "lib/units/beings/player/playerdamage",
-			"script_path": "lua/items/csr_item_effects_callbacks.lua"
-		},
-		{
-			"hook_id": "lib/managers/blackmarketmanager",
-			"script_path": "lua/items/csr_item_effects_melee.lua"
-		},
-		{
-			"hook_id": "lib/units/beings/player/states/playerstandard",
-			"script_path": "lua/items/csr_item_effects_playerstandard.lua"
-		},
-		{
-			"hook_id": "lib/units/enemies/cop/copdamage",
-			"script_path": "lua/items/csr_item_effects_kill.lua"
-		},
-		{
-			"hook_id": "lib/units/weapons/newraycastweaponbase",
-			"script_path": "lua/items/csr_item_effects_kill.lua"
-		},
-		{
-			"hook_id": "lib/units/props/timergui",
-			"script_path": "lua/items/csr_item_effects_kill.lua"
+			"script_path": "lua/core/callback_tick.lua"
 		},
 		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",
-			"script_path": "lua/menu/csr_lobby_button.lua"
+			"script_path": "lua/menu/lobby_button.lua"
 		},
 		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",
-			"script_path": "lua/menu/csr_contract_menu.lua"
+			"script_path": "lua/menu/contract_menu.lua"
 		},
 		{
 			"hook_id": "lib/managers/menumanager",
-			"script_path": "lua/managers/csr_contract_callbacks.lua"
+			"script_path": "lua/managers/contract_callbacks.lua"
 		},
 		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",
-			"script_path": "lua/menu/csr_contract_wiring.lua"
+			"script_path": "lua/menu/contract_wiring.lua"
 		},
 		{
 			"hook_id": "lib/managers/menumanager",
-			"script_path": "lua/menu/csr_contract_difficulty.lua"
+			"script_path": "lua/menu/contract_difficulty.lua"
 		},
 		{
 			"hook_id": "lib/managers/menu/crimespreecontractmenucomponent",
-			"script_path": "lua/menu/csr_contract_difficulty.lua"
+			"script_path": "lua/menu/contract_difficulty.lua"
 		},
 		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",
-			"script_path": "lua/menu/csr_missions_menu.lua"
+			"script_path": "lua/menu/missions_menu.lua"
 		},
 		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",
-			"script_path": "lua/menu/csr_missions_wiring.lua"
+			"script_path": "lua/menu/missions_wiring.lua"
 		},
 		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",
-			"script_path": "lua/menu/csr_item_selection.lua"
+			"script_path": "lua/menu/item_selection.lua"
 		},
 		{
 			"hook_id": "lib/managers/hud/hudmissionbriefing",
-			"script_path": "lua/menu/csr_mission_briefing.lua"
+			"script_path": "lua/menu/mission_briefing.lua"
 		},
 		{
 			"hook_id": "lib/managers/hudmanagerpd2",
-			"script_path": "lua/menu/csr_briefing_wiring.lua"
+			"script_path": "lua/menu/briefing_wiring.lua"
 		},
 		{
 			"hook_id": "lib/managers/menu/missionbriefinggui",
-			"script_path": "lua/menu/csr_briefing_reminder_input.lua"
+			"script_path": "lua/menu/briefing_reminder_input.lua"
 		},
 		{
 			"hook_id": "lib/managers/menu/missionbriefinggui",
-			"script_path": "lua/menu/csr_briefing_sidebar.lua"
+			"script_path": "lua/menu/briefing_sidebar.lua"
 		},
 		{
 			"hook_id": "lib/managers/menu/stageendscreengui",
-			"script_path": "lua/menu/csr_stage_endscreen.lua"
+			"script_path": "lua/menu/stage_endscreen.lua"
 		},
 		{
 			"hook_id": "lib/managers/hud/hudstageendcrimespreescreen",
-			"script_path": "lua/menu/csr_hud_stage_endscreen.lua"
+			"script_path": "lua/menu/hud_stage_endscreen.lua"
 		},
 		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",
-			"script_path": "lua/menu/csr_endscreen_wiring.lua"
+			"script_path": "lua/menu/endscreen_wiring.lua"
 		},
 		{
 			"hook_id": "lib/managers/hudmanagerpd2",
-			"script_path": "lua/menu/csr_endscreen_hud_wiring.lua"
+			"script_path": "lua/menu/endscreen_hud_wiring.lua"
 		},
 		{
 			"hook_id": "lib/tweak_data/hudiconstweakdata",
@@ -167,27 +123,27 @@
 		},
 		{
 			"hook_id": "lib/states/missionendstate",
-			"script_path": "lua/managers/csr_mission_lifecycle.lua"
+			"script_path": "lua/managers/mission_lifecycle.lua"
 		},
 		{
 			"hook_id": "lib/managers/moneymanager",
-			"script_path": "lua/managers/csr_endscreen_economy.lua"
+			"script_path": "lua/managers/endscreen_economy.lua"
 		},
 		{
 			"hook_id": "lib/managers/menumanagerpd2",
-			"script_path": "lua/managers/csr_lobby_routing.lua"
+			"script_path": "lua/managers/lobby_routing.lua"
 		},
 		{
 			"hook_id": "lib/managers/localizationmanager",
-			"script_path": "lua/managers/csr_localization.lua"
+			"script_path": "lua/managers/localization.lua"
 		},
 		{
 			"hook_id": "lib/managers/menumanager",
-			"script_path": "lua/menu/csr_pause_menu_items.lua"
+			"script_path": "lua/menu/pause_menu_items.lua"
 		},
 		{
 			"hook_id": "lib/managers/menumanager",
-			"script_path": "lua/menu/csr_options_menu.lua"
+			"script_path": "lua/menu/options_menu.lua"
 		}
 	],
 	"keybinds": [
@@ -197,7 +153,7 @@
 			"description": "Instantly ends the current heist as a SUCCESS. Debug tool, host only.",
 			"run_in_menu": false,
 			"run_in_game": true,
-			"script_path": "lua/keybinds/csr_debug_complete_heist.lua"
+			"script_path": "lua/keybinds/debug_complete_heist.lua"
 		},
 		{
 			"keybind_id": "csr_debug_fail_heist",
@@ -205,7 +161,7 @@
 			"description": "Instantly ends the current heist as a FAILURE. Debug tool, host only.",
 			"run_in_menu": false,
 			"run_in_game": true,
-			"script_path": "lua/keybinds/csr_debug_fail_heist.lua"
+			"script_path": "lua/keybinds/debug_fail_heist.lua"
 		}
 	]
 }

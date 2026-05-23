@@ -1,31 +1,35 @@
 -- Cup of Joe (common) -- +10% max stamina per copy owned.
 --
--- First item on the per-item-file model: the whole item -- passport (metadata)
--- AND behavior -- lives in this one file. Auto-discovered + executed by
--- csr_extension_api.lua (no mod.txt entry needed). The file CALLS register_item
--- itself (PD2's dofile does not return chunk values), exactly as an addon would
--- from its own mod. `hooks` maps an engine script path to a function run once,
--- the moment that script loads (its class is guaranteed to exist by then).
+-- Per-item-file model: the whole item -- passport (metadata) AND behavior --
+-- lives in this one self-contained file. Auto-discovered + executed by
+-- extension_api.lua (no mod.txt entry). The file CALLS register_item itself
+-- (PD2's dofile does not return chunk values), exactly as an addon would.
+-- `hooks` maps an engine script path to a function run once, the moment that
+-- script loads (its class is guaranteed to exist by then).
+--
+-- Text fields (name/desc/full_desc/notes) are LOCALIZATION KEYS, not literals:
+-- the string lives in loc/<lang>.json so the game shows it in the current
+-- language. english.json owns English; a future russian.json owns Russian; no
+-- item-file change is needed to add a language.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
 end
 
 _G.CSR.register_item({
-	-- Passport: appears in the menu, drop pool, inventory, save, with this icon.
 	type = "cup_of_joe",
 	rarity = "common",
-	name = "CUP OF JOE",
-	desc = "Increases your max stamina.", -- short card/selection text (Rule #15)
-	full_desc = "Increases maximum stamina by {g}10%{/} (+10% per stack, linear).", -- Logbook
-	notes = "- Total stolen: 1 artifact, 3 assault rifles, a set of samurai armor, a server... and a cup of Joe.\n- Sorry, a cup of Joe?\n- A cup of Joe.\n- ...\n- So where's Joe, exactly?\n- Not funny.\n- No, seriously. Where's Joe?\n- Oh, that Joe. He's right over there. Crying about his favorite mug being stolen.",
-	icon = "csr_cup_of_joe",
+	name = "logbook_cup_of_joe_name",
+	desc = "item_cup_of_joe_desc",
+	full_desc = "logbook_cup_of_joe_effect",
+	notes = "logbook_cup_of_joe_notes",
+	icon = "cup_of_joe",
 
 	hooks = {
 		-- +10% to PlayerManager:stamina_multiplier per copy owned. It RETURNS a
 		-- value (PostHook can't carry that), so a raw chain wrap per the CSR
-		-- return-value convention; the _G guard stops a double-wrap if this ever
-		-- runs twice. Mirrors the 6.2 constant cup_of_joe_per_stack (0.10).
+		-- return-value convention; the _G guard stops a double-wrap. Mirrors the
+		-- 6.2 constant cup_of_joe_per_stack (0.10).
 		["lib/managers/playermanager"] = function()
 			if _G._CSR_CUP_OF_JOE_HOOKED then
 				return

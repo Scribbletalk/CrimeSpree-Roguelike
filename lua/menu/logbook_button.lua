@@ -1,6 +1,6 @@
 -- Crime Spree Roguelike - Logbook open callback
 -- U1 refactor: opened from the CSR lobby sidebar "Logbook" button
--- (csr_missions_menu.lua -> csr_open_logbook -> this). Registers the callback
+-- (missions_menu.lua -> csr_open_logbook -> this). Registers the callback
 -- handler only; the screen itself is csr_logbook_screen (logbook_node_register
 -- + logbook_component_register + logbook_menu.lua).
 
@@ -26,7 +26,7 @@ MenuCallbackHandler.CSR_OpenLogbook = function(this, item)
 	log("[CSR Logbook] CSR_OpenLogbook fired -> open_node(csr_logbook_screen)")
 
 	local ok, err = pcall(function()
-		managers.menu:open_node("csr_logbook_screen")
+		managers.menu:open_node("logbook_screen")
 	end)
 
 	if not ok then

@@ -7,7 +7,7 @@ log("[CSR Logbook] logbook_node_register.lua loaded; CSR_LogbookNodeRegister lis
 Hooks:Add("CoreMenuData.LoadDataMenu", "CSR_LogbookNodeRegister", function(menu_id, menu)
 	-- Guard: check that node is not already registered
 	for _, node_data in ipairs(menu) do
-		if node_data.name == "csr_logbook_screen" then
+		if node_data.name == "logbook_screen" then
 			log("[CSR Logbook] LoadDataMenu(" .. tostring(menu_id) .. "): node already present, skip")
 			return
 		end
@@ -17,8 +17,8 @@ Hooks:Add("CoreMenuData.LoadDataMenu", "CSR_LogbookNodeRegister", function(menu_
 	-- NO default back item - ESC is handled manually in the component
 	local logbook_node = {
 		_meta = "node",
-		name = "csr_logbook_screen",
-		menu_components = "csr_logbook_component",
+		name = "logbook_screen",
+		menu_components = "logbook_component",
 		scene_state = "crew_management",
 		-- Removed [1] back item - ESC now goes to our component
 	}
