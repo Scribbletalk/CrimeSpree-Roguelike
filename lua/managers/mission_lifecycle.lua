@@ -5,11 +5,11 @@
 -- lib/states/missionendstate.lua:95-101 (success -> on_mission_completed,
 -- failure -> on_mission_failed), but routes into managers.csr instead.
 --
--- Rank gain on success is a flat amount per completed heist (rebalance
--- 2026-05-16: mission length/difficulty no longer scales rank — every heist is
--- worth the same). The amount comes from managers.csr:constant("rank_per_heist")
--- so the balance value stays out of code per CLAUDE.md "no hardcoded balance
--- values"; the 1 here is only a defensive fallback if the constant is missing.
+-- Rank gain on success scales with the mission's LENGTH category -- the clock
+-- icon on the lobby card (user balance spec 2026-05-23): short = 1, medium = 2,
+-- long = 3. The category + mapping live in managers.csr:rank_for_mission (it
+-- mirrors vanilla's add-value thresholds so the rank matches the displayed
+-- clock). rank_per_heist remains only as the fallback for an unresolved mission.
 --
 -- Failure path is a log-only stub for this slice. Roguelike end-on-death and
 -- vanilla-style rank-regression are both deferred.
@@ -78,7 +78,12 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 	self._completion_bonus_done = true
 
 	if self._success then
-		local gain = managers.csr:constant("rank_per_heist") or 1
+		-- Rank gain scales with the mission's length category -- the clock icon on
+		-- the lobby card (short = 1, medium = 2, long = 3; see rank_for_mission).
+		-- Read the played mission id BEFORE generate_mission_set clears
+		-- current_mission below.
+		local played_id = managers.csr:current_mission()
+		local gain = managers.csr:rank_for_mission(played_id)
 		managers.csr:progress_rank(gain)
 		-- Track completed-heist count for the run independently of rank (the
 		-- lobby header shows it next to RANK; the two are distinct concepts).
@@ -86,7 +91,9 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 		-- Mirror vanilla on_mission_completed: clear the played mission and roll
 		-- a fresh set so the lobby shows new cards on return.
 		managers.csr:generate_mission_set()
-		log_csr("mission completed: +" .. tostring(gain) .. " rank (flat); new mission set rolled")
+		log_csr(
+			"mission completed: +" .. tostring(gain) .. " rank (mission " .. tostring(played_id) .. "); new set rolled"
+		)
 	else
 		-- Slice B: a lost heist FAILS the run (does not end it). The run stays
 		-- active but locked — the lobby gates Start/Reroll/select on

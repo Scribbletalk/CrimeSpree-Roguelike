@@ -71,6 +71,9 @@ local METHODS_TO_BORROW = {
 	"_clear_items_tooltip",
 	"_show_items_tooltip",
 	"_items_panel_mouse_moved",
+	"_populate_modifiers_panel",
+	"_modifiers_panel_mouse_moved",
+	"_modifiers_panel_mouse_pressed",
 }
 
 local function ensure_methods_borrowed()
@@ -208,6 +211,10 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 		self._items_hit_targets = nil
 		self._items_hover_target = nil
 		self._items_content = nil
+		self._modifiers_hit_targets = nil
+		self._modifiers_hover_target = nil
+		self._modifiers_content = nil
+		self._modifiers_subtab_buttons = nil
 
 		if self._sidebar then
 			local p = self._sidebar:panel()
@@ -296,6 +303,9 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 				if self._items_panel_mouse_moved then
 					self:_items_panel_mouse_moved(-9999, -9999)
 				end
+				if self._modifiers_panel_mouse_moved then
+					self:_modifiers_panel_mouse_moved(-9999, -9999)
+				end
 				return orig_mouse_moved(self, x, y)
 			end
 
@@ -305,6 +315,15 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 			if self._items_panel_mouse_moved then
 				local items_used = self:_items_panel_mouse_moved(x, y)
 				if items_used then
+					return true, "link"
+				end
+			end
+
+			-- Modifiers panel hover (tooltip + sub-tab cursor). Same contract as
+			-- the items panel above; mutually exclusive, so only one is visible.
+			if self._modifiers_panel_mouse_moved then
+				local mods_used = self:_modifiers_panel_mouse_moved(x, y)
+				if mods_used then
 					return true, "link"
 				end
 			end
@@ -332,6 +351,11 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 				if used then
 					return true
 				end
+			end
+			-- Modifiers sub-tab click (Loud / Stealth), after the sidebar rows
+			-- that own the panel toggle. No-op unless the panel is open.
+			if self._modifiers_panel_mouse_pressed and self:_modifiers_panel_mouse_pressed(x, y) then
+				return true
 			end
 			return orig_mouse_pressed(self, button, x, y)
 		end

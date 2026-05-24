@@ -78,6 +78,14 @@ local function default_registry()
 		by_type = {}, -- [type] = entry (identity lookup)
 		by_kind = {}, -- [effect.kind] = { entry, ... } (effect-dispatch index; effect items only)
 		callback_items = {}, -- { entry, ... } items with on_apply/on_remove/on_tick (escape hatch)
+		-- Modifiers (CS difficulty mods), registry-driven like items. Each modifier
+		-- file (lua/modifiers/<id>.lua) calls _G.CSR.register_modifier; the replay
+		-- on init refills these. loud = flat list, stealth_families = tiered list.
+		modifiers = {
+			loud = {}, -- { entry, ... } { id, loc, icon, class, data }
+			stealth_families = {}, -- { entry, ... } { id, icon, tiers = { {loc=...}, ... } }
+			by_id = {}, -- [id] = entry (dedupe across both buckets)
+		},
 		constants = {
 			-- Kept for back-compat/reference; the live Dog Tags value now
 			-- travels in its effect descriptor (per_stack) via register_item.
@@ -112,6 +120,12 @@ function CSRGameManager:init()
 	-- empty each time, so this REPLAYS (idempotent via by_type), never drains.
 	if _G.CSR and _G.CSR._apply_registrations then
 		_G.CSR._apply_registrations(self)
+	end
+	-- Same replay for modifiers (lua/modifiers/<id>.lua passports). Persistent
+	-- list, replayed into the fresh _registry.modifiers every init (idempotent
+	-- via by_id), never drained -- exactly like the item registrations above.
+	if _G.CSR and _G.CSR._apply_modifier_registrations then
+		_G.CSR._apply_modifier_registrations(self)
 	end
 	-- After live addons have registered, prune any owned counts whose addon is
 	-- gone. For selection-window items (only current source) this lowers
@@ -575,6 +589,272 @@ function CSRGameManager:item_icon_scale(item_type)
 end
 
 -- =====================================================
+-- Modifiers (Crime Spree difficulty mods)
+--
+-- THIS SLICE = UI + assignment only, NO combat effects yet.
+--   Each earned rank applies 1 random LOUD + 1 random STEALTH modifier to the
+--   run (user spec 2026-05-23). "Random" is deterministic from the run seed --
+--   the pre-refactor model: same seed -> same modifiers (reproducible AND lets
+--   every peer derive the same set once seed sync lands). Computed on the fly
+--   from (seed, rank); nothing is persisted -- active_modifiers() is a pure
+--   function of run state, the same way the lobby's unselected-items reminder
+--   derives from rank - owned. Forking the vanilla ModifierX enemy-side effects
+--   onto managers.csr is a SEPARATE later slice.
+--
+-- CATALOG: names/descriptions are the existing menu_cs_modifier_* localization
+--   keys (loc/english.json) -- single source of truth, ported 1:1 from the
+--   pre-refactor vanilla-CS modifier pool. Icons are vanilla CS atlas ids
+--   (crime_spree_*, verified in HudIconsTweakData) plus two CSR custom ids
+--   registered in tweakdata/hudicons.lua. The 4 vanilla "enable_<enemy>" unlock
+--   mods are intentionally excluded (difficulty-normalisation helpers, not
+--   roguelike escalation). Difficulty-gating of the loud pool (hiding e.g.
+--   cloaker mods when the difficulty spawns none) is a follow-up.
+-- Modifier catalog is REGISTRY-DRIVEN (mirrors the per-item-file model): each
+-- modifier registers itself via _G.CSR.register_modifier from its own file in
+-- lua/modifiers/. The manager stores them in _registry.modifiers (a `loud` list
+-- and a `stealth_families` list); see register_modifier / modifier_catalog /
+-- active_modifiers below. The csr_* helpers under this comment are the seeded
+-- shuffle + stealth-progression used to derive the active set per rank.
+
+-- Park-Miller minimal-standard LCG (pure -- no global math.random state) so the
+-- shuffle is reproducible across peers/saves from the run seed alone.
+local function csr_modifier_rng(seed)
+	local state = (seed or 0) % 2147483647
+	if state <= 0 then
+		state = state + 2147483646
+	end
+	return function()
+		state = (state * 16807) % 2147483647
+		return state / 2147483647
+	end
+end
+
+-- Deterministic Fisher-Yates shuffle of `pool` keyed by `seed`. Returns a NEW
+-- array (the shared static catalog is never mutated).
+local function csr_shuffled(pool, seed)
+	local arr = {}
+	for i = 1, #pool do
+		arr[i] = pool[i]
+	end
+	local rnd = csr_modifier_rng(seed)
+	for i = #arr, 2, -1 do
+		local j = math.floor(rnd() * i) + 1
+		arr[i], arr[j] = arr[j], arr[i]
+	end
+	return arr
+end
+
+-- Deterministic stealth pickup order: repeatedly choose a seeded-random family
+-- that still has untaken tiers and take its next tier IN ORDER. Returns the full
+-- sequence (length = total tiers across families); active_modifiers slices the
+-- first `rank` of it. Each entry is normalised to the loud entry shape.
+local function csr_stealth_sequence(families, seed)
+	local rnd = csr_modifier_rng(seed)
+	local taken = {}
+	local total = 0
+	for _, f in ipairs(families) do
+		total = total + #f.tiers
+	end
+	local out = {}
+	while #out < total do
+		local avail = {}
+		for fi, f in ipairs(families) do
+			if (taken[fi] or 0) < #f.tiers then
+				avail[#avail + 1] = fi
+			end
+		end
+		local fi = avail[math.floor(rnd() * #avail) + 1]
+		local f = families[fi]
+		taken[fi] = (taken[fi] or 0) + 1
+		local tier = f.tiers[taken[fi]]
+		out[#out + 1] = {
+			id = f.id .. "_" .. taken[fi],
+			loc = tier.loc,
+			icon = f.icon,
+			class = f.class,
+			data = tier.data,
+		}
+	end
+	return out
+end
+
+-- A stable, id-sorted COPY of a modifier list so the seeded shuffle / stealth
+-- sequence is independent of registration (file load) order.
+local function csr_sorted_by_id(list)
+	local arr = {}
+	for i = 1, #list do
+		arr[i] = list[i]
+	end
+	table.sort(arr, function(a, b)
+		return (a.id or "") < (b.id or "")
+	end)
+	return arr
+end
+
+-- Register one modifier from its passport (lua/modifiers/<id>.lua via
+-- _G.CSR.register_modifier). Parity with register_item: validated, deduped by
+-- id, replayed into every fresh _registry on init. `category` buckets it:
+--   "loud"    -> _registry.modifiers.loud            { id, loc, icon, class, data }
+--   "stealth" -> _registry.modifiers.stealth_families { id, icon, tiers = {...} }
+-- class/data are OPTIONAL: a loud modifier whose engine class isn't present is
+-- still listed in the UI (apply_combat_modifiers nil-guards _G[class]).
+function CSRGameManager:register_modifier(def)
+	if type(def) ~= "table" then
+		log_csr("register_modifier: definition not a table — skipped")
+		return false
+	end
+	local id = def.id
+	if type(id) ~= "string" or id == "" then
+		log_csr("register_modifier: missing/invalid 'id' — skipped")
+		return false
+	end
+	local mods = self._registry.modifiers
+	if mods.by_id[id] then
+		log_csr("register_modifier: duplicate id '" .. id .. "' — skipped")
+		return false
+	end
+	if def.category == "loud" then
+		local entry = {
+			id = id,
+			category = "loud",
+			loc = def.loc,
+			icon = def.icon,
+			class = def.class,
+			data = def.data or {},
+		}
+		mods.by_id[id] = entry
+		mods.loud[#mods.loud + 1] = entry
+	elseif def.category == "stealth" then
+		local entry = {
+			id = id,
+			category = "stealth",
+			icon = def.icon,
+			class = def.class,
+			tiers = def.tiers or {},
+		}
+		mods.by_id[id] = entry
+		mods.stealth_families[#mods.stealth_families + 1] = entry
+	else
+		log_csr("register_modifier: '" .. id .. "' unknown category '" .. tostring(def.category) .. "' — skipped")
+		return false
+	end
+	log_csr("register_modifier: '" .. id .. "' (" .. tostring(def.category) .. ")")
+	return true
+end
+
+-- Read-only modifier registry { loud = {...}, stealth_families = {...}, by_id }.
+function CSRGameManager:modifier_catalog()
+	return self._registry.modifiers
+end
+
+-- The LOUD or STEALTH modifiers active for the current run, derived purely from
+-- (host rank, run seed). `category` == "loud" (default) or "stealth". Each entry
+-- is { id, loc, icon, [class, data] }; the UI splits the loc text into name/desc.
+-- Cumulative: rank R returns the first R of the seeded sequence (rank R+1 is a
+-- superset), capped at the pool size. Empty before rank 1. host_rank() (not
+-- rank()) is the entitlement so a client shows the host's active set. The pool
+-- is id-sorted first so the shuffle is stable regardless of file load order.
+function CSRGameManager:active_modifiers(category)
+	local rank = self:host_rank() or 0
+	if rank <= 0 then
+		return {}
+	end
+	local seed = self:seed() or 0
+	local mods = self._registry.modifiers
+	local seq
+	if category == "stealth" then
+		-- +1 salt so loud and stealth orders are independent of one another.
+		seq = csr_stealth_sequence(csr_sorted_by_id(mods.stealth_families), seed * 2 + 1)
+	else
+		seq = csr_shuffled(csr_sorted_by_id(mods.loud), seed * 2)
+	end
+	local n = math.min(rank, #seq)
+	local out = {}
+	for i = 1, n do
+		out[i] = seq[i]
+	end
+	return out
+end
+
+-- Apply the active modifiers (LOUD + STEALTH) as real engine effects, mirroring
+-- vanilla CrimeSpreeManager:_setup_modifiers. Host/SP ONLY (Network:is_server):
+-- CS modifiers drive server-side enemy spawning / stats / AI / stealth gates, so
+-- the host applying them makes the whole session harder; clients need no local
+-- copy (and the run seed isn't synced yet, so a client-derived set could
+-- diverge). Called once per heist from the IngameWaitingForPlayersState hook
+-- (combat_modifiers.lua). civilian_guilt / shocking_surprise carry CSR-custom
+-- class names not present in the engine -- the _G[class] guard skips them (they
+-- still appear in the UI). NOTE: ModifierLessConcealment is read per-player, so
+-- under host-only apply only the host's detection rises until the MP sync slice.
+function CSRGameManager:apply_combat_modifiers()
+	if not Network:is_server() then
+		return
+	end
+	if not managers or not managers.modifiers then
+		return
+	end
+	-- managers.modifiers is rebuilt per game-state setup, so our category starts
+	-- empty each heist; clear it anyway for idempotency (the hook could re-fire).
+	if managers.modifiers._modifiers then
+		managers.modifiers._modifiers.csr = nil
+	end
+
+	-- ModifierLessPagers:init destructively rebuilds tweak_data.player.alarm_pager
+	-- from its CURRENT value and never reverts (BaseModifier:destroy is a no-op),
+	-- so re-applying it each heist would compound. Snapshot the pristine arrays
+	-- once (a _G global so it survives manager re-creation) and restore from it
+	-- before every apply -- the pager modifier then always recomputes from a clean
+	-- baseline, and pagers reset correctly on a run with no pager modifier active.
+	local ap = tweak_data and tweak_data.player and tweak_data.player.alarm_pager
+	if ap and type(ap.bluff_success_chance) == "table" then
+		_G.CSR_PagerBaseline = _G.CSR_PagerBaseline
+			or { bluff = clone(ap.bluff_success_chance), skill = clone(ap.bluff_success_chance_w_skill) }
+		ap.bluff_success_chance = clone(_G.CSR_PagerBaseline.bluff)
+		if _G.CSR_PagerBaseline.skill then
+			ap.bluff_success_chance_w_skill = clone(_G.CSR_PagerBaseline.skill)
+		end
+	end
+
+	-- Aggregate active loud + stealth modifiers by engine class (vanilla stacking).
+	local to_activate = {}
+	for _, category in ipairs({ "loud", "stealth" }) do
+		for _, entry in ipairs(self:active_modifiers(category)) do
+			if entry.class and entry.data then
+				local agg = to_activate[entry.class] or {}
+				for key, value_data in pairs(entry.data) do
+					local value = value_data[1]
+					local method = value_data[2]
+					if method == "none" then
+						agg[key] = value
+					elseif method == "add" then
+						agg[key] = (agg[key] or 0) + value
+					elseif method == "sub" then
+						agg[key] = (agg[key] or 0) - value
+					elseif method == "min" then
+						agg[key] = math.min(agg[key] or math.huge, value)
+					elseif method == "max" then
+						agg[key] = math.max(agg[key] or -math.huge, value)
+					end
+				end
+				to_activate[entry.class] = agg
+			end
+		end
+	end
+
+	local applied = 0
+	for class, data in pairs(to_activate) do
+		local mod_class = _G[class]
+		if mod_class then
+			managers.modifiers:add_modifier(mod_class:new(data), "csr")
+			applied = applied + 1
+		else
+			log_csr("apply_combat_modifiers: class '" .. tostring(class) .. "' not loaded -- effect skipped")
+		end
+	end
+	log_csr("apply_combat_modifiers: applied " .. applied .. " modifier(s)")
+end
+
+-- =====================================================
 -- Effect dispatch helpers
 --
 -- The "scan owned items of an effect kind and fold their effect" logic used to
@@ -1020,6 +1300,27 @@ function CSRGameManager:get_mission(mission_id)
 	return nil
 end
 
+-- Rank granted for COMPLETING a mission, by its length category -- the clock
+-- icon on the lobby card (user balance spec 2026-05-23): short -> 1, medium ->
+-- 2, long -> 3. Category is read from the mission's vanilla `add` value with the
+-- SAME thresholds vanilla CrimeSpreeMissionButton:_get_mission_category uses
+-- (add <= 5 short, <= 7 medium, else long), so the rank always matches the clock
+-- the player saw. Defaults to the current mission; falls back to rank_per_heist
+-- when the mission (or its `add`) can't be resolved.
+function CSRGameManager:rank_for_mission(mission_id)
+	local m = self:get_mission(mission_id)
+	local add = m and m.add
+	if type(add) ~= "number" then
+		return self:constant("rank_per_heist") or 1
+	end
+	if add <= 5 then
+		return 1
+	elseif add <= 7 then
+		return 2
+	end
+	return 3
+end
+
 function CSRGameManager:get_random_missions()
 	local lists = self:_mission_lists()
 	local set = {}
@@ -1105,6 +1406,7 @@ end
 function CSRGameManager:select_mission(mission_id)
 	if mission_id == false then
 		self._state.current_mission = nil
+		self:save()
 		return
 	end
 	local mission_data = self:get_mission(mission_id)
@@ -1146,10 +1448,13 @@ function CSRGameManager:select_mission(mission_id)
 			.. tostring(mission_data.level and mission_data.level.level_id)
 			.. ")"
 	)
-	-- No self:save() here: the missions panel calls select_mission on every
-	-- card click, which would thrash csr_save.json to disk. current_mission is
-	-- transient run state -- it is persisted by start_run / generate_mission_set
-	-- / progress_rank, and an alpha run resets it on the next start anyway.
+	-- Persist the selection. The in-game manager is a FRESH instance (init runs
+	-- on GameSetup and loads from disk), so an unsaved current_mission reads back
+	-- nil in-game -- and end-of-heist rank scaling (rank_for_mission, called from
+	-- mission_lifecycle) needs the played mission's id to know its length. A
+	-- per-card-click save is cheap here (csr_save.json is tiny; this is a menu
+	-- click, not a hot path).
+	self:save()
 end
 
 -- =====================================================

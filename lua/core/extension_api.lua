@@ -129,15 +129,27 @@ function _G.CSR.register_item(def)
 end
 
 function _G.CSR.register_modifier(def)
-	-- Parity stub for slice 1: recorded, applied by the manager when the
-	-- modifier registry lands (design migration step 5). Accepted now so an
-	-- addon written against the API does not error before that slice exists.
 	if type(def) ~= "table" then
 		log("[CSR][api] register_modifier: definition must be a table -- ignored")
 		return false
 	end
+	-- Record first so any later manager re-init replays it...
 	table.insert(_G.CSR._modifier_registrations, def)
+	-- ...and apply to the live manager now if it already exists (addon loaded
+	-- after the manager). Idempotent: the manager dedupes by id within its
+	-- (freshly empty) instance, so a replay on the next init is harmless.
+	if managers and managers.csr and managers.csr.register_modifier then
+		managers.csr:register_modifier(def)
+	end
 	return true
+end
+
+-- Replay the full persistent modifier list into a fresh _registry on EVERY
+-- CSRGameManager:init(); never clears it (mirrors _apply_registrations for items).
+function _G.CSR._apply_modifier_registrations(mgr)
+	for _, def in ipairs(_G.CSR._modifier_registrations) do
+		mgr:register_modifier(def)
+	end
 end
 
 -- Called by CSRGameManager:init() AFTER default_registry()+load(), on EVERY
@@ -210,7 +222,35 @@ local function load_item_defs()
 	log("[CSR][api] items: ran " .. count .. " item file(s)")
 end
 
+-- Same auto-load for modifier passports: each lua/modifiers/<id>.lua CALLS
+-- _G.CSR.register_modifier({...}) itself (PD2 dofile returns no chunk value).
+-- Adding a modifier = drop a file here; no mod.txt edit (mirrors the items model).
+local function load_modifier_defs()
+	if not (file and file.GetFiles and ModPath) then
+		log("[CSR][api] modifiers: file API or ModPath unavailable -- skipped")
+		return
+	end
+	local dir = ModPath .. "lua/modifiers/"
+	local names = file.GetFiles(dir)
+	if not names then
+		return
+	end
+	local count = 0
+	for _, name in pairs(names) do
+		if type(name) == "string" and name:sub(-4) == ".lua" then
+			local ok, err = pcall(dofile, dir .. name)
+			if ok then
+				count = count + 1
+			else
+				log("[CSR][api] modifiers: '" .. tostring(name) .. "' failed to load: " .. tostring(err))
+			end
+		end
+	end
+	log("[CSR][api] modifiers: ran " .. count .. " modifier file(s)")
+end
+
 load_item_defs()
+load_modifier_defs()
 
 -- Drain the requires that the wildcard delegator buffered before this shim was
 -- ready -- engine classes required during lib/entry's body, before this post-hook

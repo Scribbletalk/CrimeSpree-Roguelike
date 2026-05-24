@@ -54,10 +54,111 @@ local items_panel_rarity_colors = {
 local items_panel_icon_size = 64
 local items_panel_frame_size = 72
 local items_panel_icon_gap = 8
-local items_panel_grid_cols = 7
+-- Min cell size before a new row opens (RoR2-style adaptive items grid -- see
+-- csr_adaptive_grid). With up to 4 players' inventories to show, cells shrink
+-- from items_panel_icon_size down to this as the count grows; below it, a row
+-- is added and the cells resize back up.
+local items_panel_min_icon_size = 40
 local items_panel_peer_header_h = 22
 local items_panel_peer_gap = 16
 local items_panel_padding = 16
+
+-- Modifiers feature-panel sub-tab row (Loud / Stealth). The two buttons split
+-- the panel width 50/50 (no gap -- a segmented control) and sit at the top; the
+-- modifier icon grid renders below them. Icons are frameless and ~2x the items
+-- grid glyph (user spec 2026-05-23), so the modifiers grid has its OWN size +
+-- gap rather than reusing the items metrics.
+local modifiers_subtab_h = 28
+local modifiers_subtab_gap = 6 -- small gap between the Loud / Stealth buttons
+local modifiers_grid_top_gap = 16
+local modifiers_icon_size = 72
+local modifiers_min_icon_size = 40 -- icons shrink to this (never below) to fit the panel height
+local modifiers_icon_gap = 12
+
+-- One Loud/Stealth tab button at the given x/width. Rebuilt (not mutated) on
+-- every repopulate, so `active` is baked in at build time -- no separate
+-- set_active path needed. Returns the hit-test panel; the caller stores it for
+-- mouse_moved/pressed.
+local function csr_build_modifier_subtab(parent, text_str, x, y, w, active)
+	local p = parent:panel({
+		x = x,
+		y = y,
+		w = w,
+		h = modifiers_subtab_h,
+		layer = 10,
+	})
+	p:rect({
+		name = "bg",
+		color = active and tweak_data.screen_colors.button_stage_2 or Color.black,
+		alpha = active and 0.5 or 0.4,
+		layer = 0,
+	})
+	-- Frame discarded like the feature-panel borders (anonymous; panel-tree
+	-- teardown removes it with its parent).
+	BoxGuiObject:new(p:panel({ layer = 2 }), { sides = { 1, 1, 1, 1 } })
+	p:text({
+		name = "label",
+		text = utf8.to_upper(text_str),
+		font = tweak_data.menu.pd2_small_font,
+		font_size = tweak_data.menu.pd2_small_font_size,
+		color = active and Color.white or tweak_data.screen_colors.button_stage_3,
+		align = "center",
+		vertical = "center",
+		w = p:w(),
+		h = p:h(),
+		layer = 3,
+	})
+	return p
+end
+
+-- RoR2-style adaptive grid sizing (used by the items panel, which must fit up to
+-- 4 players' inventories). The cells share one square size that SHRINKS as the
+-- count grows so they stay in as few rows as possible; a new row opens only once
+-- the per-row size would drop below `min_size`, at which point every cell
+-- resizes back up to fill the new row count. The inter-cell `gap` is fixed --
+-- the size adapts, not the gap. Returns (cell_size, per_row); the caller
+-- left-aligns, so a full row spans the width and a partial last row hugs the
+-- left. cell_size is floored for crisp rendering.
+local function csr_adaptive_grid(count, avail_w, max_size, min_size, gap)
+	if count <= 0 then
+		return max_size, 1
+	end
+	local rows = 1
+	while true do
+		local per_row = math.ceil(count / rows)
+		local size = math.min(max_size, (avail_w - (per_row - 1) * gap) / per_row)
+		if size >= min_size or per_row <= 1 then
+			return math.floor(math.max(size, min_size)), per_row
+		end
+		rows = rows + 1
+	end
+end
+
+-- Height-bounded grid sizing (used by the Modifiers panel). Icons sit at
+-- `max_size` and pack left-to-right / top-to-bottom; they NEVER grow past it.
+-- They only SHRINK (down to min_size) when the resulting rows would overflow
+-- `avail_h` -- a smaller size fits more per row, so fewer rows, so it fits the
+-- panel height (user spec 2026-05-23). Fixed `gap`. Returns (cell_size, cols).
+local function csr_fit_grid(count, avail_w, avail_h, max_size, min_size, gap)
+	if count <= 0 then
+		return max_size, 1
+	end
+	local size = max_size
+	while size > min_size do
+		local cols = math.max(1, math.floor((avail_w + gap) / (size + gap)))
+		local rows = math.ceil(count / cols)
+		if rows * (size + gap) - gap <= avail_h then
+			break
+		end
+		size = size - 2
+	end
+	if size < min_size then
+		size = min_size
+	end
+	local cols = math.max(1, math.floor((avail_w + gap) / (size + gap)))
+	return math.floor(size), cols
+end
+
 CSRMissionsMenuComponent.button_size = {
 	w = size * 0.6666666666666666,
 	h = size * 0.5 * 0.6666666666666666,
@@ -540,10 +641,11 @@ function CSRMissionsMenuComponent:_create_feature_panels()
 		rewards = build(),
 	}
 
-	-- Initial population so the panel has content the first time the sidebar
-	-- opens it. Re-populated on every toggle-on for MP-sync arrival (item counts
-	-- can change while the lobby is up once the sync slice lands).
+	-- Initial population so the panels have content the first time the sidebar
+	-- opens them. Re-populated on every toggle-on for MP-sync arrival (item
+	-- counts can change while the lobby is up once the sync slice lands).
 	self:_populate_items_panel()
+	self:_populate_modifiers_panel()
 end
 
 -- Mutually exclusive: the three panels occupy the SAME rect, so showing one
@@ -595,6 +697,10 @@ function CSRMissionsMenuComponent:toggle_feature_panel(key)
 		-- Rebuild on toggle-on so newly granted items or peer joins are reflected
 		-- without needing to leave/re-enter the lobby. Cheap (≤ 28 items × N peers).
 		self:_populate_items_panel()
+	elseif show and key == "modifiers" then
+		-- Rebuild on toggle-on so a rank gained since the last build is reflected
+		-- without leaving the lobby. Cheap (≤ pool size icons).
+		self:_populate_modifiers_panel()
 	end
 end
 
@@ -639,6 +745,8 @@ function CSRMissionsMenuComponent:_csr_reopen_pinned_feature_panel()
 	end
 	if pinned == "items" and self._populate_items_panel then
 		self:_populate_items_panel()
+	elseif pinned == "modifiers" and self._populate_modifiers_panel then
+		self:_populate_modifiers_panel()
 	end
 end
 
@@ -656,10 +764,12 @@ function CSRMissionsMenuComponent:hide_feature_panels()
 		end
 	end
 
-	-- A hidden items panel cannot be hovered; drop any active tooltip so it does
-	-- not linger on top of the sidebar / mission cards.
+	-- A hidden panel cannot be hovered; drop any active tooltip so it does not
+	-- linger on top of the sidebar / mission cards. The items + modifiers panels
+	-- share one tooltip slot (mutually exclusive), so one clear covers both.
 	self:_clear_items_tooltip()
 	self._items_hover_target = nil
+	self._modifiers_hover_target = nil
 
 	-- Single choke point for "all panels closed": clear the active-row highlight.
 	-- Covers sidebar collapse and sub-screen blanking (where the pinned slot
@@ -837,31 +947,32 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 				return (a.def.type or "") < (b.def.type or "")
 			end)
 
-			-- Fit the grid to the panel width, THEN center it so the left and right
-			-- margins match. `cols` is the design max (items_panel_grid_cols) capped
-			-- to however many cells actually fit in section_w — so the grid never
-			-- overflows the right edge on a narrow panel (the previous fixed 7-col
-			-- grid did, giving a left margin but no right one). Centering the fitted
-			-- grid then makes both margins equal at any panel width. Rarity frames
-			-- overflow the cell span 4px each side symmetrically.
-			local cell_step = items_panel_icon_size + items_panel_icon_gap
-			local cols =
-				math.max(1, math.min(items_panel_grid_cols, math.floor((section_w + items_panel_icon_gap) / cell_step)))
-			local grid_w = cols * items_panel_icon_size + (cols - 1) * items_panel_icon_gap
-			local grid_x = items_panel_padding + math.max(0, math.floor((section_w - grid_w) / 2))
+			-- RoR2-style adaptive grid (csr_adaptive_grid): up to 4 players'
+			-- inventories must fit, so the cells share one square size that SHRINKS
+			-- (from items_panel_icon_size down to items_panel_min_icon_size) as the
+			-- count grows, opening a new row only when they'd shrink past the min.
+			-- Fixed small gap; left-aligned (a full row spans the width, a partial
+			-- last row hugs the left). The rarity frame, glyph and badge all scale
+			-- with the cell size.
+			local cell_size, per_row = csr_adaptive_grid(
+				#items_list,
+				section_w,
+				items_panel_icon_size,
+				items_panel_min_icon_size,
+				items_panel_icon_gap
+			)
+			local step = cell_size + items_panel_icon_gap
+			-- Frame keeps its 72/64 over-cell ratio so it still overflows the cell
+			-- symmetrically at any size.
+			local frame_size = math.floor(cell_size * items_panel_frame_size / items_panel_icon_size)
+			local frame_overflow = (frame_size - cell_size) / 2
 			local frame_tex, frame_rect = tweak_data.hud_icons:get_icon_data("csr_frame")
 
-			local frame_overflow = (items_panel_frame_size - items_panel_icon_size) / 2
-			-- Inset of the visible icon bitmap inside the 64x64 cell. The cell
-			-- (hit-test + grid step) and the frame (72x72) stay fixed; bumping
-			-- this number shrinks ONLY the icon glyph inside its rarity frame.
-			local icon_inset = 14
-
 			for i, entry in ipairs(items_list) do
-				local col = (i - 1) % cols
-				local row = math.floor((i - 1) / cols)
-				local ix = grid_x + col * (items_panel_icon_size + items_panel_icon_gap)
-				local iy = y + row * (items_panel_icon_size + items_panel_icon_gap)
+				local col = (i - 1) % per_row
+				local row = math.floor((i - 1) / per_row)
+				local ix = items_panel_padding + col * step
+				local iy = y + row * step
 
 				-- Frame is a SIBLING of the cell on `content`, not a child, so its
 				-- 72x72 footprint can overflow the 64x64 cell by 4px each side --
@@ -875,8 +986,8 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 					texture_rect = frame_rect,
 					x = ix - frame_overflow,
 					y = iy - frame_overflow,
-					w = items_panel_frame_size,
-					h = items_panel_frame_size,
+					w = frame_size,
+					h = frame_size,
 					layer = 5,
 				})
 				frame_bmp:set_color(items_panel_rarity_colors[entry.def.rarity] or Color.white)
@@ -884,8 +995,8 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 				local cell = content:panel({
 					x = ix,
 					y = iy,
-					w = items_panel_icon_size,
-					h = items_panel_icon_size,
+					w = cell_size,
+					h = cell_size,
 					layer = 10,
 				})
 
@@ -901,12 +1012,10 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 				else
 					icon_tex, icon_rect = tweak_data.hud_icons:get_icon_data(raw_icon)
 				end
-				-- Optional per-item icon scale: shrink/grow ONLY the glyph inside
-				-- the fixed cell (the rarity frame size is unchanged). Default 1.0
-				-- reproduces the legacy icon size (cell - 2*icon_inset), centred.
-				local base_glyph = items_panel_icon_size - icon_inset * 2
-				local glyph = base_glyph * (entry.def.icon_scale or 1)
-				local glyph_inset = (items_panel_icon_size - glyph) / 2
+				-- Glyph fills 56.25% of the cell (the legacy 36px-in-64px ratio),
+				-- times the optional per-item icon_scale, centred in the cell.
+				local glyph = math.floor(cell_size * (1 - 28 / items_panel_icon_size) * (entry.def.icon_scale or 1))
+				local glyph_inset = math.floor((cell_size - glyph) / 2)
 				cell:bitmap({
 					name = "item_icon",
 					texture = icon_tex,
@@ -936,10 +1045,10 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 					color = Color.white,
 					align = "right",
 					vertical = "top",
-					x = ix - 3,
-					y = iy - 5,
-					w = items_panel_icon_size,
-					h = items_panel_icon_size,
+					x = ix - math.floor(3 * cell_size / items_panel_icon_size),
+					y = iy - math.floor(5 * cell_size / items_panel_icon_size),
+					w = cell_size,
+					h = cell_size,
 					layer = 20,
 				})
 
@@ -950,8 +1059,8 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 				}
 			end
 
-			local rows = math.ceil(#items_list / cols)
-			y = y + rows * (items_panel_icon_size + items_panel_icon_gap) - items_panel_icon_gap + items_panel_peer_gap
+			local rows = math.ceil(#items_list / per_row)
+			y = y + rows * step - items_panel_icon_gap + items_panel_peer_gap
 		end
 	end
 end
@@ -1039,12 +1148,22 @@ function CSRMissionsMenuComponent:_show_items_tooltip(target)
 	self._items_tooltip = tip
 
 	local name_color = items_panel_rarity_colors[def.rarity] or Color.white
-	-- name/desc are localization keys (per-item-file model); resolve per language.
-	-- :text() returns the localized string for a known key, the input verbatim
-	-- otherwise, so a legacy literal still renders.
+	-- Resolve display text. Items pass loc KEYS in def.name/def.desc (resolved
+	-- per language here). Modifiers pass PRE-RESOLVED literals in def.name_text/
+	-- def.desc_text (the combined "Title\nBody" loc string is split before it
+	-- reaches us). Prefer the pre-resolved field when present: feeding an already
+	-- localized literal back through :text() does NOT echo it -- the engine
+	-- returns an "ERROR ..." placeholder for an unknown key, which is exactly the
+	-- doubled-"ERROR" the modifier tooltip showed.
+	local resolved_name = def.name_text
+		or (def.name and managers.localization and managers.localization:text(def.name))
+		or ""
+	local resolved_desc = def.desc_text
+		or (def.desc and managers.localization and managers.localization:text(def.desc))
+		or ""
 	local name_text = tip:text({
 		name = "tooltip_name",
-		text = (def.name and managers.localization and managers.localization:text(def.name)) or "",
+		text = resolved_name,
 		font = tweak_data.menu.pd2_small_font,
 		font_size = tweak_data.menu.pd2_small_font_size,
 		color = name_color,
@@ -1059,7 +1178,7 @@ function CSRMissionsMenuComponent:_show_items_tooltip(target)
 	-- text actually needs, so a one-word desc isn't padded with blank space.
 	local desc_text = tip:text({
 		name = "tooltip_desc",
-		text = (def.desc and managers.localization and managers.localization:text(def.desc)) or "",
+		text = resolved_desc,
 		font = tweak_data.menu.pd2_small_font,
 		font_size = tweak_data.menu.pd2_small_font_size,
 		color = tweak_data.screen_colors.text,
@@ -1112,6 +1231,195 @@ function CSRMissionsMenuComponent:_show_items_tooltip(target)
 	end
 
 	tip:set_position(tx, ty)
+end
+
+-- Build / rebuild the Modifiers feature-panel content: a Loud / Stealth sub-tab
+-- row at the top and, below it, a grid of the modifiers active for the chosen
+-- sub-tab. Same teardown + hit-target model as _populate_items_panel; the
+-- modifier grid reuses the items grid metrics and the shared tooltip helper.
+-- Idempotent: prior content is removed first. Borrowed by MissionBriefingGui
+-- (briefing_sidebar.lua METHODS_TO_BORROW) so both surfaces share it.
+function CSRMissionsMenuComponent:_populate_modifiers_panel()
+	if not self._feature_panels or not alive(self._feature_panels.modifiers) then
+		return
+	end
+	local panel = self._feature_panels.modifiers
+
+	if self._modifiers_content and alive(self._modifiers_content) then
+		panel:remove(self._modifiers_content)
+	end
+	self._modifiers_content = nil
+	self._modifiers_hit_targets = {}
+	self._modifiers_subtab_buttons = nil
+	self:_clear_items_tooltip()
+	self._modifiers_hover_target = nil
+
+	-- Default to Loud; persisted on the instance across repopulates.
+	self._modifiers_subtab = self._modifiers_subtab == "stealth" and "stealth" or "loud"
+	local is_stealth = self._modifiers_subtab == "stealth"
+
+	local content = panel:panel({
+		layer = 5,
+	})
+	self._modifiers_content = content
+
+	-- Sub-tab row: the two buttons split the content width with a small gap
+	-- between them (user spec 2026-05-23) -- together they still span the full
+	-- panel width. section_w is reused by the grid below.
+	local pad = items_panel_padding
+	local section_w = panel:w() - pad * 2
+	local btn_w = math.floor((section_w - modifiers_subtab_gap) / 2)
+	local b_loud = csr_build_modifier_subtab(content, "Loud", pad, pad, btn_w, not is_stealth)
+	-- Stealth takes the remainder so odd-pixel widths still tile flush to the gap.
+	local b_stealth = csr_build_modifier_subtab(
+		content,
+		"Stealth",
+		pad + btn_w + modifiers_subtab_gap,
+		pad,
+		section_w - btn_w - modifiers_subtab_gap,
+		is_stealth
+	)
+	self._modifiers_subtab_buttons = {
+		loud = { panel = b_loud },
+		stealth = { panel = b_stealth },
+	}
+
+	local mgr = managers and managers.csr
+	local list = (mgr and mgr.active_modifiers and mgr:active_modifiers(self._modifiers_subtab)) or {}
+	if #list == 0 then
+		-- Empty (rank 0, or all of this category's pool already shown): the
+		-- sub-tabs stand alone. No body text -- matches the items panel's
+		-- empty-section convention (header/tabs only, no filler string).
+		return
+	end
+
+	local grid_top = pad + modifiers_subtab_h + modifiers_grid_top_gap
+	-- Pack the icons left-to-right / top-to-bottom (like the items grid), fixed
+	-- gap, at modifiers_icon_size. They only SHRINK (to modifiers_min_icon_size)
+	-- if the rows would overflow the panel's height -- never grow past the max
+	-- (user spec 2026-05-23). avail_h = the panel below the sub-tab row, minus a
+	-- bottom margin.
+	local avail_h = panel:h() - grid_top - pad
+	local cell_size, cols =
+		csr_fit_grid(#list, section_w, avail_h, modifiers_icon_size, modifiers_min_icon_size, modifiers_icon_gap)
+	local step = cell_size + modifiers_icon_gap
+
+	for i, entry in ipairs(list) do
+		local col = (i - 1) % cols
+		local row = math.floor((i - 1) / cols)
+		local ix = pad + col * step
+		local iy = grid_top + row * step
+
+		-- Frameless cell (user spec): the icon fills the whole cell, and the same
+		-- cell panel is the hover hit-test footprint.
+		local cell = content:panel({
+			x = ix,
+			y = iy,
+			w = cell_size,
+			h = cell_size,
+			layer = 10,
+		})
+
+		-- Modifier icons are short hud_icons ids (vanilla CS atlas / CSR custom);
+		-- get_icon_data returns (texture, rect) and is nil-safe (an unknown id
+		-- falls back to using the id as a path -- renders blank, never crashes).
+		local icon_tex, icon_rect = tweak_data.hud_icons:get_icon_data(entry.icon or "csr_dog_tags")
+		cell:bitmap({
+			name = "mod_icon",
+			texture = icon_tex,
+			texture_rect = icon_rect,
+			w = cell_size,
+			h = cell_size,
+			layer = 10,
+		})
+
+		-- Resolve the combined "Title\nBody" loc text once and split on the first
+		-- newline -> tooltip name (top, coloured) + desc (wrapped body). The split
+		-- result is PRE-RESOLVED text, so it goes into name_text/desc_text (not
+		-- name/desc, which _show_items_tooltip would localize again -> doubled
+		-- "ERROR" placeholder since a resolved literal is not a known key).
+		local full = (entry.loc and managers.localization and managers.localization:text(entry.loc)) or ""
+		local title, body = full, ""
+		local nl = full:find("\n", 1, true)
+		if nl then
+			title = full:sub(1, nl - 1)
+			body = full:sub(nl + 1)
+		end
+
+		self._modifiers_hit_targets[#self._modifiers_hit_targets + 1] = {
+			panel = cell,
+			def = { name_text = title, desc_text = body },
+		}
+	end
+end
+
+-- Edge-triggered hover for the Modifiers panel: icon -> tooltip, sub-tab -> link
+-- cursor. Mirrors _items_panel_mouse_moved (event-driven, small target list, so
+-- a linear walk is fine). Returns true when the cursor is over a modifier icon
+-- OR a sub-tab so the caller can flip the pointer to "link".
+function CSRMissionsMenuComponent:_modifiers_panel_mouse_moved(x, y)
+	local panel = self._feature_panels and self._feature_panels.modifiers
+	if not panel or not alive(panel) or not panel:visible() then
+		if self._modifiers_hover_target ~= nil then
+			self._modifiers_hover_target = nil
+			self:_clear_items_tooltip()
+		end
+		return false
+	end
+
+	local over_subtab = false
+	if self._modifiers_subtab_buttons then
+		for _, b in pairs(self._modifiers_subtab_buttons) do
+			if b.panel and alive(b.panel) and b.panel:inside(x, y) then
+				over_subtab = true
+				break
+			end
+		end
+	end
+
+	local hovered = nil
+	if self._modifiers_hit_targets then
+		for _, target in ipairs(self._modifiers_hit_targets) do
+			if alive(target.panel) and target.panel:inside(x, y) then
+				hovered = target
+				break
+			end
+		end
+	end
+
+	if hovered ~= self._modifiers_hover_target then
+		self._modifiers_hover_target = hovered
+		self:_clear_items_tooltip()
+		if hovered then
+			self:_show_items_tooltip(hovered)
+		end
+	end
+
+	return hovered ~= nil or over_subtab
+end
+
+-- Click handling for the Modifiers sub-tabs. Returns true if a sub-tab was hit
+-- (switching repopulates the grid). Called from the lobby's mouse_pressed and
+-- the briefing input wrap. Posts the same click SFX the sidebar / cards use.
+function CSRMissionsMenuComponent:_modifiers_panel_mouse_pressed(x, y)
+	local panel = self._feature_panels and self._feature_panels.modifiers
+	if not panel or not alive(panel) or not panel:visible() then
+		return false
+	end
+	if not self._modifiers_subtab_buttons then
+		return false
+	end
+	for key, b in pairs(self._modifiers_subtab_buttons) do
+		if b.panel and alive(b.panel) and b.panel:inside(x, y) then
+			if self._modifiers_subtab ~= key then
+				self._modifiers_subtab = key
+				managers.menu_component:post_event("menu_enter")
+				self:_populate_modifiers_panel()
+			end
+			return true
+		end
+	end
+	return false
 end
 
 function CSRMissionsMenuComponent:_create_status_bar(w)
@@ -1712,6 +2020,13 @@ function CSRMissionsMenuComponent:mouse_moved(o, x, y)
 		used = true
 	end
 
+	-- Modifiers feature panel hover -> tooltip (icons) + link cursor (sub-tabs),
+	-- same contract as the items panel above. Hidden-panel case handled inside.
+	if self:_modifiers_panel_mouse_moved(x, y) then
+		pointer = "link"
+		used = true
+	end
+
 	return used, pointer
 end
 
@@ -1727,6 +2042,13 @@ function CSRMissionsMenuComponent:mouse_pressed(button, x, y)
 	-- placeholder buttons (no callbacks) this returns nil and falls through, so
 	-- card/start/reroll handling is unchanged until sidebar callbacks land.
 	if self._sidebar and self._sidebar:mouse_pressed(x, y) then
+		return true
+	end
+
+	-- Modifiers sub-tab click (Loud / Stealth). Checked after the sidebar (which
+	-- owns the rows that open the panel) and before card/start handling. No-op
+	-- unless the panel is open and the click landed on a tab.
+	if self:_modifiers_panel_mouse_pressed(x, y) then
 		return true
 	end
 
@@ -2136,16 +2458,13 @@ function CSRMissionButton:update_info_text(mission_data)
 
 	text = text .. spacer
 	local len = utf8.len(text)
-	-- Vanilla passes mission_data.add here -- the per-mission rank increment
-	-- from vanilla CS tweak_data, which varies by mission length/difficulty.
-	-- The CSR rebalance makes every completed heist worth a FLAT rank amount
-	-- (rank_per_heist), so the card must advertise that same flat value, not
-	-- the vanilla per-mission number. This is the exact value the player
-	-- actually receives -- mission_lifecycle.lua awards
-	-- managers.csr:constant("rank_per_heist") on a successful heist with the
-	-- identical `or 1` fallback, so the card and the payout never disagree.
+	-- Per-mission rank gain, scaled by the LENGTH category shown by the clock
+	-- glyph above (short = 1, medium = 2, long = 3). Uses managers.csr:rank_for_
+	-- mission -- the SAME function mission_lifecycle.lua awards on completion, so
+	-- the card advertises exactly what the player receives. (Vanilla passed
+	-- mission_data.add directly; CSR maps that add-category to 1/2/3.)
 	local inc_text = managers.localization:text("menu_cs_lobby_mission_inc", {
-		inc = managers.csr:constant("rank_per_heist") or 1,
+		inc = managers.csr:rank_for_mission(mission_data.id),
 	})
 	text = text .. inc_text
 
@@ -2412,7 +2731,7 @@ CSRSidebar.ITEMS = {
 	{ text = "Modifiers", icon = "sidebar_mutators", key = "modifiers", callback = csr_feature_toggle("modifiers") },
 	{ text = "Rewards", icon = "sidebar_broker", key = "rewards", callback = csr_feature_toggle("rewards") },
 	{ separator = true },
-	{ text = "Gage Services", icon = "sidebar_gage" },
+	{ text = "Black Market", icon = "sidebar_gage" },
 	{ separator = true },
 	{ text = "Logbook", icon = "sidebar_codex", callback = csr_open_logbook },
 }
@@ -2486,7 +2805,7 @@ function CSRSidebar:init(parent, top, bottom, owner)
 				icon = item.icon,
 				callback = item.callback,
 			})
-			-- nil for rows without a feature panel (Gage Services, Logbook); only
+			-- nil for rows without a feature panel (Black Market, Logbook); only
 			-- the three content rows carry a key, so only they can light up.
 			btn._feature_key = item.key
 		end

@@ -436,7 +436,7 @@ function LocalizationManager:text(string_id, macros)
 	-- to avoid the $value substitution problem
 	if string_id == "menu_cs_modifier_less_concealment" then
 		-- Base text without Total
-		local base_text = "Stand Out\nDetection risk is increased by 3 (Stealth Only)"
+		local base_text = "Stand Out\nDetection risk is increased by 3"
 
 		-- Show Total ONLY in the view menu (CSR_FilterForUI = true), NOT in the selection popup
 		if CSR_FilterForUI then

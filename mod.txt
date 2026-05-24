@@ -126,6 +126,14 @@
 			"script_path": "lua/managers/mission_lifecycle.lua"
 		},
 		{
+			"hook_id": "lib/states/ingamewaitingforplayers",
+			"script_path": "lua/managers/combat_modifiers.lua"
+		},
+		{
+			"hook_id": "lib/setups/gamesetup",
+			"script_path": "lua/core/heist_packages.lua"
+		},
+		{
 			"hook_id": "lib/managers/moneymanager",
 			"script_path": "lua/managers/endscreen_economy.lua"
 		},
