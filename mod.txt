@@ -71,23 +71,23 @@
 		},
 		{
 			"hook_id": "lib/managers/menu/crimespreedetailsmenucomponent",
-			"script_path": "lua/menu/gage_services_shop_page.lua"
+			"script_path": "lua/menu/black_market_shop_page.lua"
 		},
 		{
 			"hook_id": "lib/managers/menu/crimespreedetailsmenucomponent",
-			"script_path": "lua/menu/gage_services_menu.lua"
+			"script_path": "lua/menu/black_market_menu.lua"
 		},
 		{
 			"hook_id": "lib/managers/menumanager",
-			"script_path": "lua/menu/gage_services_node_register.lua"
+			"script_path": "lua/menu/black_market_node_register.lua"
 		},
 		{
 			"hook_id": "lib/managers/menumanager",
-			"script_path": "lua/menu/gage_services_component_register.lua"
+			"script_path": "lua/menu/black_market_component_register.lua"
 		},
 		{
 			"hook_id": "lib/managers/menumanager",
-			"script_path": "lua/menu/gage_services_button.lua"
+			"script_path": "lua/menu/black_market_button.lua"
 		},
 		{
 			"hook_id": "lib/managers/hud/hudmissionbriefing",

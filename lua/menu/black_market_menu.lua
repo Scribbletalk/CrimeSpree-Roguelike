@@ -2,7 +2,7 @@
 -- Full-screen menu node (940x600 centered panel), modelled on the U1 logbook
 -- component (logbook_menu.lua) — same node+component+open_node lifecycle. Hosts
 -- internal tabs (Shop is currently the only one; built for expansion) and a
--- title + close button. The shop page content lives in gage_services_shop_page.lua.
+-- title + close button. The shop page content lives in black_market_shop_page.lua.
 --
 -- U1 port note: the pre-refactor version also suppressed the end-screen UI when
 -- opened over the victory screen. That's dropped here — the U1 shop opens from
@@ -14,9 +14,9 @@ if not RequiredScript then
 	return
 end
 
-CrimeSpreeGageServicesMenuComponent = CrimeSpreeGageServicesMenuComponent or class()
+CrimeSpreeBlackMarketMenuComponent = CrimeSpreeBlackMarketMenuComponent or class()
 
-function CrimeSpreeGageServicesMenuComponent:init(ws, fullscreen_ws, node)
+function CrimeSpreeBlackMarketMenuComponent:init(ws, fullscreen_ws, node)
 	if not ws or not fullscreen_ws then
 		return
 	end
@@ -47,7 +47,7 @@ function CrimeSpreeGageServicesMenuComponent:init(ws, fullscreen_ws, node)
 	end)
 end
 
-function CrimeSpreeGageServicesMenuComponent:_setup()
+function CrimeSpreeBlackMarketMenuComponent:_setup()
 	local parent = self._ws:panel()
 
 	if alive(self._panel) then
@@ -55,7 +55,7 @@ function CrimeSpreeGageServicesMenuComponent:_setup()
 	end
 
 	self._panel = parent:panel({
-		name = "csr_gage_services_panel",
+		name = "csr_black_market_panel",
 		layer = self._init_layer + 10,
 	})
 
@@ -63,7 +63,7 @@ function CrimeSpreeGageServicesMenuComponent:_setup()
 	local panel_h = 600
 
 	self._content_panel = self._panel:panel({
-		name = "csr_gage_services_content",
+		name = "csr_black_market_content",
 		w = panel_w,
 		h = panel_h,
 		layer = 10,
@@ -84,7 +84,7 @@ function CrimeSpreeGageServicesMenuComponent:_setup()
 	-- Title (top-left).
 	self._content_panel:text({
 		name = "title",
-		text = managers.localization:text("csr_gage_services_title"),
+		text = managers.localization:text("csr_black_market_title"),
 		font = tweak_data.menu.pd2_large_font,
 		font_size = tweak_data.menu.pd2_large_font_size,
 		color = Color.white,
@@ -120,13 +120,13 @@ function CrimeSpreeGageServicesMenuComponent:_setup()
 	-- drawn. _tab_definitions still drives _create_tab_panels / _switch_tab, and
 	-- the (empty) _tab_buttons table keeps the mouse/colour loops as harmless no-ops.
 	self._tab_definitions = {
-		{ id = "shop", label_key = "csr_gage_services_tab_shop" },
+		{ id = "shop", label_key = "csr_black_market_tab_shop" },
 	}
 	self:_create_tab_panels()
 	self:_switch_tab("shop")
 end
 
-function CrimeSpreeGageServicesMenuComponent:_create_tab_panels()
+function CrimeSpreeBlackMarketMenuComponent:_create_tab_panels()
 	-- Content sits just below the title now that the tab bar is gone (was y=100
 	-- to clear the bar; the shop page needs >=480px and gets 520 here).
 	local panel_w = self._content_panel:w() - 40
@@ -147,7 +147,7 @@ function CrimeSpreeGageServicesMenuComponent:_create_tab_panels()
 	end
 end
 
-function CrimeSpreeGageServicesMenuComponent:_switch_tab(tab_id)
+function CrimeSpreeBlackMarketMenuComponent:_switch_tab(tab_id)
 	self._current_tab = tab_id
 
 	-- Tab button colours: selected = gold bg / black text; others = dim.
@@ -167,18 +167,18 @@ function CrimeSpreeGageServicesMenuComponent:_switch_tab(tab_id)
 
 	-- Lazy-populate the shop page on first switch to the tab.
 	if tab_id == "shop" and not self._shop_populated then
-		if CrimeSpreeGageServicesShopPage then
-			self._shop_page = CrimeSpreeGageServicesShopPage:new(self._tab_panels["shop"], self)
+		if CrimeSpreeBlackMarketShopPage then
+			self._shop_page = CrimeSpreeBlackMarketShopPage:new(self._tab_panels["shop"], self)
 		end
 		self._shop_populated = true
 	end
 end
 
-function CrimeSpreeGageServicesMenuComponent:close()
+function CrimeSpreeBlackMarketMenuComponent:close()
 	-- Clear the live-instance global before destroying the panel so external
 	-- callers don't refresh a dead Diesel object (C++ access violation).
-	if _G.CSR_GageServicesShopPageInstance == self._shop_page then
-		_G.CSR_GageServicesShopPageInstance = nil
+	if _G.CSR_BlackMarketShopPageInstance == self._shop_page then
+		_G.CSR_BlackMarketShopPageInstance = nil
 	end
 	if self._panel and alive(self._panel) and self._ws then
 		self._ws:panel():remove(self._panel)
@@ -197,11 +197,11 @@ function CrimeSpreeGageServicesMenuComponent:close()
 	end)
 end
 
-function CrimeSpreeGageServicesMenuComponent:input_focus()
+function CrimeSpreeBlackMarketMenuComponent:input_focus()
 	return 1
 end
 
-function CrimeSpreeGageServicesMenuComponent:mouse_moved(o, x, y)
+function CrimeSpreeBlackMarketMenuComponent:mouse_moved(o, x, y)
 	if not self._content_panel then
 		return false
 	end
@@ -245,7 +245,7 @@ function CrimeSpreeGageServicesMenuComponent:mouse_moved(o, x, y)
 	return false, "arrow"
 end
 
-function CrimeSpreeGageServicesMenuComponent:mouse_pressed(button, x, y)
+function CrimeSpreeBlackMarketMenuComponent:mouse_pressed(button, x, y)
 	if not self._content_panel then
 		return
 	end
@@ -270,7 +270,7 @@ function CrimeSpreeGageServicesMenuComponent:mouse_pressed(button, x, y)
 	return false
 end
 
-function CrimeSpreeGageServicesMenuComponent:mouse_released(o, button, x, y)
+function CrimeSpreeBlackMarketMenuComponent:mouse_released(o, button, x, y)
 	if not self._content_panel then
 		return false
 	end
@@ -306,10 +306,10 @@ function CrimeSpreeGageServicesMenuComponent:mouse_released(o, button, x, y)
 	return false
 end
 
-function CrimeSpreeGageServicesMenuComponent:mouse_wheel_up(x, y)
+function CrimeSpreeBlackMarketMenuComponent:mouse_wheel_up(x, y)
 	return true
 end
 
-function CrimeSpreeGageServicesMenuComponent:mouse_wheel_down(x, y)
+function CrimeSpreeBlackMarketMenuComponent:mouse_wheel_down(x, y)
 	return true
 end

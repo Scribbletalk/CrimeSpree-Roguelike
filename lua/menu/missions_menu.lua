@@ -65,15 +65,24 @@ local items_panel_padding = 16
 
 -- Modifiers feature-panel sub-tab row (Loud / Stealth). The two buttons split
 -- the panel width 50/50 (no gap -- a segmented control) and sit at the top; the
--- modifier icon grid renders below them. Icons are frameless and ~2x the items
--- grid glyph (user spec 2026-05-23), so the modifiers grid has its OWN size +
--- gap rather than reusing the items metrics.
+-- modifier icon grid renders below them. Icons are frameless and the grid has its
+-- OWN size + gap rather than reusing the items metrics.
 local modifiers_subtab_h = 28
 local modifiers_subtab_gap = 6 -- small gap between the Loud / Stealth buttons
 local modifiers_grid_top_gap = 16
-local modifiers_icon_size = 72
+-- Grid sizing (user spec 2026-05-24): the icon row is JUSTIFIED to span the same
+-- width as the Loud/Stealth sub-tab row above it -- the first icon's left edge
+-- lines up with the Loud button's left edge and the last icon's right edge with
+-- the Stealth button's right edge (modifiers_side_margin_frac = 0 keeps it flush;
+-- raise it to inset the grid). Icons sit at modifiers_icon_size and NEVER grow
+-- past it -- they only SHRINK (down to modifiers_min_icon_size) when the rows
+-- would overflow the panel height. The size is deliberately small so MORE than
+-- four icons pack into a row; the horizontal gaps then stretch to fill the width.
+-- To fit more per row, lower modifiers_icon_size.
+local modifiers_icon_size = 52
 local modifiers_min_icon_size = 40 -- icons shrink to this (never below) to fit the panel height
-local modifiers_icon_gap = 12
+local modifiers_icon_gap = 12 -- MINIMUM horizontal gap (the justify step stretches it); also the vertical gap
+local modifiers_side_margin_frac = 0 -- inset on EACH side; 0 = flush with the Loud/Stealth buttons
 
 -- One Loud/Stealth tab button at the given x/width. Rebuilt (not mutated) on
 -- every repopulate, so `active` is baked in at build time -- no separate
@@ -134,19 +143,31 @@ local function csr_adaptive_grid(count, avail_w, max_size, min_size, gap)
 	end
 end
 
--- Height-bounded grid sizing (used by the Modifiers panel). Icons sit at
--- `max_size` and pack left-to-right / top-to-bottom; they NEVER grow past it.
--- They only SHRINK (down to min_size) when the resulting rows would overflow
--- `avail_h` -- a smaller size fits more per row, so fewer rows, so it fits the
--- panel height (user spec 2026-05-23). Fixed `gap`. Returns (cell_size, cols).
-local function csr_fit_grid(count, avail_w, avail_h, max_size, min_size, gap)
+-- Justified grid sizing (used by the Modifiers panel). Icons sit at `max_size`
+-- and NEVER grow past it; they only SHRINK (down to `min_size`) when the rows
+-- would overflow `avail_h` -- a smaller size fits more per row, so fewer rows.
+-- Columns pack into the inner width (avail_w minus `margin_frac` on each side) and
+-- are capped at `count`. The row is JUSTIFIED across that inner width: the first
+-- icon hugs the left edge and the last icon of a full row hugs the right edge,
+-- with the horizontal step stretched to absorb the slack -- so the grid spans the
+-- same width as the Loud/Stealth sub-tab row above it (user spec 2026-05-24). With
+-- margin_frac 0 that left edge is the panel padding (= the Loud button's left) and
+-- the right edge is the Stealth button's right. A partial last row left-aligns in
+-- the justified columns; the vertical step stays a fixed `size + gap` (set by the
+-- caller). Returns (cell_size, cols, start_x, step_x).
+local function csr_fit_grid(count, avail_w, avail_h, margin_frac, max_size, min_size, gap)
 	if count <= 0 then
-		return max_size, 1
+		return max_size, 1, 0, 0
+	end
+	-- Inner width icons span; cols is capped at `count` so a partial set leaves no
+	-- empty trailing columns (it justifies across however many icons there are).
+	local inner_w = avail_w * (1 - margin_frac * 2)
+	local function cols_for(size)
+		return math.max(1, math.min(count, math.floor((inner_w + gap) / (size + gap))))
 	end
 	local size = max_size
 	while size > min_size do
-		local cols = math.max(1, math.floor((avail_w + gap) / (size + gap)))
-		local rows = math.ceil(count / cols)
+		local rows = math.ceil(count / cols_for(size))
 		if rows * (size + gap) - gap <= avail_h then
 			break
 		end
@@ -155,8 +176,14 @@ local function csr_fit_grid(count, avail_w, avail_h, max_size, min_size, gap)
 	if size < min_size then
 		size = min_size
 	end
-	local cols = math.max(1, math.floor((avail_w + gap) / (size + gap)))
-	return math.floor(size), cols
+	size = math.floor(size)
+	local cols = cols_for(size)
+	local start_x = math.floor(avail_w * margin_frac)
+	-- Stretch the column step so the first icon sits at start_x and the last full-
+	-- row icon's right edge lands at start_x + inner_w. A single column has no step
+	-- (the lone icon sits at the left edge).
+	local step_x = cols > 1 and math.floor((inner_w - size) / (cols - 1)) or 0
+	return size, cols, start_x, step_x
 end
 
 CSRMissionsMenuComponent.button_size = {
@@ -1300,15 +1327,24 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 	-- (user spec 2026-05-23). avail_h = the panel below the sub-tab row, minus a
 	-- bottom margin.
 	local avail_h = panel:h() - grid_top - pad
-	local cell_size, cols =
-		csr_fit_grid(#list, section_w, avail_h, modifiers_icon_size, modifiers_min_icon_size, modifiers_icon_gap)
-	local step = cell_size + modifiers_icon_gap
+	local cell_size, cols, grid_start_x, grid_step_x = csr_fit_grid(
+		#list,
+		section_w,
+		avail_h,
+		modifiers_side_margin_frac,
+		modifiers_icon_size,
+		modifiers_min_icon_size,
+		modifiers_icon_gap
+	)
+	-- Horizontal step is the justified (stretched) step; rows stay tight at the
+	-- icon size + gap so the grid doesn't sprawl vertically.
+	local row_step = cell_size + modifiers_icon_gap
 
 	for i, entry in ipairs(list) do
 		local col = (i - 1) % cols
 		local row = math.floor((i - 1) / cols)
-		local ix = pad + col * step
-		local iy = grid_top + row * step
+		local ix = pad + grid_start_x + col * grid_step_x
+		local iy = grid_top + row * row_step
 
 		-- Frameless cell (user spec): the icon fills the whole cell, and the same
 		-- cell panel is the hover hit-test footprint.
@@ -2705,13 +2741,13 @@ local function csr_open_logbook()
 end
 
 -- Opens the full-screen Gage Services (Black Market) screen. Mirrors
--- csr_open_logbook: routes through MenuCallbackHandler:CSR_OpenGageServices
--- (gage_services_button.lua) -> managers.menu:open_node("gage_services_screen").
+-- csr_open_logbook: routes through MenuCallbackHandler:CSR_OpenBlackMarket
+-- (black_market_button.lua) -> managers.menu:open_node("black_market_screen").
 -- Resolved at click time, so load order with the shop scripts doesn't matter;
 -- the arg-less closure ignores the owner the sidebar passes it.
 local function csr_open_shop()
-	if MenuCallbackHandler and MenuCallbackHandler.CSR_OpenGageServices then
-		MenuCallbackHandler:CSR_OpenGageServices()
+	if MenuCallbackHandler and MenuCallbackHandler.CSR_OpenBlackMarket then
+		MenuCallbackHandler:CSR_OpenBlackMarket()
 	end
 end
 

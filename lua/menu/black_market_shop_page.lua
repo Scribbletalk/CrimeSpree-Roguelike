@@ -11,7 +11,7 @@ if not RequiredScript then
 	return
 end
 
-CrimeSpreeGageServicesShopPage = CrimeSpreeGageServicesShopPage or class()
+CrimeSpreeBlackMarketShopPage = CrimeSpreeBlackMarketShopPage or class()
 
 local CARD_W = 280
 local CARD_H = 360
@@ -56,16 +56,16 @@ local function loc_or_blank(key)
 	return s
 end
 
-function CrimeSpreeGageServicesShopPage:init(panel, parent)
+function CrimeSpreeBlackMarketShopPage:init(panel, parent)
 	self._panel = panel
 	self._parent = parent
 	self._cards = {}
 	self:_setup()
 	-- Expose the live instance so external callers can :refresh() while open.
-	_G.CSR_GageServicesShopPageInstance = self
+	_G.CSR_BlackMarketShopPageInstance = self
 end
 
-function CrimeSpreeGageServicesShopPage:_setup()
+function CrimeSpreeBlackMarketShopPage:_setup()
 	self:_create_token_counter()
 	self:_create_reroll_button()
 	self:_create_dialogue_strip()
@@ -75,7 +75,7 @@ function CrimeSpreeGageServicesShopPage:_setup()
 	self:refresh()
 end
 
-function CrimeSpreeGageServicesShopPage:_create_dialogue_strip()
+function CrimeSpreeBlackMarketShopPage:_create_dialogue_strip()
 	local strip_w = self._panel:w()
 	self._dialogue_panel = self._panel:panel({
 		name = "csr_gage_dialogue",
@@ -115,7 +115,7 @@ end
 
 -- Set the dialogue line (a loc key). Displayed with a "> " chevron (PD2 bitmap
 -- fonts have no runtime italic). animate=true runs a typewriter reveal.
-function CrimeSpreeGageServicesShopPage:_set_dialogue_line(loc_key, animate)
+function CrimeSpreeBlackMarketShopPage:_set_dialogue_line(loc_key, animate)
 	if not self._dialogue_text then
 		return
 	end
@@ -153,7 +153,7 @@ function CrimeSpreeGageServicesShopPage:_set_dialogue_line(loc_key, animate)
 	end)
 end
 
-function CrimeSpreeGageServicesShopPage:_create_token_counter()
+function CrimeSpreeBlackMarketShopPage:_create_token_counter()
 	local icon_size = 16
 	local font_size = 26
 	self._token_text = self._panel:text({
@@ -179,7 +179,7 @@ function CrimeSpreeGageServicesShopPage:_create_token_counter()
 	})
 end
 
-function CrimeSpreeGageServicesShopPage:_create_reroll_button()
+function CrimeSpreeBlackMarketShopPage:_create_reroll_button()
 	-- Right-flush "REROLL [icon] N" mirroring the token wallet at the left.
 	local font_size = 26
 	local icon_size = 16
@@ -188,7 +188,7 @@ function CrimeSpreeGageServicesShopPage:_create_reroll_button()
 	local btn_h = font_size + 4
 	local cost_area_w = 48
 
-	local label_text = utf8.to_upper(managers.localization:text("csr_gage_services_reroll"))
+	local label_text = utf8.to_upper(managers.localization:text("csr_black_market_reroll"))
 	local est_label_w = #label_text * 15
 	local btn_w = est_label_w + icon_gap + icon_size + cost_gap + cost_area_w
 
@@ -248,7 +248,7 @@ function CrimeSpreeGageServicesShopPage:_create_reroll_button()
 	self._reroll_cost_font_size = font_size
 end
 
-function CrimeSpreeGageServicesShopPage:_create_cards()
+function CrimeSpreeBlackMarketShopPage:_create_cards()
 	local total_w = CARD_W * 3 + CARD_GAP * 2
 	local start_x = math.floor((self._panel:w() - total_w) / 2)
 
@@ -269,7 +269,7 @@ end
 
 -- Build the static visual structure of a card. Called once per slot (and again
 -- if the slot's item type changes after a reroll).
-function CrimeSpreeGageServicesShopPage:_build_card_visuals(card, entry)
+function CrimeSpreeBlackMarketShopPage:_build_card_visuals(card, entry)
 	local panel = card.panel
 	local rcolor = RARITY_COLORS[entry.rarity] or Color.white
 
@@ -405,7 +405,7 @@ function CrimeSpreeGageServicesShopPage:_build_card_visuals(card, entry)
 	})
 	card.buy_text = card.buy_panel:text({
 		name = "buy_text",
-		text = utf8.to_upper(managers.localization:text("csr_gage_services_buy")),
+		text = utf8.to_upper(managers.localization:text("csr_black_market_buy")),
 		font = tweak_data.menu.pd2_medium_font,
 		font_size = 24,
 		color = tweak_data.screen_colors.button_stage_3,
@@ -446,7 +446,7 @@ function CrimeSpreeGageServicesShopPage:_build_card_visuals(card, entry)
 	})
 	card.sold_overlay:text({
 		name = "sold_text",
-		text = managers.localization:text("csr_gage_services_sold"),
+		text = managers.localization:text("csr_black_market_sold"),
 		font = tweak_data.menu.pd2_large_font,
 		font_size = 32,
 		color = Color(1, 1, 0.3, 0.3),
@@ -461,7 +461,7 @@ function CrimeSpreeGageServicesShopPage:_build_card_visuals(card, entry)
 end
 
 -- Refresh all dynamic UI to current state. Idempotent.
-function CrimeSpreeGageServicesShopPage:refresh()
+function CrimeSpreeBlackMarketShopPage:refresh()
 	-- Bail if the page panel was destroyed (close removes it; a stale instance
 	-- pointer calling :set_text on a dead Diesel object = C++ access violation).
 	if not self._panel or not alive(self._panel) then
@@ -501,7 +501,7 @@ function CrimeSpreeGageServicesShopPage:refresh()
 	end
 end
 
-function CrimeSpreeGageServicesShopPage:_refresh_card(slot_index, slot, wallet)
+function CrimeSpreeBlackMarketShopPage:_refresh_card(slot_index, slot, wallet)
 	local card = self._cards[slot_index]
 	if not card then
 		return
@@ -553,7 +553,7 @@ function CrimeSpreeGageServicesShopPage:_refresh_card(slot_index, slot, wallet)
 		local owned = CSR_Shop.owned_count(CSR_Shop.local_peer_id(), slot.type)
 		if owned > 0 then
 			card.owned_text:set_text(
-				managers.localization:text("csr_gage_services_owned_x", { count = tostring(owned) })
+				managers.localization:text("csr_black_market_owned_x", { count = tostring(owned) })
 			)
 			card.owned_text:set_visible(true)
 		else
@@ -564,7 +564,7 @@ end
 
 -- === Mouse handling ===
 
-function CrimeSpreeGageServicesShopPage:mouse_pressed(button, x, y)
+function CrimeSpreeBlackMarketShopPage:mouse_pressed(button, x, y)
 	if button ~= Idstring("0") then
 		return false
 	end
@@ -591,7 +591,7 @@ function CrimeSpreeGageServicesShopPage:mouse_pressed(button, x, y)
 	return false
 end
 
-function CrimeSpreeGageServicesShopPage:mouse_moved(o, x, y)
+function CrimeSpreeBlackMarketShopPage:mouse_moved(o, x, y)
 	local hovered = nil
 
 	if self._reroll_panel and self._reroll_panel:inside(x, y) then
@@ -645,7 +645,7 @@ end
 -- === Action handlers ===
 
 -- Flash the token counter red->white to signal a denied purchase/reroll.
-function CrimeSpreeGageServicesShopPage:_flash_token_denied()
+function CrimeSpreeBlackMarketShopPage:_flash_token_denied()
 	if not self._token_text then
 		return
 	end
@@ -662,7 +662,7 @@ function CrimeSpreeGageServicesShopPage:_flash_token_denied()
 	end)
 end
 
-function CrimeSpreeGageServicesShopPage:_on_reroll()
+function CrimeSpreeBlackMarketShopPage:_on_reroll()
 	if CSR_Shop.reroll(CSR_Shop.local_peer_id()) then
 		if managers.menu_component and managers.menu_component.post_event then
 			managers.menu_component:post_event("stinger_new_weapon")
@@ -677,7 +677,7 @@ function CrimeSpreeGageServicesShopPage:_on_reroll()
 	end
 end
 
-function CrimeSpreeGageServicesShopPage:_on_buy(slot_index)
+function CrimeSpreeBlackMarketShopPage:_on_buy(slot_index)
 	if CSR_Shop.buy(CSR_Shop.local_peer_id(), slot_index) then
 		if managers.menu_component and managers.menu_component.post_event then
 			managers.menu_component:post_event("item_sell")

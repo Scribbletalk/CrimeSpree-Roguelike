@@ -13,215 +13,7 @@ end
 -- refactor (vanilla Crime Spree is never activated). See the logbook port
 -- decision in the session handoff.
 
--- Item data table, sorted by rarity
-local ITEMS_DATA = {
-	-- COMMON
-	{
-		id = "dog_tags",
-		icon = "dog_tags",
-		rarity = "common",
-		name_en = "DOG TAGS",
-		effect_en = "Increases maximum health by 10% (+10% per stack, linear).",
-	},
-	{
-		id = "duct_tape",
-		icon = "duct_tape",
-		rarity = "common",
-		name_en = "DUCT TAPE",
-		effect_en = "Increases interaction speed by 10% (+10% per stack, linear).\nAffects lockpicking, bagging loot, repairing, etc. Does not apply to reviving teammates or uncuffing.",
-	},
-	{
-		id = "escape_plan",
-		icon = "escape_plan",
-		rarity = "common",
-		name_en = "ESCAPE PLAN",
-		effect_en = "Increases movement speed by 3% (+3% per stack, hyperbolic).",
-	},
-	{
-		id = "worn_bandaid",
-		icon = "worn_bandaid",
-		rarity = "common",
-		name_en = "WORN BAND-AID",
-		effect_en = "Regenerates 2% (+2% per stack, hyperbolic, capped at 20%) of max health every 5 seconds.",
-	},
-	{
-		id = "cup_of_joe",
-		icon = "cup_of_joe",
-		rarity = "common",
-		name_en = "CUP OF JOE",
-		effect_en = "Increases maximum stamina by 10% (+10% per stack, linear).",
-	},
-	{
-		id = "rebar",
-		icon = "rebar",
-		rarity = "common",
-		name_en = "PIECE OF REBAR",
-		effect_en = "First hit on an enemy deals +15% (+10% per stack, linear) damage.",
-	},
-	{
-		id = "half_a_glass",
-		icon = "half_a_glass",
-		rarity = "common",
-		name_en = "HALF-A-GLASS",
-		effect_en = "Picking up a Gage package instantly refills 15% ammo for primary and secondary weapons and increases their max ammo by 2% (+1% per stack, linear) for the rest of the mission.",
-	},
-
-	-- UNCOMMON
-	{
-		id = "evidence_rounds",
-		icon = "evidence_rounds",
-		rarity = "uncommon",
-		name_en = "EVIDENCE ROUNDS",
-		effect_en = "Increases damage from ALL sources by 5% (+5% per stack, linear).",
-	},
-	{
-		id = "falcogini_keys",
-		icon = "falcogini_keys",
-		rarity = "uncommon",
-		name_en = "FALCOGINI KEYS",
-		effect_en = "Increases chance to dodge by 5% (+5% per stack, hyperbolic).\nSuccessful dodging blocks incoming damage (does not work on self-inflicted damage).",
-	},
-	{
-		id = "wolfs_toolbox",
-		icon = "toolbox",
-		rarity = "uncommon",
-		name_en = "WOLF'S TOOLBOX",
-		effect_en = "Killing regular enemies reduces active drill/saw timer by 0.2 second(s) (+0.1s per stack, linear).\nKilling special enemies reduces timer by 1 second(s) (+0.5s per stack, linear).",
-	},
-	{
-		id = "pink_slip",
-		icon = "pink_slip",
-		rarity = "uncommon",
-		name_en = "PINK SLIP",
-		effect_en = "Killing any enemy restores 5 (+2.5 per stack, linear) health.",
-	},
-	{
-		id = "the_edge",
-		icon = "the_edge",
-		rarity = "uncommon",
-		name_en = "THE EDGE",
-		effect_en = "On your last down, dropping to low HP restores max HP + flat HP and grants brief invulnerability. Resets when downs are restored.",
-	},
-	{
-		id = "overkill_rush",
-		icon = "overkill_rush",
-		rarity = "uncommon",
-		name_en = "OVERKILL RUSH",
-		effect_en = "Killing any enemy grants you a rush stack. For each rush stack your fire rate and reload speed increase by 2% (+1% per stack, linear).\nAll rush stacks expire 4 seconds after the last kill.",
-	},
-
-	-- RARE
-	{
-		id = "bonnie_chip",
-		icon = "bonnie_chip",
-		rarity = "rare",
-		name_en = "BONNIE'S LUCKY CHIP",
-		effect_en = "Gain 10% (+10% per stack, hyperbolic) chance to instantly kill an enemy on hit.\nHas 1.5 second cooldown.",
-	},
-	{
-		id = "plush_shark",
-		icon = "plush_shark",
-		rarity = "rare",
-		name_en = "PLUSH SHARK",
-		effect_en = "Protects from lethal damage once per life.\nOn activation restores 20% maximum health and grants invulnerability that lasts 10 seconds (+20s per stack, linear).\nCan be activated again if you were freed from custody.",
-		notes_en = "BLÅHAJ from IKEA. This cute plushie friend will save you even in the most hopeless situation. Just don't ask how.",
-	},
-	{
-		id = "jiro_last_wish",
-		icon = "jiro_last_wish",
-		rarity = "rare",
-		name_en = "JIRO'S LAST WISH",
-		effect_en = "Grants an ability to sprint while charging a melee attack. Increases melee damage by 50% (+50% per stack, linear).",
-	},
-	{
-		id = "dearest_possession",
-		icon = "dearest_possession",
-		rarity = "rare",
-		name_en = "DEAREST POSSESSION",
-		effect_en = "Healing received at full HP is converted into temporary shields. Shield cap: 50% of maximum health (+50% per stack, linear). Shields decay at 20% per second.",
-	},
-	{
-		id = "viklund_vinyl",
-		icon = "viklund_vinyl",
-		rarity = "rare",
-		name_en = "VIKLUND'S VINYL",
-		effect_en = "Gain 80% chance on hit to chain 2 nearest enemies within 5m (+2m per stack, linear) range. Chained enemies receive 25% of the initial damage.",
-	},
-	{
-		id = "lockes_beret",
-		icon = "lockes_beret",
-		rarity = "rare",
-		name_en = "LOCKE'S BERET",
-		effect_en = "Every 30 seconds, heals everyone on your team (you, teammates, bots, jokers, turrets) for 10% of max health (+10% per stack, hyperbolic, capped at 50%).",
-		community = true,
-	},
-	-- CONTRABAND
-	{
-		id = "dozer_guide",
-		icon = "dozer_guide",
-		rarity = "contraband",
-		name_en = "DOZER GUIDE",
-		effect_en = "Increases armor by 50% (+50% per stack, linear) and damage by 5% (+5% per stack, linear) from ranged and melee weapons.\nBut decreases movement speed by 15% (+15% per stack, linear) (cannot be lower than 40% of normal movement speed) and chance to dodge by 5% (+5% per stack, linear).",
-	},
-	{
-		id = "glass_pistol",
-		icon = "glass_pistol",
-		rarity = "contraband",
-		name_en = "GLASS PISTOL",
-		effect_en = "Multiplies damage from ranged and melee weapons by x1.75 (x1.75 per stack, multiplicative).\nBut divides max health and armor by 2 (+2 per stack, multiplicative).",
-	},
-	{
-		id = "equalizer",
-		icon = "equalizer",
-		rarity = "contraband",
-		name_en = "EQUALIZER",
-		effect_en = "Increases damage against special enemies by 50% (+50% per stack, linear).\nBut reduces damage against regular enemies by 50% (-50% per stack, linear).",
-	},
-	{
-		id = "crooked_badge",
-		icon = "crooked_badge",
-		rarity = "contraband",
-		name_en = "CROOKED BADGE",
-		effect_en = "After each assault, 30% (+20%, hyperbolic) chance to restore 1 down. Chance above 100% guarantees multiple downs.\nBut bleedout timer is reduced by 10 (+1s, hyperbolic) seconds.",
-	},
-	{
-		id = "dead_mans_trigger",
-		icon = "dead_mans_trigger",
-		rarity = "contraband",
-		name_en = "DEAD MAN'S TRIGGER",
-		effect_en = "When going down you explode dealing 480 (+240 per stack, linear) damage in a 3 (+2 per stack, linear) meter radius. Damage scales with Crime Spree rank.",
-	},
-
-	-- WILDCARD
-	{
-		id = "familiar_friend",
-		icon = "familiar_friend",
-		rarity = "wildcard",
-		name_en = "FAMILIAR FRIEND",
-		effect_en = "Active wildcard (carry-1). Press your wildcard key to fire a Spike Nova: 360° AoE damage around you. Damage scales with Crime Spree rank. 60-second cooldown. Stealth-blocked.",
-	},
-	{
-		id = "side_satchel",
-		icon = "side_satchel",
-		rarity = "wildcard",
-		name_en = "SIDE SATCHEL",
-		effect_en = "Passive wildcard (carry-1). Doubles the carry cap of mission specials (C4 4 → 8, keycards 1 → 2, drill parts 1 → 2, etc.).",
-	},
-	{
-		id = "turron",
-		icon = "turron",
-		rarity = "wildcard",
-		name_en = "TURRON",
-		effect_en = "Active wildcard (carry-1). Press your wildcard key to instantly heal 33% of max HP and gain 20% damage reduction for 5 seconds. 90-second cooldown. Works in stealth.",
-	},
-	{
-		id = "hippocratic_oath",
-		icon = "hippocratic_oath",
-		rarity = "wildcard",
-		name_en = "HIPPOCRATIC OATH",
-		effect_en = "Passive wildcard (carry-1). On loud transition, a medic spawns and joins your crew. While within 3 metres of the medic, regenerate 1% max HP per second. After death, the medic respawns 6 minutes later. Loud only.",
-	},
-}
+-- Item catalogue is built dynamically from the live registry — see _build_items_list().
 
 -- Rarity colours
 local RARITY_COLORS = {
@@ -258,10 +50,20 @@ local RARITY_FRAMES = {
 	wildcard = { frame = "csr_frame", color = Color(1, 0.3, 0.8) },
 }
 
+-- Sort order for the registry-driven grid: groups items by rarity tier (then by
+-- name) so the catalogue reads common -> ... -> wildcard like the old curated list.
+local RARITY_ORDER = {
+	common = 1,
+	uncommon = 2,
+	rare = 3,
+	contraband = 4,
+	wildcard = 5,
+}
+
 CrimeSpreeLogbookMenuComponent = CrimeSpreeLogbookMenuComponent or class()
 
 -- Suppress underlying end-screen UI (crew stats / personal stats / mission-end buttons)
--- while the logbook is open on top. Same pattern as gage_services_menu.lua — see that
+-- while the logbook is open on top. Same pattern as black_market_menu.lua — see that
 -- file for the full rationale on why both visual hide AND input gating are required.
 function CrimeSpreeLogbookMenuComponent:_suppress_endscreen()
 	local mc = managers.menu_component
@@ -367,6 +169,7 @@ function CrimeSpreeLogbookMenuComponent:init(ws, fullscreen_ws, node)
 	self._current_tab = "items" -- Active tab: items, statistics, achievements
 	self._tab_buttons = {} -- Tab button references
 	self._tab_panels = {} -- Tab content panels
+	self._page = 1 -- current page of the items-tab grid (pagination)
 
 	self:_setup_logbook()
 	self:_suppress_endscreen()
@@ -663,10 +466,159 @@ function CrimeSpreeLogbookMenuComponent:_switch_tab(tab_id)
 end
 
 function CrimeSpreeLogbookMenuComponent:_populate_items_tab()
-	-- Delegate to the icon grid builder
-	self._items_panel_ref = self._tab_panels["items"] -- Temporary reference consumed by _create_icons_grid
+	-- Build the catalogue from the live registry (dynamic count) and render the
+	-- current page. Pagination is driven by how many items are registered, so
+	-- ported/added/mod items appear automatically.
+	self._items_list = self:_build_items_list()
+	self._page = self._page or 1
+	self:_render_items_page()
+end
+
+-- Catalogue list from the item registry, mapped to the field names the grid +
+-- detail view already expect (id / icon / rarity / name_en / effect_en /
+-- community), sorted by rarity then name. name_en/effect_en are localized from
+-- the def's loc keys; the detail view still PREFERS csr_logbook_<id>_effect and
+-- only falls back to effect_en, so ported items read from localization.lua as before.
+function CrimeSpreeLogbookMenuComponent:_build_items_list()
+	local list = {}
+	local reg = (managers.csr and managers.csr.registered_items) and managers.csr:registered_items() or {}
+	for _, e in ipairs(reg) do
+		list[#list + 1] = {
+			id = e.type,
+			icon = e.icon,
+			rarity = e.rarity,
+			name_en = string.upper((e.name and managers.localization:text(e.name)) or tostring(e.type)),
+			effect_en = (e.full_desc and managers.localization:text(e.full_desc))
+				or (e.desc and managers.localization:text(e.desc))
+				or "",
+			community = e.addon ~= nil or nil,
+		}
+	end
+	table.sort(list, function(a, b)
+		local ra = RARITY_ORDER[a.rarity] or 99
+		local rb = RARITY_ORDER[b.rarity] or 99
+		if ra ~= rb then
+			return ra < rb
+		end
+		return tostring(a.name_en) < tostring(b.name_en)
+	end)
+	return list
+end
+
+-- Full grid rows that fit the items panel height (reserving room for the
+-- page-nav row). The grid is ALWAYS drawn at this many rows regardless of how
+-- many items occupy it, so an empty / partially-filled page still shows the full
+-- grid frame.
+function CrimeSpreeLogbookMenuComponent:_grid_rows_per_page()
+	local panel = self._tab_panels and self._tab_panels["items"]
+	local h = (panel and alive(panel) and panel:h()) or 480
+	local start_y = 30
+	local nav_h = 44
+	return math.max(1, math.floor((h - start_y - nav_h) / (GRID_FRAME_SIZE + GRID_PADDING_Y)))
+end
+
+-- Item cells per page = full rows × per-row count.
+function CrimeSpreeLogbookMenuComponent:_items_per_page()
+	return self:_grid_rows_per_page() * GRID_ITEMS_PER_ROW
+end
+
+-- (Re)draw the current page: clear the items panel, rebuild the grid slice + the
+-- page-nav row. Page is clamped to [1, total_pages].
+function CrimeSpreeLogbookMenuComponent:_render_items_page()
+	local panel = self._tab_panels and self._tab_panels["items"]
+	if not panel or not alive(panel) then
+		return
+	end
+	local per_page = self:_items_per_page()
+	local total_pages = math.max(1, math.ceil(#(self._items_list or {}) / per_page))
+	self._page = math.max(1, math.min(self._page or 1, total_pages))
+
+	panel:clear()
+	self._items = {}
+	self._hovered_item = nil
+	self._prev_btn_panel = nil
+	self._next_btn_panel = nil
+
+	self._items_panel_ref = panel
 	self:_create_icons_grid()
+	self:_create_page_nav(total_pages)
 	self._items_panel_ref = nil
+end
+
+-- Page navigation row (◄ "<"  PAGE X / Y  ">" ►) at the bottom of the items
+-- panel. Only drawn when there is more than one page; arrows dim at the edges
+-- and their clicks are guarded in mouse_pressed.
+function CrimeSpreeLogbookMenuComponent:_create_page_nav(total_pages)
+	if not total_pages or total_pages <= 1 then
+		return
+	end
+	local panel = self._items_panel_ref
+	if not panel or not alive(panel) then
+		return
+	end
+	local page = self._page or 1
+	local nav_h = 36
+	local nav_y = panel:h() - nav_h
+	local cx = panel:w() / 2
+	local label_w = 200
+	local arrow_w = 40
+
+	panel:text({
+		name = "page_indicator",
+		text = string.format("PAGE %d / %d", page, total_pages),
+		font = tweak_data.menu.pd2_medium_font,
+		font_size = tweak_data.menu.pd2_medium_font_size,
+		color = Color.white,
+		align = "center",
+		vertical = "center",
+		x = cx - label_w / 2,
+		y = nav_y,
+		w = label_w,
+		h = nav_h,
+		layer = 6,
+	})
+
+	self._prev_btn_panel = panel:panel({
+		name = "prev_btn",
+		x = cx - label_w / 2 - arrow_w - 10,
+		y = nav_y,
+		w = arrow_w,
+		h = nav_h,
+		layer = 6,
+	})
+	self._prev_btn_panel:text({
+		name = "prev_arrow",
+		text = "<",
+		font = tweak_data.menu.pd2_large_font,
+		font_size = tweak_data.menu.pd2_large_font_size,
+		color = page <= 1 and Color(1, 0.4, 0.4, 0.4) or tweak_data.screen_colors.button_stage_3,
+		align = "center",
+		vertical = "center",
+		w = arrow_w,
+		h = nav_h,
+		layer = 6,
+	})
+
+	self._next_btn_panel = panel:panel({
+		name = "next_btn",
+		x = cx + label_w / 2 + 10,
+		y = nav_y,
+		w = arrow_w,
+		h = nav_h,
+		layer = 6,
+	})
+	self._next_btn_panel:text({
+		name = "next_arrow",
+		text = ">",
+		font = tweak_data.menu.pd2_large_font,
+		font_size = tweak_data.menu.pd2_large_font_size,
+		color = page >= total_pages and Color(1, 0.4, 0.4, 0.4) or tweak_data.screen_colors.button_stage_3,
+		align = "center",
+		vertical = "center",
+		w = arrow_w,
+		h = nav_h,
+		layer = 6,
+	})
 end
 
 function CrimeSpreeLogbookMenuComponent:_populate_statistics_tab()
@@ -844,9 +796,25 @@ function CrimeSpreeLogbookMenuComponent:_create_icons_grid()
 	-- Use the tab's own panel instead of the master content panel
 	local panel = self._items_panel_ref or self._content_panel
 
+	-- Slice the registry-driven catalogue down to THIS page.
+	local items_list = self._items_list or {}
+	local per_page = self:_items_per_page()
+	local first = ((self._page or 1) - 1) * per_page
+	local page_items = {}
+	for li = 1, per_page do
+		local it = items_list[first + li]
+		if not it then
+			break
+		end
+		page_items[li] = it
+	end
+	-- Grid is drawn at the FULL page row capacity (not the occupied-row count) so
+	-- the frame is always shown, even on an empty or partially-filled page.
+	local rows_per_page = self:_grid_rows_per_page()
+
 	local start_x = math.floor((panel:w() - (items_per_row * (frame_size + padding_x) - padding_x)) / 2)
 	local grid_width = items_per_row * (frame_size + padding_x) - padding_x + margin_x * 2
-	local grid_height = math.ceil(#ITEMS_DATA / items_per_row) * (frame_size + padding_y) - padding_y + margin_y * 2
+	local grid_height = rows_per_page * (frame_size + padding_y) - padding_y + margin_y * 2
 
 	local border_color = Color(0.4, 0.4, 0.4) -- Dark grey
 
@@ -900,8 +868,8 @@ function CrimeSpreeLogbookMenuComponent:_create_icons_grid()
 		layer = 1,
 	})
 
-	-- Subtle grid lines between cells
-	local total_rows = math.ceil(#ITEMS_DATA / items_per_row)
+	-- Subtle grid lines between cells (drawn for the full grid, not just filled rows)
+	local total_rows = rows_per_page
 	for row = 1, total_rows - 1 do
 		panel:rect({
 			color = Color.white,
@@ -925,9 +893,9 @@ function CrimeSpreeLogbookMenuComponent:_create_icons_grid()
 		})
 	end
 
-	for i, item_data in ipairs(ITEMS_DATA) do
-		local x = start_x + ((i - 1) % 10) * (frame_size + padding_x)
-		local y = start_y + math.floor((i - 1) / 10) * (frame_size + padding_y)
+	for i, item_data in ipairs(page_items) do
+		local x = start_x + ((i - 1) % items_per_row) * (frame_size + padding_x)
+		local y = start_y + math.floor((i - 1) / items_per_row) * (frame_size + padding_y)
 
 		-- Per-item panel (used for positioning and hit-testing)
 		local item_panel = panel:panel({
@@ -1331,6 +1299,22 @@ function CrimeSpreeLogbookMenuComponent:mouse_moved(o, x, y)
 		return false, "arrow"
 	end
 
+	-- Page-arrow hover (panels live in the items panel; :inside takes world coords).
+	if self._prev_btn_panel and alive(self._prev_btn_panel) and self._prev_btn_panel:inside(x, y) then
+		if self._last_hovered_id ~= "prev_btn" then
+			self._last_hovered_id = "prev_btn"
+			managers.menu_component:post_event("highlight")
+		end
+		return true, "link"
+	end
+	if self._next_btn_panel and alive(self._next_btn_panel) and self._next_btn_panel:inside(x, y) then
+		if self._last_hovered_id ~= "next_btn" then
+			self._last_hovered_id = "next_btn"
+			managers.menu_component:post_event("highlight")
+		end
+		return true, "link"
+	end
+
 	-- Clear any existing tooltip
 	if self._tooltip and alive(self._tooltip) then
 		self._content_panel:remove(self._tooltip)
@@ -1391,6 +1375,29 @@ function CrimeSpreeLogbookMenuComponent:mouse_pressed(button, x, y)
 		if self._close_btn_panel:inside(x, y) then
 			managers.menu_component:post_event("menu_back")
 			managers.menu:back()
+			return true
+		end
+	end
+
+	-- Page arrows (items tab, grid view). Guarded at the edges so a dimmed arrow
+	-- is inert; a successful flip re-renders the grid for the new page.
+	if not self._selected_item and self._current_tab == "items" then
+		if self._prev_btn_panel and alive(self._prev_btn_panel) and self._prev_btn_panel:inside(x, y) then
+			if (self._page or 1) > 1 then
+				self._page = self._page - 1
+				managers.menu_component:post_event("menu_enter")
+				self:_render_items_page()
+			end
+			return true
+		end
+		if self._next_btn_panel and alive(self._next_btn_panel) and self._next_btn_panel:inside(x, y) then
+			local per_page = self:_items_per_page()
+			local total = math.max(1, math.ceil(#(self._items_list or {}) / per_page))
+			if (self._page or 1) < total then
+				self._page = self._page + 1
+				managers.menu_component:post_event("menu_enter")
+				self:_render_items_page()
+			end
 			return true
 		end
 	end
@@ -1461,11 +1468,24 @@ function CrimeSpreeLogbookMenuComponent:mouse_released(o, button, x, y)
 end
 
 function CrimeSpreeLogbookMenuComponent:mouse_wheel_up(x, y)
-	-- Scroll disabled (not needed yet)
+	-- Wheel = previous page (items grid only).
+	if not self._selected_item and self._current_tab == "items" and (self._page or 1) > 1 then
+		self._page = self._page - 1
+		self:_render_items_page()
+	end
 	return true
 end
 
 function CrimeSpreeLogbookMenuComponent:mouse_wheel_down(x, y)
+	-- Wheel = next page (items grid only).
+	if not self._selected_item and self._current_tab == "items" then
+		local per_page = self:_items_per_page()
+		local total = math.max(1, math.ceil(#(self._items_list or {}) / per_page))
+		if (self._page or 1) < total then
+			self._page = self._page + 1
+			self:_render_items_page()
+		end
+	end
 	return true
 end
 
