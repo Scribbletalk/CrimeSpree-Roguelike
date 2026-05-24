@@ -36,7 +36,8 @@
 --   6. set_continue_button_text : no-op like CS
 --
 -- Backend swaps (CSRCrimeSpreeResultTabItem only):
---   managers.crime_spree:mission_completion_gain() -> managers.csr:constant("rank_per_heist")
+--   managers.crime_spree:mission_completion_gain() -> managers.csr:rank_for_current_level()
+--     (length-scaled gain for the heist just played, not a flat per-heist constant)
 --   managers.crime_spree:has_failed()              -> (dropped; CSR failure
 --                                                     state is Slice B)
 --   missions_completed counter sourced from managers.csr:missions_completed()
@@ -136,16 +137,19 @@ function CSRCrimeSpreeResultTabItem:make_fine_text(text)
 end
 
 -- Repurposed vanilla _create_level: the animated "gain" number now counts the
--- run's rank gain (flat managers.csr:constant("rank_per_heist")) instead of the
--- spree level gain, and a static missions-completed line is added below it
--- using the same loc keys the lobby/briefing forks use (csr_lobby_rank /
--- csr_lobby_missions_completed) so all three CSR surfaces read identically.
+-- run's rank gain for the heist just played (managers.csr:rank_for_current_level,
+-- length-scaled: short = 1, medium = 2, long = 3) instead of the spree level gain,
+-- and a static missions-completed line is added below it using the same loc keys
+-- the lobby/briefing forks use (csr_lobby_rank / csr_lobby_missions_completed) so
+-- all three CSR surfaces read identically. rank_for_current_level resolves the
+-- played mission from the loaded level (current_mission is already cleared by the
+-- mission-end hook by the time this tab builds) so it matches the grant + the clock.
 function CSRCrimeSpreeResultTabItem:_create_level(total_w)
 	self._level_panel = self._cs_panel:panel({})
 
 	local rank_gain = 0
-	if managers.csr and managers.csr.constant then
-		rank_gain = managers.csr:constant("rank_per_heist") or 1
+	if managers.csr and managers.csr.rank_for_current_level then
+		rank_gain = managers.csr:rank_for_current_level() or 1
 	end
 
 	local gain_x = self._level_panel:w() * (1 - total_w) * 0.5

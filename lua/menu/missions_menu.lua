@@ -2704,6 +2704,17 @@ local function csr_open_logbook()
 	end
 end
 
+-- Opens the full-screen Gage Services (Black Market) screen. Mirrors
+-- csr_open_logbook: routes through MenuCallbackHandler:CSR_OpenGageServices
+-- (gage_services_button.lua) -> managers.menu:open_node("gage_services_screen").
+-- Resolved at click time, so load order with the shop scripts doesn't matter;
+-- the arg-less closure ignores the owner the sidebar passes it.
+local function csr_open_shop()
+	if MenuCallbackHandler and MenuCallbackHandler.CSR_OpenGageServices then
+		MenuCallbackHandler:CSR_OpenGageServices()
+	end
+end
+
 -- Sidebar row callbacks are invoked as btn:callback()(owner) where owner is the
 -- CSRMissionsMenuComponent (CSRSidebar:mouse_pressed passes self._owner). The
 -- feature panels are component-owned (they span from the sidebar to the mission
@@ -2731,7 +2742,7 @@ CSRSidebar.ITEMS = {
 	{ text = "Modifiers", icon = "sidebar_mutators", key = "modifiers", callback = csr_feature_toggle("modifiers") },
 	{ text = "Rewards", icon = "sidebar_broker", key = "rewards", callback = csr_feature_toggle("rewards") },
 	{ separator = true },
-	{ text = "Black Market", icon = "sidebar_gage" },
+	{ text = "Black Market", icon = "sidebar_gage", callback = csr_open_shop },
 	{ separator = true },
 	{ text = "Logbook", icon = "sidebar_codex", callback = csr_open_logbook },
 }

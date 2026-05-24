@@ -402,6 +402,14 @@ function CSRGameManager:owned(item_type)
 	return self:item_count(self:local_peer_id(), item_type)
 end
 
+-- Mutable per-peer state record (counts + subsystem-owned fields). Lazy-created.
+-- The shop (lua/managers/shop.lua) stashes its token wallet + lineup here so they
+-- ride the manager's own save() and the start_run/end_run inventory wipe. Callers
+-- that mutate the returned table must call :save() to persist.
+function CSRGameManager:peer_entry(peer_id)
+	return get_or_create_peer_entry(self._state, peer_id or self:local_peer_id())
+end
+
 function CSRGameManager:add_item(peer_id, item_type)
 	if not self._registry.by_type[item_type] then
 		log_csr("add_item: unknown type '" .. tostring(item_type) .. "' — ignored")
@@ -1319,6 +1327,38 @@ function CSRGameManager:rank_for_mission(mission_id)
 		return 2
 	end
 	return 3
+end
+
+-- Rank gain for the heist that was just PLAYED, for the end screen. current_mission()
+-- is cleared by generate_mission_set in the mission-end hook before the result tab is
+-- built, so it can't be read there. Resolve the played mission from
+-- Global.game_settings.level_id (+ mission variant) instead -- the level actually
+-- loaded, which BOTH host and client have -- using the SAME match _setup_temporary_job
+-- uses, so the displayed gain matches the clock the player saw on the card. Falls back
+-- to rank_per_heist when the level isn't a registered CS mission.
+function CSRGameManager:rank_for_current_level()
+	local gs = Global and Global.game_settings
+	local level_id = gs and gs.level_id
+	local cs_missions = tweak_data and tweak_data.crime_spree and tweak_data.crime_spree.missions
+	if not level_id or type(cs_missions) ~= "table" then
+		return self:constant("rank_per_heist") or 1
+	end
+	local want_mission = gs.mission or "none"
+	local fallback_id = nil
+	for _, tier in ipairs(cs_missions) do
+		for _, m in ipairs(tier) do
+			if m.level and m.level.level_id == level_id then
+				if (m.mission or "none") == want_mission then
+					return self:rank_for_mission(m.id)
+				end
+				fallback_id = fallback_id or m.id
+			end
+		end
+	end
+	if fallback_id then
+		return self:rank_for_mission(fallback_id)
+	end
+	return self:constant("rank_per_heist") or 1
 end
 
 function CSRGameManager:get_random_missions()
