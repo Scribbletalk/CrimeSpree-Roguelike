@@ -299,16 +299,13 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_Localization", function(loc)
 
 	-- DOZER GUIDE
 	local dz_armor = C.dozer_armor_bonus or 0.50
-	local dz_dmg = C.dozer_damage_bonus or 0.05
 	local dz_spd = C.dozer_speed_penalty or 0.15
 	local dz_dodge = C.dozer_dodge_penalty or 5
 	local dz_min = C.dozer_speed_min or 0.40
 	strings["csr_logbook_dozer_guide_effect"] = string.format(
-		"Increases armor by {g}%g%%{/} (+%g%% per stack, linear) and damage by {g}%g%%{/} (+%g%% per stack, linear) from ranged and melee weapons.\nBut decreases movement speed by {r}%g%%{/} (+%g%% per stack, linear) (cannot be lower than %g%% of normal movement speed) and chance to dodge by {r}%d{/} (+%d per stack, linear).",
+		"Increases armor by {g}%g%%{/} (+%g%% per stack, linear).\nBut decreases movement speed by {r}%g%%{/} (+%g%% per stack, linear) (cannot be lower than %g%% of normal movement speed) and chance to dodge by {r}%d{/} (+%d per stack, linear).",
 		dz_armor * 100,
 		dz_armor * 100,
-		dz_dmg * 100,
-		dz_dmg * 100,
 		dz_spd * 100,
 		dz_spd * 100,
 		dz_min * 100,
