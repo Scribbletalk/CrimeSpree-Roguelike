@@ -77,6 +77,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_equalizer_effect",
 	notes = "csr_logbook_equalizer_notes",
 	icon = "csr_equalizer",
+	icon_scale = 0.9,
 
 	hooks = {
 		["lib/units/enemies/cop/copdamage"] = function()

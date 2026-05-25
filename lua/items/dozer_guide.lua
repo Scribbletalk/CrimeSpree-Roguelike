@@ -45,6 +45,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_dozer_guide_effect",
 	notes = "csr_logbook_dozer_guide_notes",
 	icon = "csr_dozer_guide",
+	icon_scale = 0.9,
 
 	hooks = {
 		-- Max armor: +ARMOR_BONUS per stack (additive).

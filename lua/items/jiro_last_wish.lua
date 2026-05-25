@@ -28,6 +28,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_jiro_last_wish_effect",
 	notes = "csr_logbook_jiro_last_wish_notes",
 	icon = "csr_jiro_last_wish",
+	icon_scale = 1.0,
 
 	hooks = {
 		-- (1) Melee damage: scale equipped_melee_weapon_damage_info's dmg and

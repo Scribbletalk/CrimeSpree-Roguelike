@@ -14,6 +14,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_escape_plan_effect",
 	notes = "csr_logbook_escape_plan_notes",
 	icon = "csr_escape_plan",
+	icon_scale = 1.0,
 
 	hooks = {
 		-- Multiply PlayerStandard:_get_max_walk_speed by (1 + bonus), where

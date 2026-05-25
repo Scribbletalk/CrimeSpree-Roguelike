@@ -202,6 +202,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_viklund_vinyl_effect",
 	notes = "csr_logbook_viklund_vinyl_notes",
 	icon = "csr_viklund_vinyl",
+	icon_scale = 1.0,
 
 	hooks = {
 		["lib/units/enemies/cop/copdamage"] = function()

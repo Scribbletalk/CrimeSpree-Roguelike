@@ -80,6 +80,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_the_edge_effect",
 	notes = "csr_logbook_the_edge_notes",
 	icon = "csr_the_edge",
+	icon_scale = 1.0,
 
 	hooks = {
 		["lib/units/beings/player/playerdamage"] = function()

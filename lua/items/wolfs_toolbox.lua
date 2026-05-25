@@ -121,6 +121,7 @@ _G.CSR.register_item({
 	notes = "csr_logbook_wolfs_toolbox_notes",
 	-- Icon id is "toolbox" in hudicons.lua (legacy name), not csr_wolfs_toolbox.
 	icon = "csr_toolbox",
+	icon_scale = 1.0,
 
 	hooks = {
 		["lib/units/enemies/cop/copdamage"] = function()

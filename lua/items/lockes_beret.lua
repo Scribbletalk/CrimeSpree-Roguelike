@@ -92,6 +92,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_lockes_beret_effect",
 	notes = "csr_logbook_lockes_beret_notes",
 	icon = "csr_lockes_beret",
+	icon_scale = 1.0,
 
 	hooks = {
 		-- Local INTERVAL-second timer on PlayerManager:update; every owning peer

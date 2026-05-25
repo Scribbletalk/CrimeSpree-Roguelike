@@ -24,6 +24,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_cup_of_joe_effect",
 	notes = "csr_logbook_cup_of_joe_notes",
 	icon = "csr_cup_of_joe",
+	icon_scale = 1.0,
 
 	hooks = {
 		-- +10% to PlayerManager:stamina_multiplier per copy owned. It RETURNS a

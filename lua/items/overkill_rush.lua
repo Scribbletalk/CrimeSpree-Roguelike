@@ -94,6 +94,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_overkill_rush_effect",
 	notes = "csr_logbook_overkill_rush_notes",
 	icon = "csr_overkill_rush",
+	icon_scale = 0.9,
 
 	hooks = {
 		-- Kill detection: bump the streak on a confirmed local-player kill.

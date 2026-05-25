@@ -67,6 +67,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_pink_slip_effect",
 	notes = "csr_logbook_pink_slip_notes",
 	icon = "csr_pink_slip",
+	icon_scale = 1.05,
 
 	hooks = {
 		["lib/units/enemies/cop/copdamage"] = function()

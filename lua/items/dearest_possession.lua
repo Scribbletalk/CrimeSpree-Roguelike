@@ -40,6 +40,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_dearest_possession_effect",
 	notes = "csr_logbook_dearest_possession_notes",
 	icon = "csr_dearest_possession",
+	icon_scale = 1.0,
 
 	hooks = {
 		["lib/units/beings/player/playerdamage"] = function()

@@ -173,6 +173,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_plush_shark_effect",
 	notes = "csr_logbook_plush_shark_notes",
 	icon = "csr_plush_shark",
+	icon_scale = 1.0,
 
 	hooks = {
 		["lib/units/beings/player/playerdamage"] = function()

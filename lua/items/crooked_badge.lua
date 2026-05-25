@@ -87,6 +87,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_crooked_badge_effect",
 	notes = "csr_logbook_crooked_badge_notes",
 	icon = "csr_crooked_badge",
+	icon_scale = 1.0,
 
 	hooks = {
 		-- Bleedout penalty: shorten down_time(), floored at 5s. Return-value method

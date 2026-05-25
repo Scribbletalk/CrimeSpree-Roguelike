@@ -14,6 +14,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_worn_bandaid_effect",
 	notes = "csr_logbook_worn_bandaid_notes",
 	icon = "csr_worn_bandaid",
+	icon_scale = 1.0,
 
 	hooks = {
 		-- Heal-over-time on PlayerDamage:update (local player only -- husks use

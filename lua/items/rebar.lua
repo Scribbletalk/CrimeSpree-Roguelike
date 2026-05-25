@@ -57,6 +57,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_rebar_effect",
 	notes = "csr_logbook_rebar_notes",
 	icon = "csr_rebar",
+	icon_scale = 1.0,
 
 	hooks = {
 		["lib/units/enemies/cop/copdamage"] = function()

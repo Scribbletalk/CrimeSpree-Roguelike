@@ -15,6 +15,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_dog_tags_effect",
 	notes = "csr_logbook_dog_tags_notes",
 	icon = "csr_dog_tags",
+	icon_scale = 1.0,
 
 	hooks = {
 		-- +10% to PlayerManager:health_skill_multiplier per copy owned. Return-value

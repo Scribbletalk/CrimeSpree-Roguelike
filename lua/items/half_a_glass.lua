@@ -133,6 +133,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_half_a_glass_effect",
 	notes = "csr_logbook_half_a_glass_notes",
 	icon = "csr_half_a_glass",
+	icon_scale = 1.0,
 
 	hooks = {
 		["lib/units/pickups/gageassignmentbase"] = function()

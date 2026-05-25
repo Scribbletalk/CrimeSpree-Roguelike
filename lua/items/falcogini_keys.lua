@@ -14,6 +14,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_falcogini_keys_effect",
 	notes = "csr_logbook_falcogini_keys_notes",
 	icon = "csr_falcogini_keys",
+	icon_scale = 0.9,
 
 	hooks = {
 		-- Combine the item's dodge chance with vanilla dodge probabilistically

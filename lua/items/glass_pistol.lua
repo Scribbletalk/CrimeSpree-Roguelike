@@ -47,6 +47,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_glass_pistol_effect",
 	notes = "csr_logbook_glass_pistol_notes",
 	icon = "csr_glass_pistol",
+	icon_scale = 1.0,
 
 	hooks = {
 		-- Ranged: multiply RaycastWeaponBase:_get_current_damage by DMG_PER_STACK^stacks.

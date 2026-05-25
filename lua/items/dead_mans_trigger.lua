@@ -202,6 +202,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_dead_mans_trigger_effect",
 	notes = "csr_logbook_dead_mans_trigger_notes",
 	icon = "csr_dead_mans_trigger",
+	icon_scale = 1.0,
 
 	hooks = {
 		["lib/units/beings/player/playerdamage"] = function()

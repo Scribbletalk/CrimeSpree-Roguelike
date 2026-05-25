@@ -14,6 +14,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_duct_tape_effect",
 	notes = "csr_logbook_duct_tape_notes",
 	icon = "csr_duct_tape",
+	icon_scale = 1.0,
 
 	hooks = {
 		-- Divide BaseInteractionExt:_get_timer by (1 + 0.10*owned) -- linear CSR

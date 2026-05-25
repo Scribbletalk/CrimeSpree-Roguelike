@@ -100,6 +100,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_bonnie_chip_effect",
 	notes = "csr_logbook_bonnie_chip_notes",
 	icon = "csr_bonnie_chip",
+	icon_scale = 1.05,
 
 	hooks = {
 		["lib/units/enemies/cop/copdamage"] = function()

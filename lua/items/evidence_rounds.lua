@@ -4,9 +4,8 @@
 -- entry each). Per-item-file model (see cup_of_joe.lua). Text fields are
 -- localization keys.
 --
--- NOTE: the live mechanic is +10%/stack (the 6.2 register value). The logbook
--- effect string still reads "5%" -- a pre-existing text/mechanic mismatch carried
--- over from the partially-ported constants generator, not introduced here.
+-- The live mechanic is +10%/stack (the 6.2 register value); the english.json
+-- logbook effect string matches it (was a stale 5% fallback until fixed 2026-05-25).
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -22,6 +21,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_evidence_rounds_effect",
 	notes = "csr_logbook_evidence_rounds_notes",
 	icon = "csr_evidence_rounds",
+	icon_scale = 0.9,
 
 	hooks = {
 		-- Ranged: scale RaycastWeaponBase:_get_current_damage by (1 + bonus).

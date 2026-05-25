@@ -2,10 +2,9 @@
 -- items; consumed (preferentially) by the printer as the sacrifice so a real
 -- item is not lost in the exchange. No effect, no hooks -- pure inventory.
 --
--- is_scrap = true gates it out of two places (see game_manager.lua): the
--- selection-window roll (roll_item_pool) and the logbook compendium
--- (logbook_menu.lua _build_items_list). It still shows in the owned-items grid
--- and the scrapper's own pick list, so the player can see and feed it.
+-- is_scrap = true gates it out of the selection-window roll (roll_item_pool,
+-- game_manager.lua). It DOES show in the logbook compendium (at the end of its
+-- tier), the owned-items grid, and the scrapper's own pick list.
 --
 -- One type per scrappable tier; contraband and wildcard cannot be scrapped, so
 -- there is no contraband/wildcard scrap. Auto-discovered by extension_api.lua.
@@ -27,6 +26,7 @@ for _, s in ipairs(SCRAP_TIERS) do
 		name = "csr_logbook_" .. s.type .. "_name",
 		desc = "csr_item_" .. s.type .. "_desc",
 		icon = "csr_scrap",
+		icon_scale = 1.0,
 		is_scrap = true,
 	})
 end

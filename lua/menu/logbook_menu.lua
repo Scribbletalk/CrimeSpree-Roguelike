@@ -483,26 +483,31 @@ function CrimeSpreeLogbookMenuComponent:_build_items_list()
 	local list = {}
 	local reg = (managers.csr and managers.csr.registered_items) and managers.csr:registered_items() or {}
 	for _, e in ipairs(reg) do
-		-- Scrap (printer fodder) is real inventory but not a compendium item -- it
-		-- has no effect/notes entry and would just clutter the 28-item logbook.
-		if not e.is_scrap then
-			list[#list + 1] = {
-				id = e.type,
-				icon = e.icon,
-				rarity = e.rarity,
-				name_en = string.upper((e.name and managers.localization:text(e.name)) or tostring(e.type)),
-				effect_en = (e.full_desc and managers.localization:text(e.full_desc))
-					or (e.desc and managers.localization:text(e.desc))
-					or "",
-				community = e.addon ~= nil or nil,
-			}
-		end
+		-- Scrap (printer fodder) IS shown in the compendium, sorted to the END of its
+		-- tier (see the sort below). It has no _effect/_notes loc keys, so the detail
+		-- view falls back to its desc for the effect and skips the NOTES block.
+		list[#list + 1] = {
+			id = e.type,
+			icon = e.icon,
+			rarity = e.rarity,
+			is_scrap = e.is_scrap or nil,
+			name_en = string.upper((e.name and managers.localization:text(e.name)) or tostring(e.type)),
+			effect_en = (e.full_desc and managers.localization:text(e.full_desc))
+				or (e.desc and managers.localization:text(e.desc))
+				or "",
+			community = e.addon ~= nil or nil,
+		}
 	end
 	table.sort(list, function(a, b)
 		local ra = RARITY_ORDER[a.rarity] or 99
 		local rb = RARITY_ORDER[b.rarity] or 99
 		if ra ~= rb then
 			return ra < rb
+		end
+		-- Scrap sinks to the END of its tier (after the real items).
+		local sa, sb = a.is_scrap and 1 or 0, b.is_scrap and 1 or 0
+		if sa ~= sb then
+			return sa < sb
 		end
 		return tostring(a.name_en) < tostring(b.name_en)
 	end)
@@ -1110,8 +1115,10 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 	-- Effect alongside icon; sub-panel anchors wrap to x=0 of the sub-panel
 	local loc_key = "csr_logbook_" .. item_data.id .. "_effect"
 	local effect_text = managers.localization:text(loc_key)
-	if not effect_text or effect_text == loc_key then
-		effect_text = item_data.effect_en
+	-- :text returns "ERROR <key>" for an unknown id (e.g. scrap has no _effect key);
+	-- fall back to the list entry's effect_en (its desc) in that case.
+	if not effect_text or effect_text == "" or effect_text == loc_key or effect_text:find("^ERROR") then
+		effect_text = item_data.effect_en or ""
 	end
 	local effect_panel = self._details_panel:panel({
 		x = text_x,
@@ -1191,7 +1198,8 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 			and { rounds = tostring(math.max(31, _G.CSR_BulletsFiredToday or 0)) }
 		or nil
 	local notes_text = managers.localization:text("csr_logbook_" .. item_data.id .. "_notes", notes_params)
-	if notes_text and notes_text ~= "" then
+	-- Skip the NOTES block when there is no _notes key (scrap) -- :text returns "ERROR <key>".
+	if notes_text and notes_text ~= "" and not notes_text:find("^ERROR") then
 		self._details_panel:text({
 			name = "lore_title",
 			text = "NOTES:",
