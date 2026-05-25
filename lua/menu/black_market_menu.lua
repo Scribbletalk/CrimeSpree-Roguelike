@@ -60,7 +60,11 @@ function CrimeSpreeBlackMarketMenuComponent:_setup()
 	})
 
 	local panel_w = 940
-	local panel_h = 600
+	-- Height matches the vanilla weapon-select grid (BlackMarketGui): a fraction of
+	-- the workspace, so it scales with resolution instead of a fixed number.
+	-- GRID_H_MUL = (6.9 or 6.95)/8; the -70 mirrors BlackMarketGui's grid_size offset.
+	local grid_h_mul = (NOT_WIN_32 and 6.9 or 6.95) / 8
+	local panel_h = math.floor((self._panel:h() - 70) * grid_h_mul)
 
 	self._content_panel = self._panel:panel({
 		name = "csr_black_market_content",
@@ -81,40 +85,63 @@ function CrimeSpreeBlackMarketMenuComponent:_setup()
 		sides = { 2, 2, 2, 2 },
 	})
 
-	-- Title (top-left).
-	self._content_panel:text({
-		name = "title",
-		text = managers.localization:text("csr_black_market_title"),
+	-- Branded header OUTSIDE the content box, in the lobby "CRIME SPREE ROGUELIKE"
+	-- style: a crisp pd2_large foreground over a huge faded-blue pd2_massive ghost.
+	-- Both layers live on the OUTER panel (not the box) and anchor just above the
+	-- box's top-left, so the ghost spills over the backdrop like the lobby title.
+	-- Ghost on a low layer (behind the box) so its lower half is masked by the box.
+	local header_label = managers.localization:text("csr_black_market_title")
+	local header_ghost = self._panel:text({
+		name = "csr_header_ghost",
+		vertical = "top",
+		align = "left",
+		alpha = 0.4,
+		h = 90,
+		text = header_label,
+		font = tweak_data.menu.pd2_massive_font,
+		font_size = tweak_data.menu.pd2_massive_font_size,
+		color = tweak_data.screen_colors.button_stage_3,
+		layer = 5,
+	})
+	local header = self._panel:text({
+		name = "csr_header",
+		vertical = "top",
+		align = "left",
+		text = header_label,
 		font = tweak_data.menu.pd2_large_font,
 		font_size = tweak_data.menu.pd2_large_font_size,
-		color = Color.white,
-		x = 20,
-		y = 10,
-		layer = 10,
-	})
-
-	-- Close button (top-right corner).
-	local close_icon_size = 20
-	local close_hitbox = 24
-	local btn_padding = 8
-	self._close_btn_panel = self._content_panel:panel({
-		name = "close_btn",
-		w = close_hitbox,
-		h = close_hitbox,
-		layer = 10,
-	})
-	self._close_btn_panel:set_right(panel_w - btn_padding)
-	self._close_btn_panel:set_y(btn_padding)
-	local close_offset = math.round((close_hitbox - close_icon_size) / 2)
-	self._close_btn_panel:bitmap({
-		texture = "guis/textures/pd2/crime_spree/csr_btn_close",
-		w = close_icon_size,
-		h = close_icon_size,
-		x = close_offset,
-		y = close_offset,
-		blend_mode = "add",
 		color = tweak_data.screen_colors.text,
+		layer = 60,
 	})
+	local _, _, header_w, header_h = header:text_rect()
+	header:set_size(header_w, header_h)
+	-- Same spot as the lobby title: (0,0) of the (safe-workspace) outer panel, i.e.
+	-- the safe-area top-left corner. These menus share the lobby's safe self._ws, so
+	-- the lobby's implicit (0,0) maps here 1:1.
+	header:set_left(0)
+	header:set_top(0)
+	header_ghost:set_world_left(header:world_left())
+	header_ghost:set_world_center_y(header:world_center_y())
+	header_ghost:move(-13, 9)
+
+	-- PD2-style BACK button at the workspace bottom-right (replaces the old top-right
+	-- close X). Same action -- managers.menu:back() -- the X had. Mirrors vanilla
+	-- BlackMarketGui's back_button (blackmarketgui.lua:2573): pd2_large, button_stage_3,
+	-- flush bottom-right of the outer panel, symmetric with the top-left header.
+	self._back_button = self._panel:text({
+		name = "csr_back_button",
+		vertical = "bottom",
+		align = "right",
+		text = utf8.to_upper(managers.localization:text("menu_back")),
+		font = tweak_data.menu.pd2_large_font,
+		font_size = tweak_data.menu.pd2_large_font_size,
+		color = tweak_data.screen_colors.button_stage_3,
+		layer = 60,
+	})
+	local _, _, back_w, back_h = self._back_button:text_rect()
+	self._back_button:set_size(back_w, back_h)
+	self._back_button:set_right(self._panel:w())
+	self._back_button:set_bottom(self._panel:h())
 
 	-- Single shop "tab": the lone SHOP button was redundant, so no tab bar is
 	-- drawn. _tab_definitions still drives _create_tab_panels / _switch_tab, and
@@ -127,12 +154,12 @@ function CrimeSpreeBlackMarketMenuComponent:_setup()
 end
 
 function CrimeSpreeBlackMarketMenuComponent:_create_tab_panels()
-	-- Content sits just below the title now that the tab bar is gone (was y=100
-	-- to clear the bar; the shop page needs >=480px and gets 520 here).
+	-- Title now lives OUTSIDE the box, so content starts near the top (was y=60 to
+	-- clear the in-box title) and reclaims that strip. Bottom margin 20px.
 	local panel_w = self._content_panel:w() - 40
-	local panel_h = self._content_panel:h() - 80
 	local panel_x = 20
-	local panel_y = 60
+	local panel_y = 10
+	local panel_h = self._content_panel:h() - panel_y - 20
 
 	for _, def in ipairs(self._tab_definitions) do
 		self._tab_panels[def.id] = self._content_panel:panel({
@@ -210,13 +237,18 @@ function CrimeSpreeBlackMarketMenuComponent:mouse_moved(o, x, y)
 	local local_x = x - panel_x
 	local local_y = y - panel_y
 
-	-- Close button hover.
-	if self._close_btn_panel and alive(self._close_btn_panel) and self._close_btn_panel:inside(x, y) then
-		if self._last_hovered_id ~= "close_btn" then
-			self._last_hovered_id = "close_btn"
-			managers.menu_component:post_event("highlight")
+	-- Back button hover (bottom-right): brighten on hover, dim otherwise.
+	if self._back_button and alive(self._back_button) then
+		if self._back_button:inside(x, y) then
+			self._back_button:set_color(tweak_data.screen_colors.button_stage_2)
+			if self._last_hovered_id ~= "back_btn" then
+				self._last_hovered_id = "back_btn"
+				managers.menu_component:post_event("highlight")
+			end
+			return true, "link"
+		else
+			self._back_button:set_color(tweak_data.screen_colors.button_stage_3)
 		end
-		return true, "link"
 	end
 
 	-- Tab bar hover.
@@ -255,8 +287,8 @@ function CrimeSpreeBlackMarketMenuComponent:mouse_pressed(button, x, y)
 		return
 	end
 
-	-- Close button click.
-	if self._close_btn_panel and alive(self._close_btn_panel) and self._close_btn_panel:inside(x, y) then
+	-- Back button click (bottom-right).
+	if self._back_button and alive(self._back_button) and self._back_button:inside(x, y) then
 		managers.menu_component:post_event("menu_back")
 		managers.menu:back()
 		return true

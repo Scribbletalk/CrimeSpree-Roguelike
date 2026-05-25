@@ -245,10 +245,12 @@ function CrimeSpreeLogbookMenuComponent:_setup_logbook()
 		layer = self._init_layer + 10,
 	})
 
-	local panel_w = 900
-	local panel_h = 600
-
-	panel_w = 940
+	local panel_w = 940
+	-- Height matches the vanilla weapon-select grid (BlackMarketGui): a fraction of
+	-- the workspace, so it scales with resolution instead of a fixed number.
+	-- GRID_H_MUL = (6.9 or 6.95)/8; the -70 mirrors BlackMarketGui's grid_size offset.
+	local grid_h_mul = (NOT_WIN_32 and 6.9 or 6.95) / 8
+	local panel_h = math.floor((self._panel:h() - 70) * grid_h_mul)
 
 	self._content_panel = self._panel:panel({
 		name = "content_panel",
@@ -272,42 +274,64 @@ function CrimeSpreeLogbookMenuComponent:_setup_logbook()
 		sides = { 2, 2, 2, 2 },
 	})
 
-	-- Title
-	local title_text = "LOGBOOK"
-
-	self._content_panel:text({
-		name = "title",
-		text = title_text,
+	-- Branded header OUTSIDE the content box, in the lobby "CRIME SPREE ROGUELIKE"
+	-- style: a crisp pd2_large foreground over a huge faded-blue pd2_massive ghost.
+	-- Both layers live on the OUTER panel (not the box) and anchor just above the
+	-- box's top-left, so the ghost spills over the backdrop like the lobby title.
+	-- Ghost on a low layer (behind the box) so its lower half is masked by the box.
+	local header_label = "LOGBOOK"
+	local header_ghost = self._panel:text({
+		name = "csr_header_ghost",
+		vertical = "top",
+		align = "left",
+		alpha = 0.4,
+		h = 90,
+		text = header_label,
+		font = tweak_data.menu.pd2_massive_font,
+		font_size = tweak_data.menu.pd2_massive_font_size,
+		color = tweak_data.screen_colors.button_stage_3,
+		layer = 5,
+	})
+	local header = self._panel:text({
+		name = "csr_header",
+		vertical = "top",
+		align = "left",
+		text = header_label,
 		font = tweak_data.menu.pd2_large_font,
 		font_size = tweak_data.menu.pd2_large_font_size,
-		color = Color.white,
-		x = 20,
-		y = 10,
-		layer = 10,
-	})
-
-	-- Close button (top-right corner) — hitbox slightly larger than icon
-	local close_icon_size = 20
-	local close_hitbox = 24
-	local btn_padding = 8
-	self._close_btn_panel = self._content_panel:panel({
-		name = "close_btn",
-		w = close_hitbox,
-		h = close_hitbox,
-		layer = 10,
-	})
-	self._close_btn_panel:set_right(panel_w - btn_padding)
-	self._close_btn_panel:set_y(btn_padding)
-	local close_offset = math.round((close_hitbox - close_icon_size) / 2)
-	self._close_btn_panel:bitmap({
-		texture = "guis/textures/pd2/crime_spree/csr_btn_close",
-		w = close_icon_size,
-		h = close_icon_size,
-		x = close_offset,
-		y = close_offset,
-		blend_mode = "add",
 		color = tweak_data.screen_colors.text,
+		layer = 60,
 	})
+	local _, _, header_w, header_h = header:text_rect()
+	header:set_size(header_w, header_h)
+	-- Same spot as the lobby title: (0,0) of the (safe-workspace) outer panel, i.e.
+	-- the safe-area top-left corner. These menus share the lobby's safe self._ws, so
+	-- the lobby's implicit (0,0) maps here 1:1.
+	header:set_left(0)
+	header:set_top(0)
+	header_ghost:set_world_left(header:world_left())
+	header_ghost:set_world_center_y(header:world_center_y())
+	header_ghost:move(-13, 9)
+
+	-- PD2-style BACK button at the workspace bottom-right (replaces the old top-right
+	-- close X). Mirrors vanilla BlackMarketGui's back_button: pd2_large, button_stage_3,
+	-- flush bottom-right of the outer panel, symmetric with the top-left header.
+	-- Exits the logbook (managers.menu:back()) from any view; the detail-view back
+	-- button (csr_btn_back, top-right) is separate and untouched.
+	self._back_button = self._panel:text({
+		name = "csr_back_button",
+		vertical = "bottom",
+		align = "right",
+		text = utf8.to_upper(managers.localization:text("menu_back")),
+		font = tweak_data.menu.pd2_large_font,
+		font_size = tweak_data.menu.pd2_large_font_size,
+		color = tweak_data.screen_colors.button_stage_3,
+		layer = 60,
+	})
+	local _, _, back_w, back_h = self._back_button:text_rect()
+	self._back_button:set_size(back_w, back_h)
+	self._back_button:set_right(self._panel:w())
+	self._back_button:set_bottom(self._panel:h())
 
 	-- Build tabs and their content panels
 	self:_create_tabs()
@@ -1017,7 +1041,10 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 	end
 
 	local panel_w = 940
-	local panel_h = 600
+	-- Same height formula as the grid view / vanilla weapon-select panel (scales with
+	-- the workspace), so the detail box matches the rest of the logbook.
+	local grid_h_mul = (NOT_WIN_32 and 6.9 or 6.95) / 8
+	local panel_h = math.floor((self._panel:h() - 70) * grid_h_mul)
 
 	-- Create details_panel as a sibling of content_panel, not a child
 	self._details_panel = self._panel:panel({
@@ -1213,19 +1240,34 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 
 		y_pos = y_pos + 30
 
-		self._details_panel:text({
+		-- Lore can be long and the detail box height now scales with the workspace,
+		-- so the text may not fit. Put it in a vanilla ScrollablePanel (mouse-wheel
+		-- scroll + scroll bar), sized from the notes top to a small bottom margin.
+		-- Only this block changes -- redesign-friendly.
+		local notes_h = math.max(40, panel_h - y_pos - 20)
+		self._notes_scroll = ScrollablePanel:new(self._details_panel, "logbook_notes", {
+			x = 30,
+			y = y_pos,
+			w = panel_w - 60,
+			h = notes_h,
+			layer = 5,
+		})
+		local lore_desc = self._notes_scroll:canvas():text({
 			name = "lore_desc",
 			text = notes_text,
 			font = tweak_data.menu.pd2_small_font,
 			font_size = tweak_data.menu.pd2_small_font_size,
 			color = Color(1, 0.85, 0.85, 0.85),
-			x = 30,
-			y = y_pos,
-			w = panel_w - 60,
+			x = 0,
+			y = 0,
+			w = self._notes_scroll:canvas_scroll_width(),
 			wrap = true,
 			word_wrap = true,
 			layer = 5,
 		})
+		local _, _, _, lore_h = lore_desc:text_rect()
+		lore_desc:set_h(lore_h)
+		self._notes_scroll:update_canvas_size()
 	end
 
 	-- Back button (top-right corner) — panel-based for reliable hit-test
@@ -1278,13 +1320,18 @@ function CrimeSpreeLogbookMenuComponent:mouse_moved(o, x, y)
 	local local_x = x - panel_x
 	local local_y = y - panel_y
 
-	-- Close button hover
-	if self._close_btn_panel and alive(self._close_btn_panel) and self._close_btn_panel:inside(x, y) then
-		if self._last_hovered_id ~= "close_btn" then
-			self._last_hovered_id = "close_btn"
-			managers.menu_component:post_event("highlight")
+	-- Back button hover (bottom-right): brighten on hover, dim otherwise.
+	if self._back_button and alive(self._back_button) then
+		if self._back_button:inside(x, y) then
+			self._back_button:set_color(tweak_data.screen_colors.button_stage_2)
+			if self._last_hovered_id ~= "back_btn" then
+				self._last_hovered_id = "back_btn"
+				managers.menu_component:post_event("highlight")
+			end
+			return true, "link"
+		else
+			self._back_button:set_color(tweak_data.screen_colors.button_stage_3)
 		end
-		return true, "link"
 	end
 
 	-- Tab hover check (switch cursor to hand)
@@ -1382,13 +1429,11 @@ function CrimeSpreeLogbookMenuComponent:mouse_pressed(button, x, y)
 		return
 	end
 
-	-- Close button click (grid view)
-	if not self._selected_item and self._close_btn_panel and alive(self._close_btn_panel) then
-		if self._close_btn_panel:inside(x, y) then
-			managers.menu_component:post_event("menu_back")
-			managers.menu:back()
-			return true
-		end
+	-- Back button click (bottom-right) -- exits the logbook from any view.
+	if self._back_button and alive(self._back_button) and self._back_button:inside(x, y) then
+		managers.menu_component:post_event("menu_back")
+		managers.menu:back()
+		return true
 	end
 
 	-- Page arrows (items tab, grid view). Guarded at the edges so a dimmed arrow
@@ -1480,8 +1525,14 @@ function CrimeSpreeLogbookMenuComponent:mouse_released(o, button, x, y)
 end
 
 function CrimeSpreeLogbookMenuComponent:mouse_wheel_up(x, y)
-	-- Wheel = previous page (items grid only).
-	if not self._selected_item and self._current_tab == "items" and (self._page or 1) > 1 then
+	-- Detail view: scroll the lore notes. Grid view: previous page.
+	if self._selected_item then
+		if self._notes_scroll and self._notes_scroll:alive() then
+			self._notes_scroll:perform_scroll(ScrollablePanel.SCROLL_SPEED * TimerManager:main():delta_time() * 200, 1)
+		end
+		return true
+	end
+	if self._current_tab == "items" and (self._page or 1) > 1 then
 		self._page = self._page - 1
 		self:_render_items_page()
 	end
@@ -1489,8 +1540,14 @@ function CrimeSpreeLogbookMenuComponent:mouse_wheel_up(x, y)
 end
 
 function CrimeSpreeLogbookMenuComponent:mouse_wheel_down(x, y)
-	-- Wheel = next page (items grid only).
-	if not self._selected_item and self._current_tab == "items" then
+	-- Detail view: scroll the lore notes. Grid view: next page.
+	if self._selected_item then
+		if self._notes_scroll and self._notes_scroll:alive() then
+			self._notes_scroll:perform_scroll(ScrollablePanel.SCROLL_SPEED * TimerManager:main():delta_time() * 200, -1)
+		end
+		return true
+	end
+	if self._current_tab == "items" then
 		local per_page = self:_items_per_page()
 		local total = math.max(1, math.ceil(#(self._items_list or {}) / per_page))
 		if (self._page or 1) < total then
