@@ -54,13 +54,25 @@ local items_panel_rarity_colors = {
 local items_panel_icon_size = 64
 local items_panel_frame_size = 72
 local items_panel_icon_gap = 8
--- Min cell size before a new row opens (RoR2-style adaptive items grid -- see
--- csr_adaptive_grid). With up to 4 players' inventories to show, cells shrink
--- from items_panel_icon_size down to this as the count grows; below it, a row
--- is added and the cells resize back up.
-local items_panel_min_icon_size = 40
+-- Absolute floor for the cell size (RoR2-style adaptive items grid -- see
+-- csr_adaptive_grid). Each player's inventory must fit a FIXED quarter of the panel
+-- height, so cells shrink from items_panel_icon_size down to this as the count
+-- grows; an inventory too large to fit its quarter even at this size overflows
+-- (the readability floor). Low enough that the full 31-type inventory still fits a
+-- quarter at typical panel heights.
+local items_panel_min_icon_size = 28
 local items_panel_peer_header_h = 22
-local items_panel_peer_gap = 16
+-- 4-direction 1px offsets for the stack-count outline: the badge is drawn in black
+-- at these offsets under the white copy, so "xN" stays readable over any icon at
+-- small cell sizes -- no background box, no font scaling (user choice). Diesel text
+-- has no native stroke; this multi-draw is the standard outline technique.
+local items_panel_badge_outline = { { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } }
+-- Cap (px) on how far below the cell top the stack badge's box bottom sits. The raw
+-- anchor is cell_top + glyph_inset + drop, but glyph_inset (the glyph's centring
+-- margin) grows with the cell, which dragged the number too low on big icons. Cap it
+-- so the number stays near the top-right corner at every size; small icons, whose
+-- glyph_inset is already below the cap, are unaffected.
+local items_panel_badge_top_inset = 9
 local items_panel_padding = 16
 
 -- Modifiers feature-panel sub-tab row (Loud / Stealth). The two buttons split
@@ -83,6 +95,24 @@ local modifiers_icon_size = 52
 local modifiers_min_icon_size = 40 -- icons shrink to this (never below) to fit the panel height
 local modifiers_icon_gap = 12 -- MINIMUM horizontal gap (the justify step stretches it); also the vertical gap
 local modifiers_side_margin_frac = 0 -- inset on EACH side; 0 = flush with the Loud/Stealth buttons
+
+-- Modifiers panel list rows (replaces the old icon grid): a vertical ScrollablePanel
+-- where each row is an icon on the left + name (top) and wrapped description (below)
+-- to its right. Row height grows to fit the wrapped description.
+local modifiers_row_icon_size = 48
+local modifiers_row_text_gap = 12 -- icon right edge -> text column
+local modifiers_row_gap = 12 -- vertical gap between rows
+local modifiers_row_scrollbar_margin = 18 -- reserve the right edge for the scroll bar
+
+-- Rewards feature-panel layout. Four compact rows (one per run-completion reward):
+-- a vanilla loot-card thumbnail on the left + title/amount on the right. The card
+-- keeps its 128x180 portrait aspect and fills the row height; the row height is
+-- derived from the panel height (4 rows + gaps), capped so tall panels don't
+-- balloon the cards. The whole block is centred vertically in the panel.
+local rewards_panel_row_gap = 12
+local rewards_panel_max_row_h = 96
+local rewards_panel_card_aspect = 128 / 180 -- loot-card art is portrait (w/h)
+local rewards_panel_text_gap = 12 -- card right edge -> title/amount column
 
 -- One Loud/Stealth tab button at the given x/width. Rebuilt (not mutated) on
 -- every repopulate, so `active` is baked in at build time -- no separate
@@ -120,27 +150,37 @@ local function csr_build_modifier_subtab(parent, text_str, x, y, w, active)
 	return p
 end
 
--- RoR2-style adaptive grid sizing (used by the items panel, which must fit up to
--- 4 players' inventories). The cells share one square size that SHRINKS as the
--- count grows so they stay in as few rows as possible; a new row opens only once
--- the per-row size would drop below `min_size`, at which point every cell
--- resizes back up to fill the new row count. The inter-cell `gap` is fixed --
--- the size adapts, not the gap. Returns (cell_size, per_row); the caller
--- left-aligns, so a full row spans the width and a partial last row hugs the
--- left. cell_size is floored for crisp rendering.
-local function csr_adaptive_grid(count, avail_w, max_size, min_size, gap)
+-- Adaptive grid sizing for the items panel: each player's inventory must fit a
+-- FIXED region (a quarter of the panel height), so the cells share one square size
+-- that SHRINKS as the count grows until every row fits BOTH the available width
+-- and height. Returns the largest such size (<= max_size, clamped at min_size as
+-- the floor) and the per-row column count. A count too large to fit even at
+-- min_size overflows -- min_size is the readability floor. The inter-cell `gap` is
+-- fixed (the size adapts, not the gap); the caller left-aligns, so a full row spans
+-- the width and a partial last row hugs the left. cell_size is floored for crisp
+-- rendering. Mirrors csr_fit_grid's height-fit loop but stays left-aligned (no
+-- justify-stretch) to preserve the items panel's look.
+local function csr_adaptive_grid(count, avail_w, avail_h, max_size, min_size, gap)
 	if count <= 0 then
 		return max_size, 1
 	end
-	local rows = 1
-	while true do
-		local per_row = math.ceil(count / rows)
-		local size = math.min(max_size, (avail_w - (per_row - 1) * gap) / per_row)
-		if size >= min_size or per_row <= 1 then
-			return math.floor(math.max(size, min_size)), per_row
-		end
-		rows = rows + 1
+	-- Columns of `size` cells that fit avail_w, capped at count (a partial set
+	-- leaves no empty trailing columns); rows derived from that.
+	local function layout_for(size)
+		local per_row = math.max(1, math.min(count, math.floor((avail_w + gap) / (size + gap))))
+		return per_row, math.ceil(count / per_row)
 	end
+	local size = max_size
+	while size > min_size do
+		local _, rows = layout_for(size)
+		if rows * (size + gap) - gap <= avail_h then
+			break
+		end
+		size = size - 2
+	end
+	size = math.floor(math.max(size, min_size))
+	local per_row = layout_for(size)
+	return size, per_row
 end
 
 -- Justified grid sizing (used by the Modifiers panel). Icons sit at `max_size`
@@ -666,6 +706,7 @@ function CSRMissionsMenuComponent:_create_feature_panels()
 		items = build(),
 		modifiers = build(),
 		rewards = build(),
+		heister = build(),
 	}
 
 	-- Initial population so the panels have content the first time the sidebar
@@ -673,6 +714,8 @@ function CSRMissionsMenuComponent:_create_feature_panels()
 	-- counts can change while the lobby is up once the sync slice lands).
 	self:_populate_items_panel()
 	self:_populate_modifiers_panel()
+	self:_populate_rewards_panel()
+	self:_populate_heister_panel()
 end
 
 -- Mutually exclusive: the three panels occupy the SAME rect, so showing one
@@ -728,6 +771,14 @@ function CSRMissionsMenuComponent:toggle_feature_panel(key)
 		-- Rebuild on toggle-on so a rank gained since the last build is reflected
 		-- without leaving the lobby. Cheap (≤ pool size icons).
 		self:_populate_modifiers_panel()
+	elseif show and key == "rewards" then
+		-- Rebuild on toggle-on so the projected payout tracks the live rank /
+		-- difficulty / skill loadout without leaving the lobby. Cheap (4 rows).
+		self:_populate_rewards_panel()
+	elseif show and key == "heister" then
+		-- Rebuild on toggle-on so a loadout / skill change since the last build is
+		-- reflected without leaving the lobby. Cheap (a handful of stat rows).
+		self:_populate_heister_panel()
 	end
 end
 
@@ -774,6 +825,8 @@ function CSRMissionsMenuComponent:_csr_reopen_pinned_feature_panel()
 		self:_populate_items_panel()
 	elseif pinned == "modifiers" and self._populate_modifiers_panel then
 		self:_populate_modifiers_panel()
+	elseif pinned == "heister" and self._populate_heister_panel then
+		self:_populate_heister_panel()
 	end
 end
 
@@ -911,16 +964,21 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 	-- No section title: the sidebar row "Items" already labels the panel; an in-
 	-- panel "ITEMS" header was visual duplication. Per-peer color-strip headers
 	-- carry the structure on their own.
-	local y = items_panel_padding
 	local section_w = panel:w() - items_panel_padding * 2
+	-- Each player's inventory occupies a FIXED quarter of the panel height, so the
+	-- layout is stable for up to 4 players and a peer's grid never grows past its
+	-- slot -- it shrinks to fit (like the Modifiers/Rewards panels). In SP the single
+	-- peer fills the top quarter; the lower three are reserved for teammates.
+	local section_h = math.floor(panel:h() / 4)
 
-	for _, peer_info in ipairs(peers_list) do
+	for index, peer_info in ipairs(peers_list) do
 		local pid = peer_info.id
 		local pcolor = peer_info.color
+		local section_top = (index - 1) * section_h
 
 		local header = content:panel({
 			x = items_panel_padding,
-			y = y,
+			y = section_top + items_panel_padding,
 			w = section_w,
 			h = items_panel_peer_header_h,
 		})
@@ -946,13 +1004,6 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 			vertical = "center",
 		})
 
-		-- Breathing room between the peer name and the grid below it. The
-		-- vertical="center" header overlaps its 22px container vertically with
-		-- ~24px medium-font glyphs, so 10px clear below the container's bottom
-		-- lands ~7px below the glyph bottom -- enough to feel deliberately
-		-- spaced rather than touching.
-		y = y + items_panel_peer_header_h + 10
-
 		local counts = mgr:player_items(pid) or {}
 		local items_list = {}
 		for item_type, count in pairs(counts) do
@@ -962,11 +1013,7 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 			end
 		end
 
-		if #items_list == 0 then
-			-- Empty section: peer header stands alone, no body text. Advance Y
-			-- by the standard gap so the next peer section keeps its spacing.
-			y = y + items_panel_peer_gap
-		else
+		if #items_list > 0 then
 			table.sort(items_list, function(a, b)
 				if (a.def.rarity or "") ~= (b.def.rarity or "") then
 					return (a.def.rarity or "") < (b.def.rarity or "")
@@ -974,16 +1021,19 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 				return (a.def.type or "") < (b.def.type or "")
 			end)
 
-			-- RoR2-style adaptive grid (csr_adaptive_grid): up to 4 players'
-			-- inventories must fit, so the cells share one square size that SHRINKS
-			-- (from items_panel_icon_size down to items_panel_min_icon_size) as the
-			-- count grows, opening a new row only when they'd shrink past the min.
-			-- Fixed small gap; left-aligned (a full row spans the width, a partial
-			-- last row hugs the left). The rarity frame, glyph and badge all scale
+			-- Grid sits below the header and fills the REST of this peer's quarter.
+			-- 10px breathing room under the (vertical-centered, ~24px-glyph) 22px
+			-- header before the icons. csr_adaptive_grid is height-aware: it shrinks
+			-- the shared square cell (from items_panel_icon_size down to the min)
+			-- until every row fits grid_h, so the inventory stays inside its quarter.
+			-- Left-aligned, fixed gap; the rarity frame, glyph and badge all scale
 			-- with the cell size.
+			local grid_y = section_top + items_panel_padding + items_panel_peer_header_h + 10
+			local grid_h = section_top + section_h - grid_y - items_panel_padding
 			local cell_size, per_row = csr_adaptive_grid(
 				#items_list,
 				section_w,
+				grid_h,
 				items_panel_icon_size,
 				items_panel_min_icon_size,
 				items_panel_icon_gap
@@ -999,7 +1049,7 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 				local col = (i - 1) % per_row
 				local row = math.floor((i - 1) / per_row)
 				local ix = items_panel_padding + col * step
-				local iy = y + row * step
+				local iy = grid_y + row * step
 
 				-- Frame is a SIBLING of the cell on `content`, not a child, so its
 				-- 72x72 footprint can overflow the 64x64 cell by 4px each side --
@@ -1054,30 +1104,51 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 					layer = 10,
 				})
 
-				-- Stack badge: shown unconditionally (including count == 1) per user
-				-- request -- the explicit "x1" makes the inventory parse as a
-				-- stack-count view rather than as a roster of unique entries.
-				-- Rendered as a SIBLING of the cell on `content`, NOT as a cell
-				-- child: cell panels DO clip their children to their own bounds in
-				-- Diesel, so a negative-y child got its glyph top cropped at the
-				-- cell's top edge (visible artefact: top row of pixels of the "x2"
-				-- glyph cut off). Sibling positioning sidesteps the clip entirely;
-				-- layer 20 on `content` is above both the frame (5) and the cell
-				-- (10), so the badge sits on top of everything else.
-				content:text({
+				-- Stack badge: white "xN" with a thin black outline (readable over any
+				-- icon; no background box, no font scaling -- user choice). Anchored by
+				-- its BOTTOM-LEFT to the glyph's TOP-RIGHT corner (align left + vertical
+				-- bottom), so the number sits at the glyph corner and extends UP + RIGHT,
+				-- always clear of the centred glyph. As the cell shrinks the glyph (and
+				-- its corner) shrink too, so the fixed-size number automatically rides
+				-- further up-right OUT of the icon instead of overlapping it. Shown
+				-- unconditionally (incl. x1) so the inventory reads as a stack-count
+				-- view. SIBLINGS of the cell on `content` (cell panels clip children in
+				-- Diesel); w/h is just a generous container -- only the glyphs render,
+				-- left/bottom-aligned at (badge_x, badge_y + h). Layers 19/20 put the
+				-- outline (19) under the white glyph (20), both above frame (5)/cell (10).
+				local badge = {
 					name = "stack_badge",
 					text = "x" .. tostring(entry.count),
 					font = tweak_data.menu.pd2_small_font,
 					font_size = tweak_data.menu.pd2_small_font_size,
-					color = Color.white,
-					align = "right",
-					vertical = "top",
-					x = ix - math.floor(3 * cell_size / items_panel_icon_size),
-					y = iy - math.floor(5 * cell_size / items_panel_icon_size),
-					w = cell_size,
-					h = cell_size,
-					layer = 20,
-				})
+					align = "left",
+					vertical = "bottom",
+					w = items_panel_icon_size,
+					h = items_panel_icon_size,
+				}
+				-- Box left = glyph right edge; box bottom (badge_y + h) sits a little below
+				-- the cell top so the number rides the top-right corner. The vertical
+				-- offset is min(glyph_inset, cap) + drop: the glyph_inset term tracks the
+				-- corner on small icons but is capped so big icons (with a wide centring
+				-- margin) don't drag the number low. drop is a fraction of the NUMBER's own
+				-- (fixed) height, so the corner overlap reads the same at every size.
+				local badge_x = ix + glyph_inset + glyph
+				local badge_drop = math.floor(tweak_data.menu.pd2_small_font_size * 0.2)
+				local badge_inset = math.min(glyph_inset, items_panel_badge_top_inset)
+				local badge_y = (iy + badge_inset + badge_drop) - items_panel_icon_size
+				-- Black outline copies first (under), then the white glyph on top. The
+				-- params table is reused -- panel:text() reads it at call time and does
+				-- not retain it, so mutating between calls is safe.
+				badge.color = Color.black
+				badge.layer = 19
+				for _, off in ipairs(items_panel_badge_outline) do
+					badge.x, badge.y = badge_x + off[1], badge_y + off[2]
+					content:text(badge)
+				end
+				badge.color = Color.white
+				badge.layer = 20
+				badge.x, badge.y = badge_x, badge_y
+				content:text(badge)
 
 				self._items_hit_targets[#self._items_hit_targets + 1] = {
 					panel = cell,
@@ -1085,9 +1156,6 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 					count = entry.count,
 				}
 			end
-
-			local rows = math.ceil(#items_list / per_row)
-			y = y + rows * step - items_panel_icon_gap + items_panel_peer_gap
 		end
 	end
 end
@@ -1260,12 +1328,15 @@ function CSRMissionsMenuComponent:_show_items_tooltip(target)
 	tip:set_position(tx, ty)
 end
 
--- Build / rebuild the Modifiers feature-panel content: a Loud / Stealth sub-tab
--- row at the top and, below it, a grid of the modifiers active for the chosen
--- sub-tab. Same teardown + hit-target model as _populate_items_panel; the
--- modifier grid reuses the items grid metrics and the shared tooltip helper.
--- Idempotent: prior content is removed first. Borrowed by MissionBriefingGui
--- (briefing_sidebar.lua METHODS_TO_BORROW) so both surfaces share it.
+-- Build / rebuild the Modifiers feature-panel content: a Loud / Stealth sub-tab row
+-- at the top and, below it, a vertical scroll list of the modifiers active for the
+-- chosen sub-tab. Each row is an icon (left) + name (top) + wrapped description
+-- (below) -- the description is inline now, so there is no hover tooltip anymore.
+-- Idempotent: prior content (and the ScrollablePanel inside it) is removed first.
+-- Borrowed by MissionBriefingGui (briefing_sidebar.lua METHODS_TO_BORROW) so both
+-- surfaces share it; mouse routing lives in mouse_wheel_up/down + mouse_released +
+-- the modifiers branches of mouse_moved/mouse_pressed (lobby) and the briefing's own
+-- input wraps (wheel only -- the briefing never receives mouse_released).
 function CSRMissionsMenuComponent:_populate_modifiers_panel()
 	if not self._feature_panels or not alive(self._feature_panels.modifiers) then
 		return
@@ -1276,8 +1347,11 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 		panel:remove(self._modifiers_content)
 	end
 	self._modifiers_content = nil
-	self._modifiers_hit_targets = {}
 	self._modifiers_subtab_buttons = nil
+	-- The scroll lived inside the content panel just removed; drop the stale ref so
+	-- the mouse handlers can't poke a dead panel between repopulates.
+	self._modifiers_scroll = nil
+	self._modifiers_hit_targets = {}
 	self:_clear_items_tooltip()
 	self._modifiers_hover_target = nil
 
@@ -1290,9 +1364,8 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 	})
 	self._modifiers_content = content
 
-	-- Sub-tab row: the two buttons split the content width with a small gap
-	-- between them (user spec 2026-05-23) -- together they still span the full
-	-- panel width. section_w is reused by the grid below.
+	-- Sub-tab row: the two buttons split the content width with a small gap between
+	-- them -- together they still span the full panel width.
 	local pad = items_panel_padding
 	local section_w = panel:w() - pad * 2
 	local btn_w = math.floor((section_w - modifiers_subtab_gap) / 2)
@@ -1311,69 +1384,90 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 		stealth = { panel = b_stealth },
 	}
 
+	-- Loud-only ambient header: the per-rank enemy HP/damage scaling (continuous in
+	-- rank, separate from the unlockable modifiers listed below). Reads the percent
+	-- from managers.csr:enemy_scaling so the shown number can't drift from what
+	-- apply_modifiers applies. Fixed on `content` (NOT in the scroll canvas) so it
+	-- stays pinned at the very top; the scroll list is pushed down by header_h.
+	-- Hidden at 0% (rank 0). HP% == DMG% today, so one number covers both.
+	local header_h = 0
+	if not is_stealth then
+		local smgr = managers and managers.csr
+		local hp_pct = 0
+		if smgr and smgr.enemy_scaling then
+			hp_pct = (smgr:enemy_scaling()) or 0
+		end
+		if hp_pct > 0 then
+			-- White sentence, yellow number + "%" (the mod's accent, same highlight
+			-- the status bar uses). set_range_color recolors the trailing value
+			-- substring -- the vanilla-proven pattern from _create_status_bar.
+			local prefix = "Enemy's base health and damage increased by "
+			local full = prefix .. math.floor(hp_pct) .. "%"
+			local header = content:text({
+				name = "enemy_scaling_header",
+				text = full,
+				font = tweak_data.menu.pd2_small_font,
+				font_size = tweak_data.menu.pd2_small_font_size,
+				color = tweak_data.screen_colors.text,
+				x = pad,
+				y = pad + modifiers_subtab_h + modifiers_grid_top_gap,
+				w = section_w,
+				h = tweak_data.menu.pd2_small_font_size,
+				wrap = true,
+				word_wrap = true,
+				layer = 10,
+			})
+			header:set_range_color(utf8.len(prefix), utf8.len(full), Color(1, 1, 1, 0))
+			local _, _, _, lh = header:text_rect()
+			header:set_h(lh)
+			header_h = lh + modifiers_grid_top_gap
+		end
+	end
+
+	-- Scroll list below the sub-tabs (engine ScrollablePanel: draggable bar + wheel,
+	-- canvas clipped to the viewport). Content goes on :canvas(); update_canvas_size
+	-- recomputes the scroll height from the rows after they are laid out. list_top
+	-- includes header_h so the loud ambient header (when shown) sits above the list.
+	local list_top = pad + modifiers_subtab_h + modifiers_grid_top_gap + header_h
+	local list_h = math.max(0, panel:h() - list_top - pad)
+	local scroll = ScrollablePanel:new(content, "csr_modifiers_scroll", {
+		x = pad,
+		y = list_top,
+		w = section_w,
+		h = list_h,
+		padding = 0,
+		layer = 10,
+	})
+	self._modifiers_scroll = scroll
+	local canvas = scroll:canvas()
+
 	local mgr = managers and managers.csr
 	local list = (mgr and mgr.active_modifiers and mgr:active_modifiers(self._modifiers_subtab)) or {}
 	if #list == 0 then
-		-- Empty (rank 0, or all of this category's pool already shown): the
-		-- sub-tabs stand alone. No body text -- matches the items panel's
-		-- empty-section convention (header/tabs only, no filler string).
+		-- Empty (rank 0, or this category's pool already exhausted): sub-tabs stand
+		-- alone, empty scroll. No filler text -- matches the items panel convention.
+		scroll:update_canvas_size()
 		return
 	end
 
-	local grid_top = pad + modifiers_subtab_h + modifiers_grid_top_gap
-	-- Pack the icons left-to-right / top-to-bottom (like the items grid), fixed
-	-- gap, at modifiers_icon_size. They only SHRINK (to modifiers_min_icon_size)
-	-- if the rows would overflow the panel's height -- never grow past the max
-	-- (user spec 2026-05-23). avail_h = the panel below the sub-tab row, minus a
-	-- bottom margin.
-	local avail_h = panel:h() - grid_top - pad
-	local cell_size, cols, grid_start_x, grid_step_x = csr_fit_grid(
-		#list,
-		section_w,
-		avail_h,
-		modifiers_side_margin_frac,
-		modifiers_icon_size,
-		modifiers_min_icon_size,
-		modifiers_icon_gap
-	)
-	-- Horizontal step is the justified (stretched) step; rows stay tight at the
-	-- icon size + gap so the grid doesn't sprawl vertically.
-	local row_step = cell_size + modifiers_icon_gap
+	-- Newest-unlocked modifier first (user spec 2026-05-24): active_modifiers returns
+	-- the unlock sequence oldest-first (entry i unlocked at rank i), so reversing it
+	-- floats the modifier gained at the current rank to the TOP. Reversed in the VIEW
+	-- only -- active_modifiers' "rank R is a prefix-superset of R+1" contract (relied
+	-- on by apply_modifiers) stays intact. The list is a fresh per-call table, so the
+	-- in-place reverse mutates nothing shared.
+	for i = 1, math.floor(#list / 2) do
+		list[i], list[#list - i + 1] = list[#list - i + 1], list[i]
+	end
 
-	for i, entry in ipairs(list) do
-		local col = (i - 1) % cols
-		local row = math.floor((i - 1) / cols)
-		local ix = pad + grid_start_x + col * grid_step_x
-		local iy = grid_top + row * row_step
+	-- Text column reserves a right margin for the scroll bar so a wrapped line never
+	-- runs under it.
+	local text_x = modifiers_row_icon_size + modifiers_row_text_gap
+	local text_w = math.max(40, canvas:w() - text_x - modifiers_row_scrollbar_margin)
+	local row_y = 0
 
-		-- Frameless cell (user spec): the icon fills the whole cell, and the same
-		-- cell panel is the hover hit-test footprint.
-		local cell = content:panel({
-			x = ix,
-			y = iy,
-			w = cell_size,
-			h = cell_size,
-			layer = 10,
-		})
-
-		-- Modifier icons are short hud_icons ids (vanilla CS atlas / CSR custom);
-		-- get_icon_data returns (texture, rect) and is nil-safe (an unknown id
-		-- falls back to using the id as a path -- renders blank, never crashes).
-		local icon_tex, icon_rect = tweak_data.hud_icons:get_icon_data(entry.icon or "csr_dog_tags")
-		cell:bitmap({
-			name = "mod_icon",
-			texture = icon_tex,
-			texture_rect = icon_rect,
-			w = cell_size,
-			h = cell_size,
-			layer = 10,
-		})
-
-		-- Resolve the combined "Title\nBody" loc text once and split on the first
-		-- newline -> tooltip name (top, coloured) + desc (wrapped body). The split
-		-- result is PRE-RESOLVED text, so it goes into name_text/desc_text (not
-		-- name/desc, which _show_items_tooltip would localize again -> doubled
-		-- "ERROR" placeholder since a resolved literal is not a known key).
+	for _, entry in ipairs(list) do
+		-- Combined "Title\nBody" loc string -> name (top) + description (wrapped).
 		local full = (entry.loc and managers.localization and managers.localization:text(entry.loc)) or ""
 		local title, body = full, ""
 		local nl = full:find("\n", 1, true)
@@ -1382,56 +1476,394 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 			body = full:sub(nl + 1)
 		end
 
-		self._modifiers_hit_targets[#self._modifiers_hit_targets + 1] = {
-			panel = cell,
-			def = { name_text = title, desc_text = body },
-		}
+		-- One panel per row, sized to the taller of the icon and the text block
+		-- after the wrapped description is measured.
+		local row = canvas:panel({
+			x = 0,
+			y = row_y,
+			w = canvas:w(),
+			h = modifiers_row_icon_size,
+		})
+
+		-- Icon (left). get_icon_data returns (texture, rect) and is nil-safe.
+		local icon_tex, icon_rect = tweak_data.hud_icons:get_icon_data(entry.icon or "csr_dog_tags")
+		row:bitmap({
+			name = "mod_icon",
+			texture = icon_tex,
+			texture_rect = icon_rect,
+			x = 0,
+			y = 0,
+			w = modifiers_row_icon_size,
+			h = modifiers_row_icon_size,
+			layer = 1,
+		})
+
+		-- Name (top of the text column), measured + resized to its own line height.
+		local name_text = row:text({
+			name = "mod_name",
+			text = title,
+			font = tweak_data.menu.pd2_medium_font,
+			font_size = tweak_data.menu.pd2_medium_font_size,
+			color = tweak_data.screen_colors.text,
+			x = text_x,
+			y = 0,
+			w = text_w,
+			h = tweak_data.menu.pd2_medium_font_size,
+			layer = 1,
+		})
+		local _, _, _, name_h = name_text:text_rect()
+		name_text:set_h(name_h)
+
+		-- Description (below the name, wrapped); measured h tracks the line count.
+		local desc_text = row:text({
+			name = "mod_desc",
+			text = body,
+			font = tweak_data.menu.pd2_small_font,
+			font_size = tweak_data.menu.pd2_small_font_size,
+			color = Color.white:with_alpha(0.7),
+			x = text_x,
+			y = name_h,
+			w = text_w,
+			h = 200,
+			wrap = true,
+			wrap_word = true,
+			layer = 1,
+		})
+		local _, _, _, desc_h = desc_text:text_rect()
+		desc_text:set_h(desc_h)
+
+		local row_h = math.max(modifiers_row_icon_size, name_h + desc_h)
+		row:set_h(row_h)
+
+		row_y = row_y + row_h + modifiers_row_gap
+	end
+
+	scroll:update_canvas_size()
+end
+
+-- Build / rebuild the Rewards feature-panel: the four run-completion rewards
+-- (cash, XP, Continental Coins, Loot Cards) as compact rows -- a vanilla loot-card
+-- thumbnail on the left + title/amount on the right. The amounts are the PROJECTED
+-- run-end payout at the current rank + difficulty: CSR pays out FROM RANK at the
+-- end of a spree (not per heist), so the panel answers "what do I get if I end the
+-- spree now?". Formulas + per-rank tables are locked in
+-- project_csr_reward_system_design.
+--
+-- Read-only and local-state-only (rank is the run's; the skill/infamy XP mults are
+-- THIS player's), so MP-safe with no packet. A client whose rank hasn't synced yet
+-- just shows its local value -- same deferred-sync caveat as the items panel.
+function CSRMissionsMenuComponent:_populate_rewards_panel()
+	if not self._feature_panels or not alive(self._feature_panels.rewards) then
+		return
+	end
+	local panel = self._feature_panels.rewards
+
+	if self._rewards_content and alive(self._rewards_content) then
+		panel:remove(self._rewards_content)
+	end
+	self._rewards_content = nil
+
+	local content = panel:panel({
+		layer = 5,
+	})
+	self._rewards_content = content
+
+	-- Projected run-end payout from the single source of truth (managers.csr:
+	-- projected_rewards -- the SAME numeric table End Spree awards). cash_string
+	-- prefixes the locale cash sign ("$"); experience_string is the bare grouped
+	-- number (we add the "+"). pcall-isolated -- a display must never crash the lobby.
+	local mgr = managers and managers.csr
+	local r = (mgr and mgr.projected_rewards and mgr:projected_rewards()) or {}
+	local cash_str, xp_str = "$0", "0"
+	pcall(function()
+		cash_str = managers.experience:cash_string(r.cash or 0)
+	end)
+	pcall(function()
+		xp_str = managers.experience:experience_string(r.experience or 0)
+	end)
+
+	local rows = {
+		{ icon = "upcard_cash", title = "CASH", value = cash_str },
+		{ icon = "upcard_xp", title = "EXPERIENCE", value = "+" .. xp_str },
+		{ icon = "upcard_coins", title = "CONTINENTAL COINS", value = tostring(r.continental_coins or 0) },
+		{ icon = "upcard_random", title = "LOOT CARDS", value = tostring(r.loot_drop or 0) },
+	}
+
+	-- Row height fits 4 rows + 3 gaps into the panel, capped so tall panels keep
+	-- sane card sizes; the resulting block is centred vertically.
+	local pad = items_panel_padding
+	local avail_h = panel:h() - pad * 2
+	local row_h = math.min(rewards_panel_max_row_h, math.floor((avail_h - rewards_panel_row_gap * 3) / 4))
+	row_h = math.max(row_h, tweak_data.menu.pd2_medium_font_size + tweak_data.menu.pd2_small_font_size)
+	local card_w = math.floor(row_h * rewards_panel_card_aspect)
+	local block_h = row_h * 4 + rewards_panel_row_gap * 3
+	local start_y = pad + math.max(0, math.floor((avail_h - block_h) / 2))
+	local text_x = pad + card_w + rewards_panel_text_gap
+	local text_w = math.max(0, panel:w() - pad - text_x)
+
+	for i, r in ipairs(rows) do
+		local ry = start_y + (i - 1) * (row_h + rewards_panel_row_gap)
+
+		-- Loot-card thumbnail (vanilla atlas; get_icon_data returns texture + rect,
+		-- nil-safe). Fills the row height at the portrait aspect.
+		local tex, rect = tweak_data.hud_icons:get_icon_data(r.icon)
+		content:bitmap({
+			name = "reward_card",
+			texture = tex,
+			texture_rect = rect,
+			x = pad,
+			y = ry,
+			w = card_w,
+			h = row_h,
+			layer = 10,
+		})
+
+		-- Title (dim) above the amount (white), the pair vertically centred against
+		-- the card so a short row still reads as a unit.
+		local title_h = tweak_data.menu.pd2_small_font_size
+		local amount_h = tweak_data.menu.pd2_medium_font_size
+		local tb_y = ry + math.floor((row_h - (title_h + amount_h)) / 2)
+
+		content:text({
+			name = "reward_title",
+			text = r.title,
+			font = tweak_data.menu.pd2_small_font,
+			font_size = tweak_data.menu.pd2_small_font_size,
+			color = Color.white:with_alpha(0.6),
+			x = text_x,
+			y = tb_y,
+			w = text_w,
+			h = title_h,
+			vertical = "center",
+			layer = 10,
+		})
+		content:text({
+			name = "reward_amount",
+			text = r.value,
+			font = tweak_data.menu.pd2_medium_font,
+			font_size = tweak_data.menu.pd2_medium_font_size,
+			color = tweak_data.screen_colors.text,
+			x = text_x,
+			y = tb_y + title_h,
+			w = text_w,
+			h = amount_h,
+			vertical = "center",
+			layer = 10,
+		})
 	end
 end
 
--- Edge-triggered hover for the Modifiers panel: icon -> tooltip, sub-tab -> link
--- cursor. Mirrors _items_panel_mouse_moved (event-driven, small target list, so
--- a linear walk is fine). Returns true when the cursor is over a modifier icon
--- OR a sub-tab so the caller can flip the pointer to "link".
+-- Player combat characteristics for the Heister feature panel.
+--
+-- Computed with the SAME formulas the vanilla inventory screen uses for its
+-- player-stats table (PlayerInventoryGui:_get_armor_stats in pd2_source). They
+-- reflect the player's CURRENT loadout (equipped armor + skills) but NOT the CSR
+-- item buffs: item numbers are hidden by design, so this "standard" table shows
+-- the player's normal PD2 values. Folding the CSR item contributions into these
+-- totals is a later pass (the row layout below does not change for it).
+--
+-- pcall-isolated at two levels (loadout lookup + each stat): a stat read must
+-- never crash the lobby / briefing. On any failure a row falls back to the bare
+-- base constant, so the table always renders.
+local function csr_round1(n)
+	-- format_round's non-integer branch (pd2 playerinventorygui): one decimal,
+	-- trailing zeros stripped ("230.0" -> "230", "4.5" -> "4.5").
+	return (string.format("%.1f", n):gsub("%.?0+$", ""))
+end
+
+-- TOTAL (base + skill) for one stat, line-for-line from the matching branch of
+-- _get_armor_stats. `name` = equipped armor id, `upgrade_level` its tier.
+local function csr_heister_stat_value(stat_name, name, upgrade_level, detection_risk, mult)
+	local player = managers.player
+	if stat_name == "health" then
+		local base = (tweak_data.player.damage.HEALTH_INIT + player:health_skill_addend()) * mult
+		return base * player:health_skill_multiplier()
+	elseif stat_name == "armor" then
+		local base = (tweak_data.player.damage.ARMOR_INIT + player:body_armor_value("armor", upgrade_level)) * mult
+		return (base + player:body_armor_skill_addend(name) * mult) * player:body_armor_skill_multiplier(name)
+	elseif stat_name == "movement" then
+		local base = tweak_data.player.movement_state.standard.movement.speed.STANDARD_MAX / 100 * mult
+		return base * player:movement_speed_multiplier(false, false, upgrade_level, 1)
+	elseif stat_name == "dodge" then
+		return player:body_armor_value("dodge", upgrade_level) * 100
+			+ player:skill_dodge_chance(false, false, false, name, detection_risk) * 100
+	elseif stat_name == "stamina" then
+		local base = tweak_data.player.movement_state.stamina.STAMINA_INIT
+		return base * player:body_armor_value("stamina", upgrade_level) * player:stamina_multiplier()
+	end
+	return 0
+end
+
+local function csr_collect_heister_stats()
+	local mult = (tweak_data.gui and tweak_data.gui.stats_present_multiplier) or 10
+	local pd = tweak_data.player
+
+	-- Equipped armor id + tier + detection risk (head of _get_armor_stats). Guarded:
+	-- outside an active loadout these reads can throw.
+	local name, upgrade_level, detection_risk = nil, 0, 0
+	pcall(function()
+		name = managers.blackmarket:equipped_armor()
+		local tw = name and tweak_data.blackmarket.armors[name]
+		upgrade_level = (tw and tw.upgrade_level) or 0
+		local dr = managers.blackmarket:get_suspicion_offset_from_custom_data(
+			{ armors = name },
+			pd.SUSPICION_OFFSET_LERP or 0.75
+		)
+		detection_risk = math.round(dr * 100)
+	end)
+
+	-- Ordered combat characteristics. `fallback` = bare base constant shown if the
+	-- live read errors; `pct` rows append "%". Loc keys are vanilla (bm_menu_*).
+	local defs = {
+		{ key = "health", loc = "bm_menu_health", pct = false, fallback = (pd.damage.HEALTH_INIT or 0) * mult },
+		{ key = "armor", loc = "bm_menu_armor", pct = false, fallback = (pd.damage.ARMOR_INIT or 0) * mult },
+		{
+			key = "movement",
+			loc = "bm_menu_movement",
+			pct = false,
+			fallback = (pd.movement_state.standard.movement.speed.STANDARD_MAX or 0) / 100 * mult,
+		},
+		{ key = "dodge", loc = "bm_menu_dodge", pct = true, fallback = 0 },
+		{
+			key = "stamina",
+			loc = "bm_menu_stamina",
+			pct = false,
+			fallback = pd.movement_state.stamina.STAMINA_INIT or 0,
+		},
+	}
+
+	local out = {}
+	for _, d in ipairs(defs) do
+		local ok, v = pcall(csr_heister_stat_value, d.key, name, upgrade_level, detection_risk, mult)
+		if not ok or type(v) ~= "number" then
+			v = d.fallback
+		end
+		v = math.max(v, 0)
+		out[#out + 1] = {
+			label = managers.localization:to_upper_text(d.loc),
+			value = d.pct and (math.round(v) .. "%") or csr_round1(v),
+		}
+	end
+	return out
+end
+
+-- Build / rebuild the Heister feature-panel content: a two-column table of the
+-- player's combat characteristics (name left, value right) with a zebra band on
+-- alternating rows for readability. Idempotent (prior content torn down first).
+-- Borrowed by MissionBriefingGui (briefing_sidebar.lua METHODS_TO_BORROW) so both
+-- the lobby and the briefing share it.
+function CSRMissionsMenuComponent:_populate_heister_panel()
+	if not self._feature_panels or not alive(self._feature_panels.heister) then
+		return
+	end
+	local panel = self._feature_panels.heister
+
+	if self._heister_content and alive(self._heister_content) then
+		panel:remove(self._heister_content)
+	end
+	self._heister_content = nil
+
+	local content = panel:panel({
+		layer = 5,
+	})
+	self._heister_content = content
+
+	local stats = csr_collect_heister_stats()
+	local pad = items_panel_padding
+	local row_h = tweak_data.menu.pd2_medium_font_size + 8
+	local row_gap = 4
+	-- Yellow value highlight (4-arg Color per Rule #6), same accent the status bar
+	-- uses for its dynamic rank / difficulty values.
+	local highlight = Color(1, 1, 1, 0)
+	local y = pad
+
+	for i, s in ipairs(stats) do
+		local row = content:panel({
+			x = pad,
+			y = y,
+			w = panel:w() - pad * 2,
+			h = row_h,
+			layer = 5,
+		})
+
+		-- Zebra band on alternating rows (the same 0.4-black the vanilla inventory
+		-- stats table uses).
+		if i % 2 == 1 then
+			row:rect({
+				color = Color.black:with_alpha(0.4),
+				layer = 0,
+			})
+		end
+
+		row:text({
+			name = "stat_name",
+			text = s.label,
+			font = tweak_data.menu.pd2_small_font,
+			font_size = tweak_data.menu.pd2_small_font_size,
+			color = tweak_data.screen_colors.text,
+			x = 8,
+			w = row:w() - 16,
+			h = row:h(),
+			align = "left",
+			vertical = "center",
+			layer = 2,
+		})
+		row:text({
+			name = "stat_value",
+			text = s.value,
+			font = tweak_data.menu.pd2_medium_font,
+			font_size = tweak_data.menu.pd2_medium_font_size,
+			color = highlight,
+			x = 8,
+			w = row:w() - 16,
+			h = row:h(),
+			align = "right",
+			vertical = "center",
+			layer = 2,
+		})
+
+		y = y + row_h + row_gap
+	end
+end
+
+-- True when the Modifiers scroll list exists AND its panel is visible. Gates the
+-- scroll mouse routing so wheel / grab events do nothing while another tab is up.
+-- Borrowed by the briefing so its input wrap can gate the same way.
+function CSRMissionsMenuComponent:_modifiers_scroll_visible()
+	local panel = self._feature_panels and self._feature_panels.modifiers
+	return self._modifiers_scroll ~= nil and panel ~= nil and alive(panel) and panel:visible()
+end
+
+-- Hover for the Modifiers panel: scroll bar (hover / drag cursor) + sub-tab link
+-- cursor. The description is inline in each row now, so there is no icon tooltip.
+-- Returns true when the cursor is over the scroll bar or a sub-tab so the caller can
+-- flip the pointer to "link". Shared by the lobby + the briefing.
 function CSRMissionsMenuComponent:_modifiers_panel_mouse_moved(x, y)
 	local panel = self._feature_panels and self._feature_panels.modifiers
 	if not panel or not alive(panel) or not panel:visible() then
-		if self._modifiers_hover_target ~= nil then
-			self._modifiers_hover_target = nil
-			self:_clear_items_tooltip()
-		end
 		return false
 	end
 
-	local over_subtab = false
+	-- Scroll bar hover / drag. Drag is only ever active on the lobby (which grabs
+	-- the bar in mouse_pressed); the briefing never grabs, so this is hover-only
+	-- there. ScrollablePanel:mouse_moved returns (used, pointer).
+	if self._modifiers_scroll then
+		local used = self._modifiers_scroll:mouse_moved(nil, x, y)
+		if used then
+			return true
+		end
+	end
+
+	-- Sub-tab hover -> link cursor.
 	if self._modifiers_subtab_buttons then
 		for _, b in pairs(self._modifiers_subtab_buttons) do
 			if b.panel and alive(b.panel) and b.panel:inside(x, y) then
-				over_subtab = true
-				break
+				return true
 			end
 		end
 	end
 
-	local hovered = nil
-	if self._modifiers_hit_targets then
-		for _, target in ipairs(self._modifiers_hit_targets) do
-			if alive(target.panel) and target.panel:inside(x, y) then
-				hovered = target
-				break
-			end
-		end
-	end
-
-	if hovered ~= self._modifiers_hover_target then
-		self._modifiers_hover_target = hovered
-		self:_clear_items_tooltip()
-		if hovered then
-			self:_show_items_tooltip(hovered)
-		end
-	end
-
-	return hovered ~= nil or over_subtab
+	return false
 end
 
 -- Click handling for the Modifiers sub-tabs. Returns true if a sub-tab was hit
@@ -2088,7 +2520,37 @@ function CSRMissionsMenuComponent:mouse_pressed(button, x, y)
 		return true
 	end
 
+	-- Modifiers scroll-bar grab (lobby only; the briefing has no mouse_released so
+	-- its scroll is wheel-only). Checked after the sub-tabs (which sit above the
+	-- list) so a tab click is never stolen by the bar.
+	if self:_modifiers_scroll_visible() and self._modifiers_scroll:mouse_pressed(button, x, y) then
+		return true
+	end
+
 	return self:confirm_pressed()
+end
+
+-- Mouse-wheel + release routing for the Modifiers scroll list (lobby). The menu
+-- framework dispatches these to every live component (menucomponentmanager.lua
+-- run_return_on_all_live_components), so they only need to act when our scroll is
+-- the visible tab. mouse_released always feeds the scroll so a grabbed bar releases
+-- even if the cursor left the panel mid-drag.
+function CSRMissionsMenuComponent:mouse_wheel_up(x, y)
+	if self:_modifiers_scroll_visible() then
+		return self._modifiers_scroll:scroll(x, y, 1)
+	end
+end
+
+function CSRMissionsMenuComponent:mouse_wheel_down(x, y)
+	if self:_modifiers_scroll_visible() then
+		return self._modifiers_scroll:scroll(x, y, -1)
+	end
+end
+
+function CSRMissionsMenuComponent:mouse_released(button, x, y)
+	if self._modifiers_scroll then
+		return self._modifiers_scroll:mouse_released(button, x, y)
+	end
 end
 
 function CSRMissionsMenuComponent:confirm_pressed()
@@ -2766,11 +3228,48 @@ local function csr_feature_toggle(key)
 	end
 end
 
+-- Resolve the selected character's DEFAULT (signature) mask icon as a direct DB
+-- texture path for the Heister sidebar row -- NOT the equipped mask. Passing the
+-- "character_locked" pseudo-id makes BlackMarketTweakData:get_mask_icon swap in
+-- tweak_data.blackmarket.masks.character_locked[character] (dallas->"dallas",
+-- wolf->"wolf", ...); the character defaults to get_preferred_character() (the one
+-- selected in the menu). Used as a FUNCTION icon (see the build loop in
+-- CSRSidebar:init) so it resolves at build time, not at file load when the static
+-- ITEMS table is evaluated. pcall-guarded AND DB:has-verified: on any failure
+-- (no character resolved, missing/unloaded texture) it falls back to the generic
+-- mask hud icon so the row never renders a magenta missing-texture block.
+local function csr_character_mask_icon()
+	local ok, path = pcall(function()
+		local bm = managers and managers.blackmarket
+		if not bm then
+			return nil
+		end
+		return bm:get_mask_icon("character_locked")
+	end)
+	if
+		ok
+		and type(path) == "string"
+		and path ~= ""
+		and DB
+		and DB.has
+		and DB:has(Idstring("texture"), Idstring(path))
+	then
+		return path
+	end
+	return "upcard_mask"
+end
+
 CSRSidebar.ITEMS = {
 	-- Divider between the always-visible Hide/Show toggle (built before this
 	-- list, pinned to the top) and the content rows. Built in the same loop, so
 	-- it joins self._buttons and is hidden/non-interactive on collapse like the
 	-- other separators — no special-casing needed.
+	{ separator = true },
+	-- Player combat characteristics (HP / armor / speed / dodge / stamina). Sits at
+	-- the top of the content rows with its own separator (user spec). icon is a
+	-- function: the selected character's DEFAULT mask texture, resolved at sidebar-
+	-- build time (falls back to the generic mask hud icon -- see csr_character_mask_icon).
+	{ text = "Heister", icon = csr_character_mask_icon, key = "heister", callback = csr_feature_toggle("heister") },
 	{ separator = true },
 	-- key tags the row with its feature-panel id so CSRSidebar:set_active_feature
 	-- can light up whichever row owns the currently-visible panel.
@@ -2846,14 +3345,20 @@ function CSRSidebar:init(parent, top, bottom, owner)
 				position = next_position,
 			})
 		else
+			-- icon may be a FUNCTION (resolved here, at build time, so it can track
+			-- live state like the equipped mask) or a static string (hud id / path).
+			local icon = item.icon
+			if type(icon) == "function" then
+				icon = icon()
+			end
 			btn = CSRSidebarItem:new(self._panel, {
 				position = next_position,
 				text = item.text,
-				icon = item.icon,
+				icon = icon,
 				callback = item.callback,
 			})
 			-- nil for rows without a feature panel (Black Market, Logbook); only
-			-- the three content rows carry a key, so only they can light up.
+			-- the feature-panel content rows carry a key, so only they can light up.
 			btn._feature_key = item.key
 		end
 
@@ -3038,7 +3543,18 @@ function CSRSidebarItem:init(panel, parameters)
 		y = parameters.position,
 	})
 
-	local texture, rect = tweak_data.hud_icons:get_icon_data(parameters.icon)
+	-- Icon resolves two ways: a string containing "/" is a direct DB texture path
+	-- (e.g. an equipped mask icon from BlackMarketManager:get_mask_icon) drawn whole
+	-- with no rect, so any source resolution scales to fit; anything else is a
+	-- hud_icons id resolved to (texture, rect). Mirrors the items feature panel's
+	-- icon handling (see CSRMissionsMenuComponent:_populate_items_panel).
+	local texture, rect
+	local icon = parameters.icon
+	if type(icon) == "string" and icon:find("/", 1, true) then
+		texture, rect = icon, nil
+	else
+		texture, rect = tweak_data.hud_icons:get_icon_data(icon)
+	end
 
 	self._icon = self._panel:bitmap({
 		name = "icon",

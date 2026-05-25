@@ -88,11 +88,52 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 		-- Track completed-heist count for the run independently of rank (the
 		-- lobby header shows it next to RANK; the two are distinct concepts).
 		managers.csr:record_mission_completed()
+
+		-- Looted cash this heist = full secured value (bags + small loot). It drives
+		-- TWO independent rewards, both measured against the run's per-rank payout
+		-- (project_csr_token_earning):
+		--   * Gage Tokens (shop): 5 per completion rank + 1 per (per_rank/5) of loot.
+		--   * extra rank progress: every full per_rank of loot grants +1 rank.
+		-- pcall-isolated: the CSR temp "crime_spree" job is unusual and a mission-end
+		-- hook must never error. These are host-local loot reads; MP token sync (at
+		-- host difficulty) is deferred with the rest of the MP slice.
+		local loot_cash = 0
+		pcall(function()
+			if managers.money and managers.loot then
+				loot_cash = (managers.money:get_secured_bonus_bags_money() or 0)
+					+ (managers.money:get_secured_mandatory_bags_money() or 0)
+					+ (managers.loot:get_real_total_small_loot_value() or 0)
+					+ (managers.loot:get_real_total_postponed_small_loot_value() or 0)
+			end
+		end)
+
+		local pid = managers.csr:local_peer_id()
+		local completion_tokens, loot_tokens = 0, 0
+		if _G.CSR_Shop then
+			completion_tokens = CSR_Shop.award_completion_tokens(pid, gain)
+			loot_tokens = CSR_Shop.accrue_loot_tokens(pid, loot_cash)
+		end
+		local loot_ranks = managers.csr:accrue_loot_rank(loot_cash)
+
 		-- Mirror vanilla on_mission_completed: clear the played mission and roll
 		-- a fresh set so the lobby shows new cards on return.
 		managers.csr:generate_mission_set()
 		log_csr(
-			"mission completed: +" .. tostring(gain) .. " rank (mission " .. tostring(played_id) .. "); new set rolled"
+			"mission completed: +"
+				.. tostring(gain)
+				.. " rank (mission "
+				.. tostring(played_id)
+				.. "); loot="
+				.. tostring(loot_cash)
+				.. "; tokens +"
+				.. tostring(completion_tokens + loot_tokens)
+				.. " ("
+				.. tostring(completion_tokens)
+				.. " heist + "
+				.. tostring(loot_tokens)
+				.. " loot); loot ranks +"
+				.. tostring(loot_ranks)
+				.. "; new set rolled"
 		)
 	else
 		-- Slice B: a lost heist FAILS the run (does not end it). The run stays

@@ -52,6 +52,10 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_OptionsLocalization", function(loc
 		csr_grant_coj_title = "Grant Cup of Joe",
 		csr_grant_coj_desc = "Gives one Cup of Joe (the per-item-file test item) to isolate its "
 			.. "effect. Click again for another stack.",
+		csr_force_fwb_title = "Force: First World Bank",
+		csr_force_fwb_desc = "Sets your next heist to First World Bank (red2) so you can test it. "
+			.. "Requires an active run: click this, then open the Crime Spree contract -- it will be the only "
+			.. "card. Pick a difficulty and start as usual.",
 	})
 end)
 
@@ -82,6 +86,13 @@ Hooks:Add("MenuManagerInitialize", "CSR_OptionsCallbacks", function(menu_manager
 		local mgr = managers.csr
 		if mgr and mgr.add_item then
 			mgr:add_item(mgr:local_peer_id(), "cup_of_joe")
+		end
+	end
+
+	MenuCallbackHandler.csr_force_fwb = function(self, item)
+		local mgr = managers.csr
+		if mgr and mgr.debug_force_mission then
+			mgr:debug_force_mission("red2")
 		end
 	end
 
@@ -148,5 +159,14 @@ Hooks:Add("MenuManagerPopulateCustomMenus", "CSR_OptionsPopulate", function(menu
 		callback = "csr_grant_cup_of_joe",
 		menu_id = "csr_debug_menu",
 		priority = 1,
+	})
+
+	MenuHelper:AddButton({
+		id = "force_fwb",
+		title = "csr_force_fwb_title",
+		desc = "csr_force_fwb_desc",
+		callback = "csr_force_fwb",
+		menu_id = "csr_debug_menu",
+		priority = 3,
 	})
 end)

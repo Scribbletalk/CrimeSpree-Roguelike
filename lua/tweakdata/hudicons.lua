@@ -118,6 +118,11 @@ local frame_path = "guis/textures/pd2/crime_spree/csr_frame"
 local guilt_vignette_file = mod_path .. "assets/gui/misc/vignette.texture"
 local guilt_vignette_path = "guis/textures/pd2/crime_spree/csr_guilt_vignette"
 
+-- Shocking Surprise taser-burst fullscreen overlay (cyan electric arcs from the
+-- screen edges). Referenced by lua/modifiers/loud/shocking_surprise.lua.
+local shocking_overlay_file = mod_path .. "assets/gui/misc/shocking_surprise_screen_overlay.texture"
+local shocking_overlay_path = "guis/textures/pd2/crime_spree/csr_shocking_overlay"
+
 -- Load textures
 if DB and DB.create_entry then
 	DB:create_entry(Idstring("texture"), Idstring(dog_tags_path), dog_tags_file)
@@ -132,6 +137,7 @@ if DB and DB.create_entry then
 
 	DB:create_entry(Idstring("texture"), Idstring(plush_shark_path), plush_shark_file)
 	DB:create_entry(Idstring("texture"), Idstring(guilt_vignette_path), guilt_vignette_file)
+	DB:create_entry(Idstring("texture"), Idstring(shocking_overlay_path), shocking_overlay_file)
 
 	DB:create_entry(Idstring("texture"), Idstring(toolbox_path), toolbox_file)
 

@@ -74,6 +74,15 @@ local METHODS_TO_BORROW = {
 	"_populate_modifiers_panel",
 	"_modifiers_panel_mouse_moved",
 	"_modifiers_panel_mouse_pressed",
+	-- Gate for the modifiers scroll list's wheel routing (briefing wheel handling
+	-- in this file's mouse_pressed wrap calls it).
+	"_modifiers_scroll_visible",
+	-- _create_feature_panels + toggle_feature_panel both call this, so the
+	-- briefing must borrow it too or those calls hit a nil method.
+	"_populate_rewards_panel",
+	-- Heister combat-stats panel: same reason as rewards -- _create_feature_panels
+	-- and toggle_feature_panel both call it.
+	"_populate_heister_panel",
 }
 
 local function ensure_methods_borrowed()
@@ -215,6 +224,7 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 		self._modifiers_hover_target = nil
 		self._modifiers_content = nil
 		self._modifiers_subtab_buttons = nil
+		self._heister_content = nil
 
 		if self._sidebar then
 			local p = self._sidebar:panel()
@@ -343,6 +353,21 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 	if orig_mouse_pressed then
 		function MissionBriefingGui:mouse_pressed(button, x, y)
 			if _G._csr_item_selection then
+				return orig_mouse_pressed(self, button, x, y)
+			end
+			-- The briefing receives mouse-wheel as a mouse_pressed with a wheel
+			-- button (MenuComponentManager:mouse_pressed dispatches the briefing gui
+			-- unconditionally, before its own wheel branch). Route it to the
+			-- modifiers scroll list and consume -- BEFORE the sub-tab check so a
+			-- scroll over a tab can't toggle it. The briefing has no mouse_released,
+			-- so the bar can't be dragged here; wheel is the only scroll input.
+			if button == Idstring("mouse wheel up") or button == Idstring("mouse wheel down") then
+				if self._modifiers_scroll and self._modifiers_scroll_visible and self:_modifiers_scroll_visible() then
+					local dir = button == Idstring("mouse wheel up") and 1 or -1
+					if self._modifiers_scroll:scroll(x, y, dir) then
+						return true
+					end
+				end
 				return orig_mouse_pressed(self, button, x, y)
 			end
 			local sb = self._sidebar

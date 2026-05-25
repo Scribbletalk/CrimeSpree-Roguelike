@@ -9,8 +9,8 @@
 --   * item registry   -> managers.csr:registered_items()
 --   * grant an item   -> managers.csr:add_item(pid, type)  (saves + fires callbacks)
 --
--- MVP scope: token wallet + 3-card lineup + purchase. Reroll, Gage dialogue,
--- token EARNING and MP wallet sync are deferred to later slices.
+-- MVP scope: token wallet + per-heist EARNING + 3-card lineup + purchase. Reroll,
+-- Gage dialogue, and MP wallet sync are deferred to later slices.
 
 if not RequiredScript then
 	return
@@ -108,6 +108,59 @@ function CSR_Shop.debit(peer_id, amount)
 	return true
 end
 
+-- ===== Token earning (per-heist) =====
+-- A completed heist credits tokens via two independent paths, mirroring the run's
+-- two reward streams (see project_csr_token_earning):
+--   * completion ranks -> TOKENS_PER_RANK per rank the heist itself granted.
+--   * looted cash       -> 1 token per (reward_per_rank / TOKENS_PER_RANK) of loot,
+--                          with the cash remainder carried on the peer entry.
+-- The loot->token path is deliberately separate from the manager's loot->rank
+-- accrual (managers.csr:accrue_loot_rank): looted cash grants BOTH a token stream
+-- and rank progress, not one converted from the other. Orchestrated from the
+-- mission-lifecycle success hook; both are run-scoped (wallet + remainder reset on
+-- start_run). MP wallet sync deferred (project_csr_mp_reward_model).
+
+CSR_Shop.TOKENS_PER_RANK = 5
+
+-- Tokens for the ranks the heist COMPLETION itself granted (1/2/3 by mission
+-- length). Returns the number credited.
+function CSR_Shop.award_completion_tokens(peer_id, completion_ranks)
+	completion_ranks = tonumber(completion_ranks) or 0
+	if completion_ranks <= 0 then
+		return 0
+	end
+	local tokens = completion_ranks * CSR_Shop.TOKENS_PER_RANK
+	CSR_Shop.credit(peer_id, tokens)
+	return tokens
+end
+
+-- Feed looted cash into the peer's loot->token accumulator. Threshold per token is
+-- the run's per-rank payout / TOKENS_PER_RANK (e.g. 200k on overkill). The cash
+-- remainder carries on the peer entry (loot_token_cash) so nothing is lost across
+-- heists. Returns the number of tokens credited this call.
+function CSR_Shop.accrue_loot_tokens(peer_id, loot_cash)
+	loot_cash = tonumber(loot_cash) or 0
+	local m = mgr()
+	if loot_cash <= 0 or not m or not m.peer_entry or not m.reward_per_rank_cash then
+		return 0
+	end
+	local per_token = m:reward_per_rank_cash() / CSR_Shop.TOKENS_PER_RANK
+	if per_token <= 0 then
+		return 0
+	end
+	peer_id = peer_id or CSR_Shop.local_peer_id()
+	local entry = m:peer_entry(peer_id)
+	local acc = (entry.loot_token_cash or 0) + loot_cash
+	local tokens = math.floor(acc / per_token)
+	entry.loot_token_cash = acc - tokens * per_token
+	if tokens > 0 then
+		CSR_Shop.credit(peer_id, tokens) -- credit -> set_tokens -> save
+	else
+		m:save() -- persist the carried remainder
+	end
+	return tokens
+end
+
 function CSR_Shop.price_for_rarity(rarity)
 	return CSR_Shop.PRICE[rarity] or math.huge
 end
@@ -122,7 +175,9 @@ function CSR_Shop.build_pool()
 		return pool
 	end
 	for _, entry in ipairs(m:registered_items()) do
-		if POOL_WEIGHTS[entry.rarity] then
+		-- Scrap (printer fodder) is never sold -- it only enters inventory via the
+		-- in-world scrapper, and the printer consumes it.
+		if POOL_WEIGHTS[entry.rarity] and not entry.is_scrap then
 			pool[#pool + 1] = entry
 		end
 	end

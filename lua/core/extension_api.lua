@@ -87,12 +87,16 @@ function _G.CSR.on_script_loaded(req)
 	end
 end
 
--- Index an item def's behavior hooks. If the target script already loaded this
--- session (e.g. an addon registered late), install immediately.
+-- Index an item OR modifier def's behavior hooks. If the target script already
+-- loaded this session (e.g. an addon registered late), install immediately.
+-- Items key the install-once dedup by def.type; modifiers have no type, so fall
+-- back to def.id (must be distinct, else two modifiers hooking the same script
+-- would collide on the "type|req" key and the second hook would never install).
 local function index_item_hooks(def)
 	if type(def.hooks) ~= "table" then
 		return
 	end
+	local owner = def.type or def.id
 	for req, fn in pairs(def.hooks) do
 		if type(req) == "string" and type(fn) == "function" then
 			local key = req:lower()
@@ -101,9 +105,9 @@ local function index_item_hooks(def)
 				bucket = {}
 				_G.CSR._hooks_by_req[key] = bucket
 			end
-			bucket[#bucket + 1] = { type = def.type, fn = fn }
+			bucket[#bucket + 1] = { type = owner, fn = fn }
 			if _G.CSR._loaded_reqs[key] then
-				_G.CSR._install_hook(def.type, key, fn)
+				_G.CSR._install_hook(owner, key, fn)
 			end
 		end
 	end
@@ -141,6 +145,9 @@ function _G.CSR.register_modifier(def)
 	if managers and managers.csr and managers.csr.register_modifier then
 		managers.csr:register_modifier(def)
 	end
+	-- A modifier with no engine ModifierX class (e.g. Guilty Conscience) hand-rolls
+	-- its effect via behavior hooks, exactly like an item -- index them the same way.
+	index_item_hooks(def)
 	return true
 end
 
@@ -192,60 +199,60 @@ function _G.CSR.play_sound(name, opts)
 	return nil
 end
 
--- Auto-load CSR's own item definition files. Each lua/items/*.lua CALLS
--- _G.CSR.register_item({...}) itself (PD2's dofile does NOT return chunk values,
--- so we cannot rely on a `return {...}` -- the file registers directly, exactly
--- as an addon would from its own mod). Adding an item = drop a file here; no
--- mod.txt edit. Runs once (the whole file is guarded by _bootstrapped at the
--- top). file.* and ModPath are SuperBLT-provided and valid at this lib/entry load.
+-- Recursively dofile every .lua under `dir` (this folder first, then each
+-- subfolder depth-first). Each CSR item/modifier file CALLS its own register_*
+-- (PD2's dofile does NOT return chunk values, so we cannot rely on a
+-- `return {...}` -- the file registers directly, exactly as an addon would from
+-- its own mod). Load order is irrelevant: CSRGameManager sorts the pools by id
+-- before use (see active_modifiers), so grouping files into subfolders (e.g.
+-- modifiers/loud, modifiers/stealth) is purely organisational. Returns the count
+-- of files run. file.* and ModPath are SuperBLT-provided and valid at lib/entry.
+local function run_lua_dir(dir, label)
+	local count = 0
+	local names = file.GetFiles(dir)
+	if names then
+		for _, name in pairs(names) do
+			if type(name) == "string" and name:sub(-4) == ".lua" then
+				local ok, err = pcall(dofile, dir .. name)
+				if ok then
+					count = count + 1
+				else
+					log("[CSR][api] " .. label .. ": '" .. tostring(name) .. "' failed to load: " .. tostring(err))
+				end
+			end
+		end
+	end
+	local subdirs = file.GetDirectories and file.GetDirectories(dir)
+	if subdirs then
+		for _, sub in pairs(subdirs) do
+			if type(sub) == "string" then
+				count = count + run_lua_dir(dir .. sub .. "/", label)
+			end
+		end
+	end
+	return count
+end
+
+-- Auto-load CSR's own item definition files. Adding an item = drop a file under
+-- lua/items/ (any subfolder); no mod.txt edit. Runs once (the whole file is
+-- guarded by _bootstrapped at the top).
 local function load_item_defs()
 	if not (file and file.GetFiles and ModPath) then
 		log("[CSR][api] items: file API or ModPath unavailable -- skipped")
 		return
 	end
-	local dir = ModPath .. "lua/items/"
-	local names = file.GetFiles(dir)
-	if not names then
-		return
-	end
-	local count = 0
-	for _, name in pairs(names) do
-		if type(name) == "string" and name:sub(-4) == ".lua" then
-			local ok, err = pcall(dofile, dir .. name)
-			if ok then
-				count = count + 1
-			else
-				log("[CSR][api] items: '" .. tostring(name) .. "' failed to load: " .. tostring(err))
-			end
-		end
-	end
+	local count = run_lua_dir(ModPath .. "lua/items/", "items")
 	log("[CSR][api] items: ran " .. count .. " item file(s)")
 end
 
--- Same auto-load for modifier passports: each lua/modifiers/<id>.lua CALLS
--- _G.CSR.register_modifier({...}) itself (PD2 dofile returns no chunk value).
--- Adding a modifier = drop a file here; no mod.txt edit (mirrors the items model).
+-- Same auto-load for modifier passports under lua/modifiers/ (incl. the loud/
+-- and stealth/ subfolders). Adding a modifier = drop a file here; no mod.txt edit.
 local function load_modifier_defs()
 	if not (file and file.GetFiles and ModPath) then
 		log("[CSR][api] modifiers: file API or ModPath unavailable -- skipped")
 		return
 	end
-	local dir = ModPath .. "lua/modifiers/"
-	local names = file.GetFiles(dir)
-	if not names then
-		return
-	end
-	local count = 0
-	for _, name in pairs(names) do
-		if type(name) == "string" and name:sub(-4) == ".lua" then
-			local ok, err = pcall(dofile, dir .. name)
-			if ok then
-				count = count + 1
-			else
-				log("[CSR][api] modifiers: '" .. tostring(name) .. "' failed to load: " .. tostring(err))
-			end
-		end
-	end
+	local count = run_lua_dir(ModPath .. "lua/modifiers/", "modifiers")
 	log("[CSR][api] modifiers: ran " .. count .. " modifier file(s)")
 end
 

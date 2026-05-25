@@ -5,7 +5,7 @@
 -- ModifiersManager (managers.modifiers) exactly as vanilla Crime Spree does in
 -- CrimeSpreeManager:_setup_modifiers -- the ModifierX classes are already loaded
 -- by lib/managers/modifiersmanager. All the aggregation + the host/SP gate live
--- in managers.csr:apply_combat_modifiers; this file is only the trigger.
+-- in managers.csr:apply_modifiers; this file is only the trigger.
 --
 -- Hook point: IngameWaitingForPlayersState:at_enter -- fires once per heist
 -- after the level + managers (incl. the freshly-rebuilt managers.modifiers, see
@@ -40,13 +40,13 @@ if IngameWaitingForPlayersState and not _G._CSR_COMBAT_MODIFIERS_HOOKED then
 	_G._CSR_COMBAT_MODIFIERS_HOOKED = true
 
 	Hooks:PostHook(IngameWaitingForPlayersState, "at_enter", "CSR_ApplyCombatModifiers", function(self)
-		if not managers.csr or not managers.csr.apply_combat_modifiers then
+		if not managers.csr or not managers.csr.apply_modifiers then
 			return
 		end
 		if not csr_heist_active() then
 			return
 		end
-		managers.csr:apply_combat_modifiers()
+		managers.csr:apply_modifiers()
 	end)
 end
 

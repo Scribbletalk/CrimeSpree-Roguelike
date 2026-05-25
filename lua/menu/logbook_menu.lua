@@ -483,16 +483,20 @@ function CrimeSpreeLogbookMenuComponent:_build_items_list()
 	local list = {}
 	local reg = (managers.csr and managers.csr.registered_items) and managers.csr:registered_items() or {}
 	for _, e in ipairs(reg) do
-		list[#list + 1] = {
-			id = e.type,
-			icon = e.icon,
-			rarity = e.rarity,
-			name_en = string.upper((e.name and managers.localization:text(e.name)) or tostring(e.type)),
-			effect_en = (e.full_desc and managers.localization:text(e.full_desc))
-				or (e.desc and managers.localization:text(e.desc))
-				or "",
-			community = e.addon ~= nil or nil,
-		}
+		-- Scrap (printer fodder) is real inventory but not a compendium item -- it
+		-- has no effect/notes entry and would just clutter the 28-item logbook.
+		if not e.is_scrap then
+			list[#list + 1] = {
+				id = e.type,
+				icon = e.icon,
+				rarity = e.rarity,
+				name_en = string.upper((e.name and managers.localization:text(e.name)) or tostring(e.type)),
+				effect_en = (e.full_desc and managers.localization:text(e.full_desc))
+					or (e.desc and managers.localization:text(e.desc))
+					or "",
+				community = e.addon ~= nil or nil,
+			}
+		end
 	end
 	table.sort(list, function(a, b)
 		local ra = RARITY_ORDER[a.rarity] or 99

@@ -265,5 +265,9 @@ DelayedCalls:Add("LoadSounds_Initial", 0.5, try_load)
 _G.CSR.register_sound("bonnie_chip", { pattern = "assets/sounds/chip/chip_activate_$.ogg", n = 17 })
 _G.CSR.register_sound("the_edge_activate", { path = "assets/sounds/the_edge_activate.ogg" })
 _G.CSR.register_sound("plush_shark_activate", { pattern = "assets/sounds/shark/plush_shark_activate_$.ogg", n = 5 })
+-- Printer (in-world copy machine): startup cue + main whir, played 3D-anchored
+-- to the unit by copier_spawner.lua's use cycle.
+_G.CSR.register_sound("printer_starting", { path = "assets/sounds/printer/printer_starting.ogg" })
+_G.CSR.register_sound("printer_working", { path = "assets/sounds/printer/printer_working.ogg" })
 
 snd_dbg("sound.lua loaded (mod_path=" .. tostring(SAVED_MOD_PATH) .. ")")

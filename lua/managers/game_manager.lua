@@ -60,6 +60,13 @@ local function default_state()
 		mission_set = {}, -- array of mission ids currently offered in the lobby
 		current_mission = nil, -- id of the mission the player picked to play next
 		peer_items = {},
+		-- Run-scoped accumulator (cash) toward the next LOOT rank. Looted cash on a
+		-- completed heist feeds it, and every full reward_per_rank_cash() grants +1
+		-- rank (accrue_loot_rank); the remainder carries across heists and is reset
+		-- with the rest of _state by start_run. Distinct from the shop's loot->token
+		-- remainder (peer_entry.loot_token_cash): loot grants BOTH tokens and rank
+		-- progress, measured against the same per-rank payout but banked separately.
+		loot_rank_cash = 0,
 		milestones = {},
 		spawners = { copiers = {}, scrappers = {} },
 		mp_session = {},
@@ -302,6 +309,100 @@ function CSRGameManager:set_difficulty(diff)
 	self:save()
 	log_csr("set_difficulty: " .. diff)
 	return true
+end
+
+-- =====================================================
+-- End-of-run rewards (projection + award source of truth)
+-- =====================================================
+
+-- Per-rank cash payout multiplier by CSR difficulty index (1=normal .. 7=death
+-- sentence). Mirrors vanilla difficulty_multiplier_payout (moneytweakdata.lua).
+-- Module-level so projected_rewards (End Spree payout) and reward_per_rank_cash
+-- (loot->rank / loot->token thresholds) share one source of truth for the numbers.
+local REWARD_PAYOUT_MULT = { 1, 2, 5, 10, 11, 13, 14 }
+
+-- CSR difficulty index 1=normal .. 7=death_sentence for the reward multiplier
+-- tables. tweak_data.difficulties leads with "easy" (index 1), so the CSR index is
+-- difficulty_to_index - 1. Clamped so an unexpected id can't index out of range.
+function CSRGameManager:reward_difficulty_index()
+	local di = (tweak_data and tweak_data.difficulty_to_index and tweak_data:difficulty_to_index(self:difficulty()))
+		or 2
+	return math.max(1, math.min(7, di - 1))
+end
+
+-- The projected run-completion reward for the CURRENT rank + difficulty, keyed for
+-- vanilla CrimeSpreeManager:award_rewards (experience / cash / continental_coins /
+-- loot_drop). Single source of truth: the Rewards panel renders it, and End Spree
+-- awards it. Uses host_rank() so an MP client projects off the run's authoritative
+-- rank when synced (else its local rank). Formulas locked in
+-- project_csr_reward_system_design:
+--   cash  = 100k × payout_mult[diff] × rank   (flat from rank; no skill/loot/crew)
+--   xp    = 12k × (1 + xp_mult[diff]) × rank × skill_mult × infamy_mult
+--   coins = rank, loot cards = rank
+-- REWARD_PAYOUT_MULT (module-level) mirrors vanilla difficulty_multiplier_payout
+-- (moneytweakdata.lua); XP_MULT is 1 + vanilla experience difficulty_multiplier
+-- (tweakdata.lua), normal=0.
+function CSRGameManager:projected_rewards()
+	local rank = self:host_rank()
+	local idx = self:reward_difficulty_index()
+	local XP_MULT = { 0, 2, 5, 10, 11.5, 13, 14 }
+
+	local cash = 100000 * (REWARD_PAYOUT_MULT[idx] or 1) * rank
+	local xp = 12000 * (1 + (XP_MULT[idx] or 0)) * rank
+	-- Each accessor returns 1 + bonus already; pcall-isolated (a menu projection
+	-- must never error). Skill mult touches managers.network only when in a session.
+	local skill_mult, infamy_mult = 1, 1
+	pcall(function()
+		skill_mult = (managers.player and managers.player:get_skill_exp_multiplier()) or 1
+	end)
+	pcall(function()
+		infamy_mult = (managers.player and managers.player:get_infamy_exp_multiplier()) or 1
+	end)
+	xp = xp * skill_mult * infamy_mult
+
+	return {
+		cash = math.round(cash),
+		experience = math.round(xp),
+		continental_coins = rank,
+		loot_drop = rank,
+	}
+end
+
+-- Cash value of one rank at the run's CURRENT difficulty -- the same per-rank
+-- payout projected_rewards/End Spree use (100k x payout_mult[diff]). Looted cash is
+-- measured against this: a full reward_per_rank_cash() of loot earns +1 rank
+-- (accrue_loot_rank) and reward_per_rank_cash()/TOKENS_PER_RANK of loot earns one
+-- Gage Token (shop). Uses self:difficulty() (own run difficulty); an MP client
+-- playing a host's heist must instead measure at the host difficulty -- deferred
+-- with the rest of the MP slice (project_csr_mp_reward_model).
+function CSRGameManager:reward_per_rank_cash()
+	return 100000 * (REWARD_PAYOUT_MULT[self:reward_difficulty_index()] or 1)
+end
+
+-- Feed a completed heist's looted cash into the run's loot->rank accumulator. Every
+-- full reward_per_rank_cash() of accumulated loot grants +1 rank; the cash
+-- remainder carries forward (loot_rank_cash) so nothing is lost across heists.
+-- No token side effect -- loot tokens are credited separately and continuously by
+-- the shop (CSR_Shop.accrue_loot_tokens). Run-scoped: reset by start_run. Returns
+-- the number of ranks granted this call.
+function CSRGameManager:accrue_loot_rank(loot_cash)
+	loot_cash = tonumber(loot_cash) or 0
+	if loot_cash <= 0 or not self._state.is_active then
+		return 0
+	end
+	local per_rank = self:reward_per_rank_cash()
+	if per_rank <= 0 then
+		return 0
+	end
+	local acc = (self._state.loot_rank_cash or 0) + loot_cash
+	local ranks = math.floor(acc / per_rank)
+	self._state.loot_rank_cash = acc - ranks * per_rank
+	if ranks > 0 then
+		self:progress_rank(ranks) -- progress_rank saves
+	else
+		self:save() -- persist the carried remainder
+	end
+	return ranks
 end
 
 function CSRGameManager:seed()
@@ -550,6 +651,10 @@ function CSRGameManager:register_item(def)
 		notes = def.notes,
 		icon = def.icon,
 		icon_scale = icon_scale,
+		-- Printer fodder: scrap items (produced by the in-world scrapper, consumed
+		-- by the printer) are stackable inventory like any item but are excluded
+		-- from the selection-window roll (see roll_item_pool). nil unless true.
+		is_scrap = def.is_scrap == true or nil,
 		effect = effect,
 		on_apply = def.on_apply,
 		on_remove = def.on_remove,
@@ -705,7 +810,7 @@ end
 --   "loud"    -> _registry.modifiers.loud            { id, loc, icon, class, data }
 --   "stealth" -> _registry.modifiers.stealth_families { id, icon, tiers = {...} }
 -- class/data are OPTIONAL: a loud modifier whose engine class isn't present is
--- still listed in the UI (apply_combat_modifiers nil-guards _G[class]).
+-- still listed in the UI (apply_modifiers nil-guards _G[class]).
 function CSRGameManager:register_modifier(def)
 	if type(def) ~= "table" then
 		log_csr("register_modifier: definition not a table — skipped")
@@ -794,7 +899,13 @@ end
 -- class names not present in the engine -- the _G[class] guard skips them (they
 -- still appear in the UI). NOTE: ModifierLessConcealment is read per-player, so
 -- under host-only apply only the host's detection rises until the MP sync slice.
-function CSRGameManager:apply_combat_modifiers()
+-- Per-rank enemy scaling (additive percent, no cap). Both +5%/rank (user balance
+-- 2026-05-24): ports the pre-refactor +0.3% HP / +0.4% DMG scaled up for the new
+-- ~1-item-per-rank cadence (was ~1 item per 20 ranks), rounded to a clean 5/5.
+local ENEMY_HEALTH_PCT_PER_RANK = 5
+local ENEMY_DAMAGE_PCT_PER_RANK = 5
+
+function CSRGameManager:apply_modifiers()
 	if not Network:is_server() then
 		return
 	end
@@ -823,6 +934,41 @@ function CSRGameManager:apply_combat_modifiers()
 		end
 	end
 
+	-- Same trap for ModifierEnemyHealth (injected below): its :init multiplies
+	-- tweak_data.character[*].HEALTH_INIT in place and never reverts, so re-applying
+	-- each heist would compound. Snapshot the pristine HEALTH_INIT once, then restore
+	-- from it before every apply -- the modifier then always multiplies from a clean
+	-- baseline, and HP returns to vanilla on a rank-0 / no-scaling run. (Enemy DAMAGE
+	-- needs no baseline: ModifierEnemyDamage scales via modify_value, no mutation.)
+	local ctd = tweak_data and tweak_data.character
+	if ctd and ctd.enemy_list then
+		local snapshotted = false
+		if not _G.CSR_EnemyHealthBaseline then
+			local base = {}
+			for _, name in ipairs(ctd:enemy_list()) do
+				if ctd[name] and ctd[name].HEALTH_INIT then
+					base[name] = ctd[name].HEALTH_INIT
+				end
+			end
+			_G.CSR_EnemyHealthBaseline = base
+			snapshotted = true
+		end
+		local restored = 0
+		for name, hp in pairs(_G.CSR_EnemyHealthBaseline) do
+			if ctd[name] then
+				ctd[name].HEALTH_INIT = hp
+				restored = restored + 1
+			end
+		end
+		self:debug_log(
+			string.format(
+				"enemy HP baseline %s, restored pristine HEALTH_INIT for %d enemies (no compounding)",
+				snapshotted and "snapshotted" or "reused",
+				restored
+			)
+		)
+	end
+
 	-- Aggregate active loud + stealth modifiers by engine class (vanilla stacking).
 	local to_activate = {}
 	for _, category in ipairs({ "loud", "stealth" }) do
@@ -849,6 +995,26 @@ function CSRGameManager:apply_combat_modifiers()
 		end
 	end
 
+	-- Per-rank enemy HP / damage scaling. NOT a registered passport (it is continuous
+	-- in rank, not a per-rank unlock), so it is injected directly here. host_rank() is
+	-- the entitlement (a client mirrors the host). Value is a PERCENT -- ModifierEnemy
+	-- Health/Damage compute 1 + value/100. MP: enemy HP applies to everyone (host
+	-- spawns units from the mutated tweak); enemy damage is host-local until the
+	-- modifier-sync slice (same gap as ModifierLessConcealment).
+	local rank = self:host_rank() or 0
+	if rank > 0 then
+		to_activate["ModifierEnemyHealth"] = { health = rank * ENEMY_HEALTH_PCT_PER_RANK }
+		to_activate["ModifierEnemyDamage"] = { damage = rank * ENEMY_DAMAGE_PCT_PER_RANK }
+		self:debug_log(
+			string.format(
+				"enemy scaling: rank=%d -> +%d%% HP, +%d%% DMG",
+				rank,
+				rank * ENEMY_HEALTH_PCT_PER_RANK,
+				rank * ENEMY_DAMAGE_PCT_PER_RANK
+			)
+		)
+	end
+
 	local applied = 0
 	for class, data in pairs(to_activate) do
 		local mod_class = _G[class]
@@ -856,10 +1022,20 @@ function CSRGameManager:apply_combat_modifiers()
 			managers.modifiers:add_modifier(mod_class:new(data), "csr")
 			applied = applied + 1
 		else
-			log_csr("apply_combat_modifiers: class '" .. tostring(class) .. "' not loaded -- effect skipped")
+			log_csr("apply_modifiers: class '" .. tostring(class) .. "' not loaded -- effect skipped")
 		end
 	end
-	log_csr("apply_combat_modifiers: applied " .. applied .. " modifier(s)")
+	log_csr("apply_modifiers: applied " .. applied .. " modifier(s)")
+end
+
+-- Current enemy HP / damage scaling percents (host_rank-based; 0 outside a run).
+-- The Modifiers panel's "enemies buffed by X%" header reads this so the shown number
+-- can't drift from what apply_modifiers actually applies. Returns two values (HP%,
+-- DMG%) -- equal today (both rank * 5), kept separate so a future split needs no
+-- caller change.
+function CSRGameManager:enemy_scaling()
+	local rank = self:host_rank() or 0
+	return rank * ENEMY_HEALTH_PCT_PER_RANK, rank * ENEMY_DAMAGE_PCT_PER_RANK
 end
 
 -- =====================================================
@@ -1118,7 +1294,9 @@ function CSRGameManager:roll_item_pool(peer_id, count)
 	local buckets = {}
 	for _, item in ipairs(self._registry.items) do
 		local r = item.rarity
-		if r and r ~= "contraband" then
+		-- Skip contraband (never in the roguelike pool) AND scrap (printer fodder,
+		-- reaches inventory only via the scrapper -- never offered as a pick).
+		if r and r ~= "contraband" and not item.is_scrap then
 			buckets[r] = buckets[r] or {}
 			table.insert(buckets[r], item)
 		end
@@ -1532,6 +1710,9 @@ function CSRGameManager:start_run()
 	-- next time those paths fire. Without this the Items panel renders stacks
 	-- carried over from a prior run (user-reported 2026-05-20).
 	self._state.peer_items = {}
+	-- Fresh run = fresh loot->rank progress (the per-peer loot->token remainder
+	-- rides peer_items, wiped above).
+	self._state.loot_rank_cash = 0
 	self:generate_mission_set()
 	log_csr(
 		"start_run: new run begun (difficulty="
@@ -1716,6 +1897,34 @@ function CSRGameManager:grant_all_items(peer_id)
 	end
 	log_csr("grant_all_items: granted " .. granted .. " item type(s) to peer " .. tostring(peer_id))
 	return granted
+end
+
+-- Debug helper (mod-options "Debug Tools"): force the lobby's mission set to a single
+-- card for the vanilla heist whose level_id matches `level_id` (e.g. "red2" =
+-- First World Bank), and pre-select it. Lets a tester jump straight to a specific heist
+-- to reproduce a heist-specific crash without rerolling for it. Sets CSR state only --
+-- the normal lobby/Start flow does the engine wiring when the contract is (re)opened
+-- (the card auto-selects because current_mission matches). Requires an active run.
+-- Returns true if a matching CS mission was found.
+function CSRGameManager:debug_force_mission(level_id)
+	local cs_missions = tweak_data and tweak_data.crime_spree and tweak_data.crime_spree.missions
+	if type(cs_missions) ~= "table" then
+		log_csr("debug_force_mission: CS missions not ready")
+		return false
+	end
+	for _, tier in ipairs(cs_missions) do
+		for _, m in ipairs(tier) do
+			if m.id and m.level and m.level.level_id == level_id then
+				self._state.mission_set = { m.id }
+				self._state.current_mission = m.id
+				self:save()
+				log_csr("debug_force_mission: forced '" .. tostring(m.id) .. "' (level " .. tostring(level_id) .. ")")
+				return true
+			end
+		end
+	end
+	log_csr("debug_force_mission: no CS mission for level '" .. tostring(level_id) .. "'")
+	return false
 end
 
 -- =====================================================

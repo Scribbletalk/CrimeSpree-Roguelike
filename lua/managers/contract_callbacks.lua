@@ -306,14 +306,36 @@ function MenuCallbackHandler:end_csr(item, node)
 end
 
 function MenuCallbackHandler:_dialog_end_csr_yes()
-	-- End Spree: end the CSR run (THE persisted-is_active leak-class
-	-- dissolver — see project_endscreen_fork_plan) and leave the lobby back to
-	-- the main menu. No refund branch (CSR has no entry fee).
+	-- End Spree: grant the run's accrued rewards (scaled from the rank reached),
+	-- then end the CSR run (THE persisted-is_active leak-class dissolver — see
+	-- project_endscreen_fork_plan) and leave the lobby back to the main menu. No
+	-- refund branch (CSR has no entry fee).
+	--
+	-- Rewards: compute BEFORE end_run and stash on managers.csr; the vanilla
+	-- crime_spree_claim_rewards screen (driven by end_spree_rewards.lua) then
+	-- displays + grants them via the standard CS reward animation. The award is
+	-- player-local, so each player who ends the spree gets their own payout. A
+	-- rank-0 run earned nothing -> skip the screen and just end/leave.
 	-- _dialog_leave_lobby_yes is the verified vanilla leave-lobby path
 	-- (menumanager.lua:3574 -> managers.menu:on_leave_lobby; its
 	-- crime_spree:disable_crime_spree_gamemode is a harmless no-op for CSR).
-	managers.csr:end_run()
+	local mgr = managers.csr
+	local rank = (mgr and mgr.host_rank and mgr:host_rank()) or 0
+	local show_rewards = rank > 0
+
+	if show_rewards and mgr.projected_rewards then
+		mgr._pending_end_rewards = mgr:projected_rewards()
+	end
+
+	mgr:end_run()
 	self:_dialog_leave_lobby_yes()
+
+	-- Mirrors _dialog_csr_claim_rewards_yes (leave lobby, then open the rewards
+	-- node); the component's _setup grants the stashed table on creation.
+	if show_rewards then
+		managers.menu:open_node("crime_spree_claim_rewards", {})
+	end
+
 	MenuCallbackHandler:save_progress()
 end
 
