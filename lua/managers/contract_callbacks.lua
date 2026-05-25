@@ -188,6 +188,19 @@ function MenuCallbackHandler:_accept_csr_contract_mp(item, node)
 		managers.csr:start_run()
 	end
 
+	-- Route the upcoming lobby entry to the CSR lobby node. Hosting online creates
+	-- the lobby ASYNCHRONOUSLY (Steam matchmaking), and the menu then enters via
+	-- MenuManager:on_enter_lobby -- which, with the CS gamemode disabled (Slice 6),
+	-- selects the EMPTY normal "lobby" node. The SP path selects "crime_spree_lobby"
+	-- directly, but MP can't (the lobby isn't entered yet), so it reuses the same
+	-- one-shot routing flag the in-game Return-to-Lobby path uses:
+	-- lobby_routing.lua consumes it in its on_enter_lobby PostHook and re-selects
+	-- "crime_spree_lobby". Without this the host lands in an empty non-CSR lobby
+	-- (user report 2026-05-25). (Other players seeing the lobby AS CSR is a separate
+	-- matchmaking-attribute carve-out -- see the note below -- and lands with the MP
+	-- sync slice.)
+	Global.CSR_RETURN_TO_LOBBY = true
+
 	local matchmake_attributes = self:get_matchmake_attributes()
 
 	if Network:is_server() then

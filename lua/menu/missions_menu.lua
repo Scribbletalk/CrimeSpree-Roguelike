@@ -516,19 +516,47 @@ function CSRMissionsMenuComponent:_setup()
 	self._csr_unsubs = {}
 	local mgr = managers and managers.csr
 	if mgr and mgr.on_item_added then
-		local function refresh_lobby_surfaces()
-			if not alive(self._panel) then
-				return
-			end
-			if self._refresh_unselected_items then
-				self:_refresh_unselected_items()
-			end
-			if self._populate_items_panel then
-				self:_populate_items_panel()
-			end
-		end
-		table.insert(self._csr_unsubs, mgr:on_item_added(refresh_lobby_surfaces))
+		table.insert(
+			self._csr_unsubs,
+			mgr:on_item_added(function()
+				self:refresh_for_rank_change()
+			end)
+		)
 	end
+end
+
+-- Repaint every lobby surface that tracks the run rank: the unselected-items
+-- reminder + its pick quota, the items feature panel, and the status-bar RANK
+-- readout. Driven by on_item_added (above), by the MP host-state push
+-- (mp_session.lua, when host_rank arrives) and by the debug host_rank keybind --
+-- so the lobby reflects a rank change without a manual panel reopen. Fully
+-- guarded: a no-op when the panel is dead / not in the CSR lobby.
+function CSRMissionsMenuComponent:refresh_for_rank_change()
+	if not alive(self._panel) then
+		return
+	end
+	if self._refresh_unselected_items then
+		self:_refresh_unselected_items()
+	end
+	if self._populate_items_panel then
+		self:_populate_items_panel()
+	end
+	self:_refresh_rank_display()
+end
+
+-- Update the status-bar RANK number in place from host_rank() (the rank you are
+-- playing at). Stored refs come from _create_status_bar; guarded so it is safe
+-- to call before the bar exists or after the panel is torn down.
+function CSRMissionsMenuComponent:_refresh_rank_display()
+	local t = self._status_rank_text
+	if not (t and alive(t)) then
+		return
+	end
+	local prefix = self._status_rank_prefix or ""
+	local glyph = self._status_rank_glyph or ""
+	local str = prefix .. tostring(managers.csr:host_rank()) .. " " .. glyph
+	t:set_text(str)
+	t:set_range_color(utf8.len(prefix), utf8.len(str), self._status_rank_highlight or Color(1, 1, 1, 0))
 end
 
 function CSRMissionsMenuComponent:_create_title()
@@ -563,6 +591,9 @@ function CSRMissionsMenuComponent:_create_title()
 	-- and top-aligned in an oversized box, so its visible glyphs end only a
 	-- little below the foreground — a small gap clears both.
 	self._title_bottom = title:bottom()
+	-- Right edge of the header text (self._panel sits at the workspace origin, so
+	-- this is also the workspace x): the MP lobby-code widget parks just past it.
+	self._title_right = title:right()
 
 	-- End screen: the measurement above is kept (the sidebar anchors to it),
 	-- but the branded title itself is lobby-only chrome and must not render
@@ -597,6 +628,40 @@ function CSRMissionsMenuComponent:_create_title()
 			bg_text:set_visible(false)
 		end
 	end
+
+	-- If the MP lobby-code widget already exists, shove it right of the header now
+	-- (the create_lobby_code_gui PostHook handles the reverse build order).
+	self:_reposition_lobby_code()
+end
+
+-- Move the MP lobby-code widget out of the sidebar's way: park it just to the
+-- RIGHT of the branded header, vertically centred against it. Vanilla
+-- create_lobby_code_gui only repositions for managers.crime_spree:is_active()
+-- (which CSR never sets), so without this the code sits at its default top-left
+-- spot (0, 80) and overlaps the CSR sidebar. MP-only by nature (no lobby code in
+-- SP) and lobby-only (self._is_lobby). Reached from both component build orders:
+-- here (CSR component built after the code) and the create_lobby_code_gui PostHook
+-- in missions_wiring.lua (code built after us).
+function CSRMissionsMenuComponent:_reposition_lobby_code()
+	if not self._is_lobby then
+		return
+	end
+	local mcm = managers and managers.menu_component
+	local code_gui = mcm and mcm._lobby_code_gui
+	if not (code_gui and code_gui.panel) then
+		return
+	end
+	local panel = code_gui:panel()
+	if not (panel and alive(panel)) then
+		return
+	end
+	local gap = 24
+	local x = (self._title_right or 0) + gap
+	-- Vertically centre the medium-font code against the taller pd2_large header.
+	-- The code text sits at panel-internal y=5; header top is at workspace y=0.
+	local header_h = self._title_bottom or 0
+	local y = math.floor(header_h / 2 - (5 + tweak_data.menu.pd2_medium_font_size / 2))
+	panel:set_position(x, y)
 end
 
 function CSRMissionsMenuComponent:_create_sidebar(bottom)
@@ -1934,9 +1999,13 @@ function CSRMissionsMenuComponent:_create_status_bar(w)
 
 	missions_text:set_range_color(utf8.len(missions_prefix), utf8.len(missions_str), highlight)
 
-	-- Center anchor: spree RANK, floating between the left/right labels.
+	-- Center anchor: spree RANK, floating between the left/right labels. Reads
+	-- host_rank() -- the rank you are PLAYING at (own rank on host/SP, the synced
+	-- host rank while guesting), matching the item-pick quota (modifiers_to_select)
+	-- and the per-rank scaling so all three move together. Refreshed in place by
+	-- _refresh_rank_display when host_rank changes.
 	local rank_prefix = managers.localization:to_upper_text("csr_lobby_rank") .. ": "
-	local rank_str = rank_prefix .. tostring(managers.csr:rank()) .. " " .. cs_glyph
+	local rank_str = rank_prefix .. tostring(managers.csr:host_rank()) .. " " .. cs_glyph
 	local rank_text = self._title_panel:text({
 		layer = 51,
 		vertical = "bottom",
@@ -1950,6 +2019,13 @@ function CSRMissionsMenuComponent:_create_status_bar(w)
 	})
 
 	rank_text:set_range_color(utf8.len(rank_prefix), utf8.len(rank_str), highlight)
+
+	-- Cached so _refresh_rank_change can update the RANK number in place (live
+	-- host_rank changes -- MP push / debug keybind -- without a panel rebuild).
+	self._status_rank_text = rank_text
+	self._status_rank_prefix = rank_prefix
+	self._status_rank_glyph = cs_glyph
+	self._status_rank_highlight = highlight
 
 	local diff_id = managers.csr:difficulty()
 	local diff_name_id = tweak_data.difficulty_name_ids[diff_id]

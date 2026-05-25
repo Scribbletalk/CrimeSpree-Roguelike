@@ -103,7 +103,39 @@ Hooks:PostHook(
 
 		self:register_component("crime_spree_missions", self._crime_spree_missions)
 		log("[CSR] wiring: vanilla CS missions panel swapped for CSRMissionsMenuComponent")
+
+		-- MP lobby: force the contract/crew box to rebuild now that
+		-- _crime_spree_missions is stored. Hosting online enters the normal "lobby"
+		-- node FIRST -- which builds a plain ContractBoxGui whose crewpage
+		-- "PLANNING PHASE" title overlaps the CSR header -- and only then reroutes
+		-- to crime_spree_lobby (lobby_routing.lua). The contract component's own
+		-- create callback no-ops when a box already exists, so that stale vanilla
+		-- box survives the reroute. create_contract_gui() closes + recreates it,
+		-- re-running _contract_gui_class -> our PostHook (contract_wiring.lua) now
+		-- returns CrimeSpreeContractBoxGui (no crewpage) because _crime_spree_missions
+		-- is set. SP builds the CSR box on the first try (no normal-lobby detour), so
+		-- this is MP + lobby only (user report 2026-05-25).
+		if in_lobby and not Global.game_settings.single_player and self.create_contract_gui then
+			self:create_contract_gui()
+			log("[CSR] wiring: forced contract-box rebuild for CSR lobby (MP)")
+		end
 	end
 )
+
+-- Reposition the MP lobby-code widget when it is (re)created for the CSR lobby.
+-- Covers the build order where the lobby_code component is created AFTER our
+-- missions component (the other order is handled by _create_title calling
+-- _reposition_lobby_code directly). The reposition geometry lives on the
+-- component, which owns the header. MP-only by nature (no lobby code in SP);
+-- scoped to the live CSR missions component (same getmetatable idiom as
+-- contract_wiring.lua's csr_lobby_is_active).
+Hooks:PostHook(MenuComponentManager, "create_lobby_code_gui", "CSR_RepositionLobbyCode", function(self, node)
+	local comp = self._crime_spree_missions
+	if comp and CSRMissionsMenuComponent ~= nil and getmetatable(comp) == CSRMissionsMenuComponent then
+		if comp._reposition_lobby_code then
+			comp:_reposition_lobby_code()
+		end
+	end
+end)
 
 log("[CSR] missions_wiring.lua loaded (Slice 8 wiring)")

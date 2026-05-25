@@ -333,8 +333,11 @@ end
 -- The projected run-completion reward for the CURRENT rank + difficulty, keyed for
 -- vanilla CrimeSpreeManager:award_rewards (experience / cash / continental_coins /
 -- loot_drop). Single source of truth: the Rewards panel renders it, and End Spree
--- awards it. Uses host_rank() so an MP client projects off the run's authoritative
--- rank when synced (else its local rank). Formulas locked in
+-- awards it. Uses the OWN run rank/difficulty (self:rank()), NOT host_rank(): this
+-- is reward bucket A in the locked MP model -- a guest's own-run payout is its own
+-- rank/difficulty, while the host-difficulty guest earnings (bucket B) accrue
+-- separately (next pass, project_csr_mp_reward_model). On host/SP rank()==host_rank().
+-- Formulas locked in
 -- project_csr_reward_system_design:
 --   cash  = 100k × payout_mult[diff] × rank   (flat from rank; no skill/loot/crew)
 --   xp    = 12k × (1 + xp_mult[diff]) × rank × skill_mult × infamy_mult
@@ -343,7 +346,7 @@ end
 -- (moneytweakdata.lua); XP_MULT is 1 + vanilla experience difficulty_multiplier
 -- (tweakdata.lua), normal=0.
 function CSRGameManager:projected_rewards()
-	local rank = self:host_rank()
+	local rank = self:rank()
 	local idx = self:reward_difficulty_index()
 	local XP_MULT = { 0, 2, 5, 10, 11.5, 13, 14 }
 
@@ -410,11 +413,80 @@ function CSRGameManager:seed()
 end
 
 function CSRGameManager:host_rank()
+	-- The run rank that COMBAT scaling reads: enemy HP/dmg, per-rank player
+	-- passives (rank_passives.lua), and the item-selection quota. For a guest it
+	-- follows the HOST's synced rank; for a host/SP it's the own run rank.
+	--
+	-- Gated on is_client() (plus a debug-sim override) so a stale persisted
+	-- mp_session.host_rank can never leak into solo/host play: synced host rank
+	-- applies ONLY while actually guesting. Reward bucket A intentionally does NOT
+	-- read this -- see projected_rewards (own rank/difficulty), per the locked MP
+	-- reward model (project_csr_mp_reward_model).
 	local mp = self._state.mp_session
 	if mp and mp.host_rank then
-		return mp.host_rank
+		local mpnet = _G.CSR_MP
+		local guesting = mpnet and mpnet.is_client and mpnet.is_client()
+		if mp._debug_force or guesting then
+			return mp.host_rank
+		end
 	end
 	return self._state.rank or 0
+end
+
+-- Client-side: store the host's synced run rank + difficulty (from the MP
+-- host-state push in mp_session.lua). host_rank() returns host_rank while
+-- guesting; host_difficulty is banked for the (next-pass) guest reward bucket.
+-- Host/SP never call this.
+function CSRGameManager:set_mp_host_state(host_rank, host_difficulty)
+	self._state.mp_session = self._state.mp_session or {}
+	local mp = self._state.mp_session
+	if type(host_rank) == "number" then
+		mp.host_rank = host_rank
+	end
+	if type(host_difficulty) == "string" then
+		mp.host_difficulty = host_difficulty
+	end
+end
+
+-- Drop synced host state (leaving a host's session / between heists). Preserves a
+-- manual debug-sim override so a solo sim survives heist transitions.
+function CSRGameManager:clear_mp_host_state()
+	local mp = self._state.mp_session
+	if not mp or mp._debug_force then
+		return
+	end
+	mp.host_rank = nil
+	mp.host_difficulty = nil
+end
+
+-- Host difficulty synced while guesting (nil when not). For the next-pass guest
+-- reward bucket; combat already follows host via host_rank().
+function CSRGameManager:mp_host_difficulty()
+	local mp = self._state.mp_session
+	return mp and mp.host_difficulty or nil
+end
+
+-- Public mod version (for MP version/addon-mismatch reporting). Reads the meta
+-- field the save header carries.
+function CSRGameManager:mod_version()
+	return (self._meta and self._meta.version) or "unknown"
+end
+
+-- Debug-only: force host_rank() to return a fake value in SOLO so the MP guest
+-- scaling path (rank_passives, item-selection quota) can be exercised without a
+-- second instance. _debug_force makes host_rank() honour mp_session.host_rank even
+-- when not actually guesting. Pass nil to clear. Wired to the csr_debug_mp_host_rank
+-- keybind (stripped at release).
+function CSRGameManager:debug_force_host_rank(value)
+	self._state.mp_session = self._state.mp_session or {}
+	local mp = self._state.mp_session
+	if value == nil then
+		mp._debug_force = nil
+		mp.host_rank = nil
+	else
+		mp._debug_force = true
+		mp.host_rank = value
+	end
 end
 
 -- =====================================================
@@ -1713,6 +1785,9 @@ function CSRGameManager:start_run()
 	-- Fresh run = fresh loot->rank progress (the per-peer loot->token remainder
 	-- rides peer_items, wiped above).
 	self._state.loot_rank_cash = 0
+	-- Starting your OWN run clears any synced guest host-state residue (host_rank()
+	-- is gated on is_client() anyway, but keep the field clean).
+	self._state.mp_session = {}
 	self:generate_mission_set()
 	log_csr(
 		"start_run: new run begun (difficulty="
@@ -1741,6 +1816,7 @@ function CSRGameManager:end_run()
 	-- contract. Stats-preserving migration is future work; for alpha,
 	-- post-run inventory IS the next-run starting state, so drop it now.
 	self._state.peer_items = {}
+	self._state.mp_session = {}
 	log_csr("end_run: run ended at rank=" .. tostring(self._state.rank))
 	for _, fn in ipairs(self._callbacks.on_mission_completed) do
 		fn()
