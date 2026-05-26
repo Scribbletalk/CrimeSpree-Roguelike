@@ -366,7 +366,7 @@ end
 -- separately (next pass, project_csr_mp_reward_model). On host/SP rank()==host_rank().
 -- Formulas locked in
 -- project_csr_reward_system_design:
---   cash  = 100k × payout_mult[diff] × rank   (flat from rank; no skill/loot/crew)
+--   cash  = 200k × payout_mult[diff] × rank   (flat from rank; no skill/loot/crew)
 --   xp    = 12k × (1 + xp_mult[diff]) × rank × skill_mult × infamy_mult
 --   coins = rank, loot cards = rank
 -- REWARD_PAYOUT_MULT (module-level) mirrors vanilla difficulty_multiplier_payout
@@ -380,7 +380,7 @@ function CSRGameManager:_rewards_for(rank, idx)
 	rank = tonumber(rank) or 0
 	local XP_MULT = { 0, 2, 5, 10, 11.5, 13, 14 }
 
-	local cash = 100000 * (REWARD_PAYOUT_MULT[idx] or 1) * rank
+	local cash = 200000 * (REWARD_PAYOUT_MULT[idx] or 1) * rank
 	local xp = 12000 * (1 + (XP_MULT[idx] or 0)) * rank
 	-- Each accessor returns 1 + bonus already; pcall-isolated (a menu projection
 	-- must never error). Skill mult touches managers.network only when in a session.
@@ -528,7 +528,7 @@ end
 -- reads _rewards_for directly, NOT this, so it is unaffected and stays own-difficulty.
 function CSRGameManager:reward_per_rank_cash()
 	local idx = self:_is_guesting() and self:host_reward_difficulty_index() or self:reward_difficulty_index()
-	return 100000 * (REWARD_PAYOUT_MULT[idx] or 1)
+	return 200000 * (REWARD_PAYOUT_MULT[idx] or 1)
 end
 
 -- Feed a completed heist's looted cash into the run's loot->rank accumulator. Every
