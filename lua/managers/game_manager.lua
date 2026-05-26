@@ -588,7 +588,7 @@ end
 -- host_seed keys the per-host guest session store (_guest_session_key / _own_entry)
 -- so the guest's inventory/tokens live separate from the paused solo run. Host/SP
 -- never call this.
-function CSRGameManager:set_mp_host_state(host_rank, host_difficulty, host_seed)
+function CSRGameManager:set_mp_host_state(host_rank, host_difficulty, host_seed, host_missions)
 	self._state.mp_session = self._state.mp_session or {}
 	local mp = self._state.mp_session
 	if type(host_rank) == "number" then
@@ -600,6 +600,16 @@ function CSRGameManager:set_mp_host_state(host_rank, host_difficulty, host_seed)
 	if type(host_seed) == "number" then
 		mp.host_seed = host_seed
 	end
+	if type(host_missions) == "number" then
+		mp.host_missions = host_missions
+	end
+end
+
+-- Host's completed-heist count while guesting (nil on host/SP -> caller uses own).
+-- The lobby + briefing headers show this so a guest reads the HOST's run progress.
+function CSRGameManager:mp_host_missions_completed()
+	local mp = self._state.mp_session
+	return mp and mp.host_missions or nil
 end
 
 -- Drop synced host state (leaving a host's session / between heists). Preserves the
@@ -615,6 +625,10 @@ function CSRGameManager:clear_mp_host_state()
 	mp.host_rank = nil
 	mp.host_difficulty = nil
 	mp.host_seed = nil
+	mp.host_missions = nil
+	-- Cleared too so the guest re-pulls the host's CURRENT set on the next lobby
+	-- (the host rolls a fresh set after each heist); the MISSION_SET reply refills it.
+	mp.host_mission_set = nil
 end
 
 -- Host difficulty synced while guesting (nil when not). For the next-pass guest
@@ -1436,9 +1450,6 @@ local ENEMY_HEALTH_PCT_PER_RANK = 5
 local ENEMY_DAMAGE_PCT_PER_RANK = 5
 
 function CSRGameManager:apply_modifiers()
-	if not Network:is_server() then
-		return
-	end
 	if not managers or not managers.modifiers then
 		return
 	end
@@ -1446,6 +1457,34 @@ function CSRGameManager:apply_modifiers()
 	-- empty each heist; clear it anyway for idempotency (the hook could re-fire).
 	if managers.modifiers._modifiers then
 		managers.modifiers._modifiers.csr = nil
+	end
+
+	-- CLIENT branch. Enemy DAMAGE-to-player is computed in EACH peer's OWN
+	-- PlayerDamage (vanilla modify_value "PlayerDamage:TakeDamageBullet"), so the
+	-- rank-based ModifierEnemyDamage MUST live on the client too -- without it a
+	-- guest takes UNSCALED hits even though host_rank is synced (the documented
+	-- "enemy damage is host-local" gap below). Enemy HP and every other
+	-- host-authoritative effect stay host-only and reach the client via unit/spawn
+	-- sync, so the client adds ONLY this one modifier, rank-based off the synced
+	-- host_rank(). (Special-modifier enemy-damage additions remain an
+	-- active-modifier sync gap.) Re-applied when host_rank arrives mid-load -- see
+	-- mp_session.lua HANDSHAKE_OK handler.
+	if not Network:is_server() then
+		local rank = self:host_rank() or 0
+		if rank > 0 and _G.ModifierEnemyDamage then
+			managers.modifiers:add_modifier(
+				_G.ModifierEnemyDamage:new({ damage = rank * ENEMY_DAMAGE_PCT_PER_RANK }),
+				"csr"
+			)
+			self:debug_log(
+				string.format(
+					"client enemy-damage modifier: rank=%d -> +%d%% DMG",
+					rank,
+					rank * ENEMY_DAMAGE_PCT_PER_RANK
+				)
+			)
+		end
+		return
 	end
 
 	-- ModifierLessPagers:init destructively rebuilds tweak_data.player.alarm_pager
@@ -2150,6 +2189,11 @@ function CSRGameManager:generate_mission_set()
 	self._state.current_mission = nil
 	log_csr("generate_mission_set: " .. table.concat(ids, ", "))
 	self:save()
+	-- MP: push the new set to guests so their cards match the host's (reroll /
+	-- first generate). Self-gates to the host inside broadcast_mission_set.
+	if _G.CSR_MP and _G.CSR_MP.broadcast_mission_set then
+		_G.CSR_MP.broadcast_mission_set()
+	end
 	return ids
 end
 
@@ -2166,6 +2210,14 @@ end
 -- crash_report_2026_05_16_19_45). Idempotent: a populated set is left as-is, so
 -- reopening the contract does NOT reroll the player's missions.
 function CSRGameManager:ensure_mission_set()
+	-- A guest does NOT roll its own set -- it mirrors the HOST's (synced via the
+	-- MISSION_SET wire message / set_mp_host_mission_set). Rolling here would show
+	-- the guest a DIFFERENT 3 cards than the host. If the host's set hasn't arrived
+	-- yet the cards build empty and the MISSION_SET handler repaints them when it
+	-- lands (CSRMissionsMenuComponent:update_mission).
+	if self:_is_guesting() then
+		return
+	end
 	local set = self._state.mission_set
 	if type(set) ~= "table" or #set == 0 then
 		self:generate_mission_set()
@@ -2176,12 +2228,33 @@ end
 -- Unresolvable slots return nil (NOT {}), so the panel can skip them rather
 -- than build a card with nil .add/.level.
 function CSRGameManager:mission_set()
+	-- While guesting, mirror the HOST's set (its synced ids resolved against our own
+	-- identical tweak_data.crime_spree.missions); fall back to the own set for
+	-- host/SP or before the host's set has arrived.
+	local ids = self._state.mission_set
+	if self:_is_guesting() then
+		local mp = self._state.mp_session
+		if mp and type(mp.host_mission_set) == "table" then
+			ids = mp.host_mission_set
+		end
+	end
 	local out = {}
 	for i = 1, 3 do
-		local id = (self._state.mission_set or {})[i]
+		local id = (ids or {})[i]
 		out[i] = id and self:get_mission(id) or nil
 	end
 	return out
+end
+
+-- Host: the ordered id list to broadcast to guests (mp_sync.lua broadcast_mission_set).
+function CSRGameManager:mission_set_ids()
+	return self._state.mission_set or {}
+end
+
+-- Guest: store the host's synced set (ids). mission_set() reads it while guesting.
+function CSRGameManager:set_mp_host_mission_set(ids)
+	self._state.mp_session = self._state.mp_session or {}
+	self._state.mp_session.host_mission_set = type(ids) == "table" and ids or nil
 end
 
 function CSRGameManager:current_mission()
@@ -2224,6 +2297,12 @@ function CSRGameManager:select_mission(mission_id)
 	end
 	if Network:is_server() and MenuCallbackHandler and MenuCallbackHandler.update_matchmake_attributes then
 		MenuCallbackHandler:update_matchmake_attributes()
+	end
+	-- MP: push the new selection to guests NOW so their Global.game_settings.level_id
+	-- adopts the host's pick before Start (CSR's temp-job chain is built locally per
+	-- peer, so the host's level must be synced explicitly or guests load their own).
+	if _G.CSR_MP and _G.CSR_MP.broadcast_host_state then
+		_G.CSR_MP.broadcast_host_state()
 	end
 
 	log_csr(

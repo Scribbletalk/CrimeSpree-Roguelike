@@ -763,7 +763,10 @@ function CSRMissionsMenuComponent:_create_status_bar(w)
 	-- dedicated managers.csr:missions_completed() counter (NOT rank -- the two
 	-- are distinct concepts; see game_manager.lua default_state comment).
 	local missions_prefix = managers.localization:to_upper_text("csr_lobby_missions_completed") .. ": "
-	local missions_str = missions_prefix .. tostring(managers.csr:missions_completed())
+	-- While guesting, show the HOST's completed count (synced, nil on host/SP -> own).
+	local missions_done = (managers.csr.mp_host_missions_completed and managers.csr:mp_host_missions_completed())
+		or managers.csr:missions_completed()
+	local missions_str = missions_prefix .. tostring(missions_done)
 	local missions_text = self._title_panel:text({
 		layer = 51,
 		vertical = "bottom",
@@ -806,7 +809,9 @@ function CSRMissionsMenuComponent:_create_status_bar(w)
 	self._status_rank_glyph = cs_glyph
 	self._status_rank_highlight = highlight
 
-	local diff_id = managers.csr:difficulty()
+	-- While guesting, show the HOST's difficulty (mp_host_difficulty is synced and
+	-- nil on host/SP -> own); fixes the guest showing its OWN difficulty.
+	local diff_id = (managers.csr.mp_host_difficulty and managers.csr:mp_host_difficulty()) or managers.csr:difficulty()
 	local diff_name_id = tweak_data.difficulty_name_ids[diff_id]
 	local diff_text = diff_name_id and managers.localization:to_upper_text(diff_name_id) or tostring(diff_id)
 
@@ -1247,10 +1252,16 @@ function CSRMissionsMenuComponent:update(t, dt)
 end
 
 function CSRMissionsMenuComponent:mouse_moved(o, x, y)
-	if not self:_is_host() or not managers.menu:is_pc_controller() then
+	-- Guests reach this now: a client needs the sidebar, the items/modifiers
+	-- feature-panel hover (tooltips) and the unselected-items reminder. The
+	-- host-authoritative parts (mission cards + Start/Reroll/Action) stay gated on
+	-- `host` below, so a guest can hover/open its own item selection but cannot
+	-- touch mission selection. PC-only (mouse) as before.
+	if not managers.menu:is_pc_controller() then
 		return
 	end
 
+	local host = self:_is_host()
 	local used, pointer = nil
 
 	-- The sidebar is a child object of THIS component but is geometrically
@@ -1285,7 +1296,7 @@ function CSRMissionsMenuComponent:mouse_moved(o, x, y)
 	local cards_area = self._buttons_panel and alive(self._buttons_panel) and self._buttons_panel:inside(x, y)
 
 	for idx, btn in ipairs(self._buttons) do
-		btn:set_selected(cards_area and btn:inside(x, y) or false)
+		btn:set_selected(host and cards_area and btn:inside(x, y) or false)
 
 		if btn:is_selected() then
 			pointer = "link"
@@ -1293,7 +1304,7 @@ function CSRMissionsMenuComponent:mouse_moved(o, x, y)
 		end
 	end
 
-	if self._start_button then
+	if host and self._start_button then
 		self._start_button:set_selected(self._start_button:inside(x, y))
 
 		if self._start_button:is_selected() then
@@ -1302,7 +1313,7 @@ function CSRMissionsMenuComponent:mouse_moved(o, x, y)
 		end
 	end
 
-	if self._reroll_button then
+	if host and self._reroll_button then
 		self._reroll_button:set_selected(self._reroll_button:inside(x, y))
 
 		if self._reroll_button:is_selected() then
@@ -1311,7 +1322,7 @@ function CSRMissionsMenuComponent:mouse_moved(o, x, y)
 		end
 	end
 
-	if self._action_button then
+	if host and self._action_button then
 		self._action_button:set_selected(self._action_button:inside(x, y))
 
 		if self._action_button:is_selected() then
@@ -1427,6 +1438,17 @@ function CSRMissionsMenuComponent:mouse_released(button, x, y)
 end
 
 function CSRMissionsMenuComponent:confirm_pressed()
+	-- The unselected-items reminder is the ONE control a guest may use here: it
+	-- opens the guest's OWN item selection. Checked BEFORE the host guard so a
+	-- client click reaches it (mouse_moved now sets _unselected_items_hover for
+	-- guests too). Everything below -- mission cards, Start, Reroll, Action -- is
+	-- host-authoritative.
+	if self._unselected_items_hover then
+		self:_on_unselected_items_clicked()
+
+		return true
+	end
+
 	if not self:_is_host() then
 		return nil
 	end
@@ -1453,12 +1475,6 @@ function CSRMissionsMenuComponent:confirm_pressed()
 
 	if self._action_button and self._action_button:is_selected() and self._action_button:callback() then
 		self._action_button:callback()()
-
-		return true
-	end
-
-	if self._unselected_items_hover then
-		self:_on_unselected_items_clicked()
 
 		return true
 	end

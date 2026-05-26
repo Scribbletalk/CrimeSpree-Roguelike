@@ -39,6 +39,9 @@ CSR_MP.MSG = {
 	COPIER_SPAWN = "CSR_CopierSpawn", -- host -> all: spawn a printer (key~pos~rot~offer_type)
 	SCRAPPER_SPAWN = "CSR_ScrapperSpawn", -- host -> all: spawn a scrapper (key~pos~rot)
 	REQUEST_PROPS = "CSR_RequestProps", -- client -> host: replay every spawned prop (late-join)
+	LOBBY_PING = "CSR_LobbyPing", -- client -> host: are you a CSR lobby? (join-time routing)
+	LOBBY_CSR = "CSR_LobbyIsCSR", -- host -> client: yes -> reroute to crime_spree_lobby
+	MISSION_SET = "CSR_MissionSet", -- host -> all: the lobby mission-card ids (comma-joined)
 }
 
 -- Combat-item RPCs route through the SAME router (they pass the "CSR_" id filter
@@ -240,12 +243,21 @@ local function local_peer_name()
 	return (peer and peer.name and peer:name()) or "Player"
 end
 
--- Repaint the lobby items panel after a sync (no-op outside the CSR lobby).
+-- Repaint whichever CSR items surface is currently up after a sync. No-op when
+-- neither is built (e.g. outside the CSR lobby/briefing).
 function CSR_MP.refresh_items_panel()
 	local mcm = managers and managers.menu_component
+	-- Lobby missions component.
 	local comp = mcm and mcm._crime_spree_missions
 	if comp and comp.refresh_for_rank_change then
 		comp:refresh_for_rank_change()
+	end
+	-- Briefing component: the guest's items panel lives here (borrowed
+	-- _populate_items_panel), NOT on _crime_spree_missions. _populate_items_panel
+	-- self-guards on an unbuilt panel, so this is a safe no-op off the briefing.
+	local brief = mcm and mcm._mission_briefing_gui
+	if brief and brief._populate_items_panel then
+		brief:_populate_items_panel()
 	end
 end
 
@@ -451,6 +463,32 @@ local function register_peer_removed_hook()
 		CSR_MP.refresh_items_panel()
 		mp_log("peer removed: " .. tostring(peer_id))
 	end)
+
+	-- Host -> a peer that just entered OUR lobby: tell it this is a CSR lobby (so it
+	-- reroutes to crime_spree_lobby) and push host rank/difficulty/seed so its lobby
+	-- shows the HOST's values + is_guesting() turns true. HOST-DRIVEN, so it fires no
+	-- matter HOW the guest arrived -- join-straight-into-lobby AND return-to-lobby
+	-- between heists -- unlike the client-side on_enter_lobby ping, which a guest
+	-- joining mid-heist (JOINED_GAME path) never triggers. _crime_spree_missions is
+	-- the no-leak "we're in the CSR lobby" signal (absent in a vanilla lobby).
+	Hooks:PostHook(BaseNetworkSession, "on_peer_entered_lobby", "CSR_MP_OnPeerEnteredLobby", function(self, peer)
+		if not CSR_MP.is_host() then
+			return
+		end
+		local mcm = managers and managers.menu_component
+		if not (mcm and mcm._crime_spree_missions) then
+			return
+		end
+		local pid = peer and peer.id and peer:id()
+		if not pid then
+			return
+		end
+		LuaNetworking:SendToPeer(pid, CSR_MP.MSG.LOBBY_CSR, "")
+		if CSR_MP.broadcast_host_state then
+			CSR_MP.broadcast_host_state()
+		end
+		mp_log("peer entered lobby -> pushed CSR + host state to " .. tostring(pid))
+	end)
 	mp_log("peer-removed hook registered")
 end
 
@@ -528,6 +566,121 @@ Hooks:Add("BaseNetworkSessionOnLoadComplete", "CSR_MP_PropSyncReset", function()
 	end
 	if CSR_MP.is_client() then
 		CSR_MP.request_props()
+	end
+end)
+
+-- =====================================================
+-- Lobby join routing: client -> crime_spree_lobby
+-- =====================================================
+--
+-- A CSR run does NOT enable the vanilla Crime Spree gamemode, so vanilla's
+-- on_enter_lobby (which routes by gamemode) never sends a JOINING CLIENT to the
+-- crime_spree_lobby node -- the client lands in the plain "lobby" node with no
+-- CSR UI (the lobby component is built only on crime_spree_lobby). The host
+-- reroutes itself via Global.CSR_RETURN_TO_LOBBY; the client has no such trigger.
+-- Fix: on lobby entry the client pings the host; if the host is actually sitting
+-- in a CSR lobby it replies, and the client reroutes. Chat transport is already
+-- live in the lobby (item sync uses it), so no menu-attribute plumbing is needed.
+-- (The briefing screen is unaffected -- briefing_sidebar.lua hooks MissionBriefingGui
+-- directly, bypassing node routing, which is why the client's briefing already works.)
+
+-- Client -> host: ask whether this is a CSR lobby. Called from on_enter_lobby
+-- (lobby_routing.lua); self-gates so the host/SP calling it is a no-op.
+function CSR_MP.lobby_ping_host()
+	if not CSR_MP.is_client() then
+		return
+	end
+	LuaNetworking:SendToPeer(1, CSR_MP.MSG.LOBBY_PING, "")
+	mp_log("lobby_ping_host")
+end
+
+-- Client -> host: PULL the current host-state (rank/difficulty/seed/tokens). Used
+-- on heist at_enter so the guest re-acquires host-state reliably via request-reply
+-- instead of relying on the host's timed push landing in the load window. The host
+-- replies HANDSHAKE_OK (mp_session.lua handler). A non-CSR host has no router and
+-- ignores it, so the guest's host-state correctly stays cleared there (no leak).
+function CSR_MP.request_host_state()
+	if not CSR_MP.is_client() then
+		return
+	end
+	LuaNetworking:SendToPeer(1, CSR_MP.MSG.HANDSHAKE, "")
+	mp_log("request_host_state")
+end
+
+-- Host -> all: the lobby mission-card ids (comma-joined) so guests show the SAME 3
+-- missions. Sent on every host-state broadcast (lobby join / HANDSHAKE reply) and
+-- on host reroll (generate_mission_set). Self-gates to the host. Ids are short
+-- alphanumeric keys, so a single unchunked message stays well under the transport cap.
+function CSR_MP.broadcast_mission_set()
+	if not (CSR_MP.is_host() and CSR_MP.is_multiplayer()) then
+		return
+	end
+	local mgr = managers and managers.csr
+	if not (mgr and mgr.mission_set_ids) then
+		return
+	end
+	local joined = table.concat(mgr:mission_set_ids(), ",")
+	LuaNetworking:SendToPeers(CSR_MP.MSG.MISSION_SET, joined)
+	mp_log("broadcast_mission_set: " .. joined)
+end
+
+-- Client: store the host's mission-card ids and repaint the lobby cards in place
+-- (CSRMissionsMenuComponent:update_mission -> btn:update_mission, the direct setter,
+-- no reroll spin). is_from_host blocks forgery. No-op off the CSR lobby (no component).
+CSR_MP.register_handler(CSR_MP.MSG.MISSION_SET, function(sender, data, sender_num, is_from_host)
+	if not (CSR_MP.is_client() and is_from_host) then
+		return
+	end
+	local mgr = managers and managers.csr
+	if not (mgr and mgr.set_mp_host_mission_set) then
+		return
+	end
+	local ids = {}
+	for id in tostring(data):gmatch("[^,]+") do
+		ids[#ids + 1] = id
+	end
+	mgr:set_mp_host_mission_set(ids)
+	local comp = managers.menu_component and managers.menu_component._crime_spree_missions
+	if comp and comp.update_mission then
+		comp:update_mission()
+	end
+	mp_log("applied host mission set: " .. tostring(data))
+end)
+
+-- Host: a joining client asked -> reply ONLY if we're actually in the CSR lobby.
+-- _crime_spree_missions exists solely on the crime_spree_lobby node, so it's a
+-- no-leak signal (a vanilla lobby never has it, regardless of a stale is_active).
+CSR_MP.register_handler(CSR_MP.MSG.LOBBY_PING, function(sender, data, sender_num, is_from_host)
+	if not CSR_MP.is_host() then
+		return
+	end
+	local mcm = managers and managers.menu_component
+	if not (mcm and mcm._crime_spree_missions) then
+		return
+	end
+	local target = sender_num or tonumber(sender)
+	if target then
+		LuaNetworking:SendToPeer(target, CSR_MP.MSG.LOBBY_CSR, "")
+		mp_log("lobby ping -> CSR, reply to " .. tostring(target))
+		-- Also push host rank/difficulty/seed NOW so the joining guest's lobby shows
+		-- the HOST's rank + item quota (not its own) and is_guesting() turns true in
+		-- the lobby. Without this the host only announces at heist start, leaving the
+		-- guest lobby on its own rank. broadcast_host_state is assigned by mp_session.lua.
+		if CSR_MP.broadcast_host_state then
+			CSR_MP.broadcast_host_state()
+		end
+	end
+end)
+
+-- Client: the host confirmed a CSR lobby -> reroute to the crime_spree_lobby node
+-- so the CSR lobby UI (sidebar + panels) builds. The actual select_node lives in
+-- lobby_routing.lua (which owns node routing).
+CSR_MP.register_handler(CSR_MP.MSG.LOBBY_CSR, function(sender, data, sender_num, is_from_host)
+	if not (CSR_MP.is_client() and is_from_host) then
+		return
+	end
+	if _G.CSR_reroute_client_to_csr_lobby then
+		_G.CSR_reroute_client_to_csr_lobby()
 	end
 end)
 

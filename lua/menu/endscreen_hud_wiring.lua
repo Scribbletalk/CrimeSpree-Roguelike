@@ -58,7 +58,13 @@ Hooks:OverrideFunction(HUDManager, "setup_endscreen_hud", function(self)
 	local ws = self:workspace("fullscreen_workspace", "menu")
 	local hud = managers.hud:script(MissionEndState.GUI_ENDSCREEN)
 
-	if csr_endscreen_active() and CSRHUDStageEndScreen then
+	-- Guest case: a client loses current_job == "crime_spree" earlier than the host
+	-- (its job state is less stable), so csr_endscreen_active() can read false here
+	-- for a guest -> the end screen fell back to the vanilla XP/cash tally. A guest's
+	-- reliable CSR signal is is_guesting() (host_seed, synced via the heist-start
+	-- HANDSHAKE pull); host/SP keep using the job signal.
+	local is_csr = csr_endscreen_active() or (managers.csr and managers.csr.is_guesting and managers.csr:is_guesting())
+	if is_csr and CSRHUDStageEndScreen then
 		self._hud_stage_endscreen = CSRHUDStageEndScreen:new(hud, ws)
 		log("[CSR] wiring: endscreen HUD built from CSRHUDStageEndScreen")
 		return

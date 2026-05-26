@@ -63,7 +63,13 @@ end
 
 Hooks:OverrideFunction(MenuComponentManager, "create_stage_endscreen_gui", function(self)
 	if not self._stage_endscreen_gui then
-		if csr_endscreen_active() and CSRStageEndScreenGui then
+		-- Guest case (mirrors endscreen_hud_wiring.lua): a client loses current_job ==
+		-- "crime_spree" earlier than the host, so csr_endscreen_active() can read false
+		-- here for a guest -> the vanilla tally. is_guesting() (host_seed, synced via the
+		-- heist-start HANDSHAKE pull) is the guest's reliable CSR-endscreen signal.
+		local is_csr = csr_endscreen_active()
+			or (managers.csr and managers.csr.is_guesting and managers.csr:is_guesting())
+		if is_csr and CSRStageEndScreenGui then
 			self._stage_endscreen_gui = CSRStageEndScreenGui:new(self._ws, self._fullscreen_ws)
 			log("[CSR] wiring: stage endscreen built from CSRStageEndScreenGui")
 		else

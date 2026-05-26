@@ -47,7 +47,13 @@ Hooks:PostHook(
 		-- (menucomponentmanager.lua:2525). We also exclude a real vanilla CS run
 		-- (not managers.crime_spree:is_active()) to mirror the briefing/contract
 		-- no-leak pattern; CSR never activates vanilla CS (Slice 6).
-		if not node or not managers.csr or not managers.csr:is_active() then
+		-- Build for the host/SP OWN active run, OR for a GUEST. A network client only
+		-- reaches the crime_spree_lobby node via the CSR reroute (mp_sync LOBBY_CSR),
+		-- and a guest has NO active own run (especially right after a reset) -- gating
+		-- on is_active() alone left the guest with no CSR lobby UI. The node-name check
+		-- below stops this leaking into a vanilla client lobby (that is the "lobby" node).
+		local is_guest = _G.CSR_MP and _G.CSR_MP.is_client and _G.CSR_MP.is_client()
+		if not node or not managers.csr or not (managers.csr:is_active() or is_guest) then
 			return
 		end
 
@@ -120,17 +126,27 @@ Hooks:PostHook(
 			log("[CSR] wiring: forced contract-box rebuild for CSR lobby (MP)")
 		end
 
-		-- MP lobby: sync per-peer inventories (M2b). Announce our own items to the
-		-- session; a client also drops any stale remote snapshot and pulls the
-		-- host's authoritative roster (the host accumulates via receives + relay, so
-		-- it does not clear). The items panel repaints as each peer's data arrives.
-		if in_lobby and _G.CSR_MP and _G.CSR_MP.is_multiplayer and _G.CSR_MP.is_multiplayer() then
+		-- MP: sync per-peer inventories (M2b) AND pull host-state. Runs for the LOBBY
+		-- and the END SCREEN -- the end screen builds the SAME CSRMissionsMenuComponent
+		-- (its mission cards + item-pick reminder), so a guest there needs the host's
+		-- fresh rank (incl. the post-heist rank-up -> a new item pick), items, and
+		-- mission set just as much as in the lobby. Announce our own items; a client
+		-- also drops any stale remote snapshot and pulls the host's roster + host-state.
+		if (in_lobby or in_endscreen) and _G.CSR_MP and _G.CSR_MP.is_multiplayer and _G.CSR_MP.is_multiplayer() then
 			_G.CSR_MP.broadcast_own_items()
 			if _G.CSR_MP.is_client and _G.CSR_MP.is_client() then
 				if managers.csr and managers.csr.clear_remote_peers then
 					managers.csr:clear_remote_peers()
 				end
 				_G.CSR_MP.request_all_items()
+				-- Also PULL host-state when the CSR lobby component builds -- a reliable
+				-- is_client-ready point that does NOT race like the on_enter_lobby ping
+				-- (which can fire before the session reports is_client). Without host-state
+				-- (rank/seed) is_guesting() stays false and the guest runs its OWN rank +
+				-- solo-run items instead of following the host. Self-gates to clients.
+				if _G.CSR_MP.request_host_state then
+					_G.CSR_MP.request_host_state()
+				end
 			end
 		end
 	end

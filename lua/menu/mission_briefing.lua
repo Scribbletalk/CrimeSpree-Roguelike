@@ -807,11 +807,17 @@ function CSRMissionBriefing:init(hud, workspace)
 		local missions_p = managers.localization:to_upper_text("csr_lobby_missions_completed") .. ": "
 		local rank_p = managers.localization:to_upper_text("csr_lobby_rank") .. ": "
 		local diff_p = managers.localization:to_upper_text("csr_lobby_difficulty") .. ": "
-		local diff_id = C.difficulty and C:difficulty()
+		-- Rank + difficulty follow the HOST while guesting (host_rank / mp_host_difficulty
+		-- are synced); both fall back to the own run for host/SP. This is what makes the
+		-- briefing header read the HOST's run for a guest instead of its own paused run.
+		local diff_id = (C.mp_host_difficulty and C:mp_host_difficulty()) or (C.difficulty and C:difficulty())
 		local diff_name_id = diff_id and tweak_data.difficulty_name_ids and tweak_data.difficulty_name_ids[diff_id]
 		local diff_str = diff_name_id and managers.localization:to_upper_text(diff_name_id) or tostring(diff_id)
-		local missions_s = missions_p .. tostring(C.missions_completed and C:missions_completed() or 0)
-		local rank_s = rank_p .. tostring(C.rank and C:rank() or 0) .. " " .. glyph
+		local missions_done = (C.mp_host_missions_completed and C:mp_host_missions_completed())
+			or (C.missions_completed and C:missions_completed())
+			or 0
+		local missions_s = missions_p .. tostring(missions_done)
+		local rank_s = rank_p .. tostring((C.host_rank and C:host_rank()) or (C.rank and C:rank()) or 0) .. " " .. glyph
 		local diff_s = diff_p .. diff_str
 
 		-- Same geometry as MissionBriefingGui._panel (the plan/assets tab +

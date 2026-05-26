@@ -130,6 +130,10 @@ function CSRMissionsMenuComponent:_collect_peers_for_items_panel(local_pid)
 		local remote = {}
 		for pid, peer in pairs(peers) do
 			if not seen[pid] then
+				-- Mark seen so the remote_peer_ids() pass below does NOT re-add a peer
+				-- the live session already covers (the host was listed twice: once here
+				-- as a session peer, once there as a synced-item holder).
+				seen[pid] = true
 				remote[#remote + 1] = {
 					id = pid,
 					name = (peer.name and peer:name()) or ("Peer " .. tostring(pid)),

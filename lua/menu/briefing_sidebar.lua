@@ -44,13 +44,27 @@ if not RequiredScript then
 	return
 end
 
+-- CSR-heist signal, identical to briefing_wiring.lua's: the temporary
+-- "crime_spree" job is active and vanilla Crime Spree is NOT. Previously this
+-- keyed off the HUD briefing's _csr_progress_header, but that couples the sidebar
+-- to the HUD-briefing FORK routing -- which fails for an MP guest, because its
+-- current_job becomes "crime_spree" by network sync only AFTER
+-- setup_mission_briefing_hud already built the (vanilla) HUD briefing, so the
+-- guest got no header AND therefore no sidebar. By _csr_build_sidebar time
+-- (MissionBriefingGui:init PostHook) the job sync HAS landed (the init PreHook
+-- crash-guard proves current_job == "crime_spree" here), so gating on the job
+-- directly builds the sidebar for the guest regardless of HUD-briefing routing.
 local function csr_briefing_active()
-	local hm = managers and managers.hud
-	local b = hm and hm._hud_mission_briefing
-	if b and b._csr_progress_header and alive(b._csr_progress_header) then
-		return true
+	if not managers or not managers.job then
+		return false
 	end
-	return false
+	if managers.job:current_job_id() ~= "crime_spree" then
+		return false
+	end
+	if managers.crime_spree and managers.crime_spree:is_active() then
+		return false
+	end
+	return true
 end
 
 -- Method-borrowing list. Each name is a method on CSRMissionsMenuComponent;
@@ -238,8 +252,57 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 		self._csr_fp_right_anchor = nil
 	end
 
+	-- Crash guard (MP client). Vanilla MissionBriefingGui:init indexes
+	-- managers.job:current_level_data().name_id. A CSR client never runs
+	-- select_mission (host-only), so although its current_job IS the synced
+	-- "crime_spree" temp job, the crime_spree narrative chain (local tweak_data,
+	-- NOT network-synced) is still the empty {} default -> current_stage_data()
+	-- returns {} -> current_level_id() nil -> current_level_data() nil -> the init
+	-- nil-crash (crash_report_2026_05_26_17_30). The host never hits this
+	-- (select_mission set its chain). Re-derive the chain from the loading level
+	-- right BEFORE init builds (PreHook), exactly as the host's CSRGameManager init
+	-- does -- but now timed when Global.game_settings.level_id is guaranteed present.
+	-- Pure guard: a no-op whenever current_level_data already resolves (host + every
+	-- vanilla heist), and only acts under the crime_spree job (no vanilla leak).
+	Hooks:PreHook(MissionBriefingGui, "init", "CSR_BriefingEnsureChain", function(self)
+		if not managers or not managers.job or not managers.csr then
+			return
+		end
+		if managers.job:current_level_data() then
+			return
+		end
+		if managers.job:current_job_id() == "crime_spree" and managers.csr._setup_temporary_job then
+			managers.csr:_setup_temporary_job()
+			log("[CSR] briefing: re-derived empty crime_spree chain before init (MP client)")
+		end
+	end)
+
 	Hooks:PostHook(MissionBriefingGui, "init", "CSR_BriefingSidebarInit", function(self)
 		self:_csr_build_sidebar()
+
+		-- MP: the briefing's items panel needs every peer's items, but a guest's
+		-- _remote_peer_items are runtime-only and were wiped by the menu->game state
+		-- transition (and the lobby's request doesn't carry over). Re-sync now, exactly
+		-- like missions_wiring.lua does for the lobby: announce our own, and (as a
+		-- client) pull the host's roster -- CSR_MP.refresh_items_panel repaints THIS
+		-- briefing panel as each peer's data arrives. Gated on self._sidebar so it only
+		-- fires for a real CSR briefing (where _csr_build_sidebar actually built).
+		if self._sidebar and _G.CSR_MP and _G.CSR_MP.is_multiplayer and _G.CSR_MP.is_multiplayer() then
+			_G.CSR_MP.broadcast_own_items()
+			if _G.CSR_MP.is_client and _G.CSR_MP.is_client() then
+				_G.CSR_MP.request_all_items()
+				-- Also PULL host-state here. A guest that joined the host MID-HEIST
+				-- (JOINED_GAME / drop-in) never hit the lobby on_enter_lobby ping AND
+				-- IngameWaitingForPlayersState:at_enter may not fire its guest pull, so
+				-- host-state (rank/seed) is never acquired -> is_guesting() stays false ->
+				-- the guest wrongly runs its OWN rank + OWN solo-run items. This briefing
+				-- hook DID fire (it requested items above), so it's a reliable point where
+				-- the session is is_client-ready. request_host_state self-gates to clients.
+				if _G.CSR_MP.request_host_state then
+					_G.CSR_MP.request_host_state()
+				end
+			end
+		end
 	end)
 
 	-- show/hide cover the case where MissionBriefingGui is built once

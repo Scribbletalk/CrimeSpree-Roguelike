@@ -56,7 +56,14 @@ Hooks:OverrideFunction(HUDManager, "setup_mission_briefing_hud", function(self)
 	local hud = managers.hud:script(IngameWaitingForPlayersState.GUI_FULLSCREEN)
 	local workspace = self:workspace("fullscreen_workspace", "menu")
 
-	if csr_briefing_active() and CSRMissionBriefing then
+	-- Guest case: setup_mission_briefing_hud runs from the ORIGINAL at_enter body,
+	-- BEFORE the guest's at_enter PostHook clears host-state -- so host_seed is still
+	-- set here (from the lobby push), making is_guesting() the guest's reliable CSR
+	-- signal even if its current_job hasn't settled to "crime_spree" yet. Without it
+	-- the guest got the vanilla HUD briefing (no CSR header / sidebar). Host/SP keep
+	-- using the job signal.
+	local is_csr = csr_briefing_active() or (managers.csr and managers.csr.is_guesting and managers.csr:is_guesting())
+	if is_csr and CSRMissionBriefing then
 		self._hud_mission_briefing = CSRMissionBriefing:new(hud, workspace)
 		log("[CSR] wiring: mission briefing built from CSRMissionBriefing")
 		return

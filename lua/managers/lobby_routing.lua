@@ -84,8 +84,31 @@ local function csr_teardown_endscreen_hud()
 	end
 end
 
+-- Client-join reroute: when the host confirms a CSR lobby (mp_sync.lua LOBBY_CSR
+-- handler), move the joining client onto the crime_spree_lobby node so its CSR
+-- lobby UI (sidebar + panels) builds. Same select_node vanilla uses in its CS
+-- branch. No-op if the active menu logic isn't up. Exposed as a global so the
+-- mp_sync handler (a different file/Lua chunk) can call it.
+function _G.CSR_reroute_client_to_csr_lobby()
+	local active = managers.menu and managers.menu:active_menu()
+	local logic = active and active.logic
+	if not logic then
+		log("[CSR] lobby routing: client reroute skipped (no active menu logic)")
+		return
+	end
+	logic:select_node("crime_spree_lobby", true, {})
+	log("[CSR] lobby routing: client rerouted -> crime_spree_lobby (host confirmed CSR)")
+end
+
 Hooks:PostHook(MenuManager, "on_enter_lobby", "CSR_OnEnterLobbyRoute", function(self)
 	log("[CSR] lobby routing: on_enter_lobby PostHook fired (flag=" .. tostring(Global.CSR_RETURN_TO_LOBBY) .. ")")
+
+	-- Joining CLIENT: ask the host whether this is a CSR lobby; the host's reply
+	-- reroutes us (mp_sync.lua LOBBY_CSR handler -> CSR_reroute_client_to_csr_lobby).
+	-- Self-gates on is_client, so the host/SP fall straight through to the flag path.
+	if _G.CSR_MP and _G.CSR_MP.lobby_ping_host then
+		_G.CSR_MP.lobby_ping_host()
+	end
 
 	if not Global.CSR_RETURN_TO_LOBBY then
 		return
