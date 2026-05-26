@@ -119,6 +119,20 @@ Hooks:PostHook(
 			self:create_contract_gui()
 			log("[CSR] wiring: forced contract-box rebuild for CSR lobby (MP)")
 		end
+
+		-- MP lobby: sync per-peer inventories (M2b). Announce our own items to the
+		-- session; a client also drops any stale remote snapshot and pulls the
+		-- host's authoritative roster (the host accumulates via receives + relay, so
+		-- it does not clear). The items panel repaints as each peer's data arrives.
+		if in_lobby and _G.CSR_MP and _G.CSR_MP.is_multiplayer and _G.CSR_MP.is_multiplayer() then
+			_G.CSR_MP.broadcast_own_items()
+			if _G.CSR_MP.is_client and _G.CSR_MP.is_client() then
+				if managers.csr and managers.csr.clear_remote_peers then
+					managers.csr:clear_remote_peers()
+				end
+				_G.CSR_MP.request_all_items()
+			end
+		end
 	end
 )
 

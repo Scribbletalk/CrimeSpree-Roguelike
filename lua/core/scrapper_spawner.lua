@@ -89,6 +89,34 @@ local function trigger_anim(unit, seq_name)
 	end
 end
 
+-- Host -> all: mirror a just-spawned scrapper so every client spawns a local
+-- copy. Same self-gated pattern as the copier (broadcast_copier_spawn): the host
+-- unit key is the dedup token, pos/rot round-trip through Rotation(yaw,pitch,roll).
+-- Only the shredder syncs here -- the printer routes through copier_spawner's own
+-- spawn flow and never reaches spawn_at, so this guards on def.key for safety.
+local function broadcast_scrapper_spawn(unit, pos, rot, def)
+	if not (def and def.key == "shredder") then
+		return
+	end
+	if not (_G.CSR_MP and _G.CSR_MP.broadcast_prop and _G.CSR_MP.MSG) then
+		return
+	end
+	if not (alive(unit) and pos and rot) then
+		return
+	end
+	local payload = string.format(
+		"%s~%.2f~%.2f~%.2f~%.4f~%.4f~%.4f",
+		tostring(unit:key()),
+		pos.x,
+		pos.y,
+		pos.z,
+		rot:yaw(),
+		rot:pitch(),
+		rot:roll()
+	)
+	_G.CSR_MP.broadcast_prop(_G.CSR_MP.MSG.SCRAPPER_SPAWN, payload)
+end
+
 -- Shared spawn core. Caller supplies pos+rot+def. Returns the spawned unit or
 -- nil on failure. Used by both the crosshair-debug path and the auto-spawn
 -- flow at the bottom of this file.
@@ -123,6 +151,10 @@ local function spawn_at(pos, rot, def)
 	end)
 
 	table.insert(_G.CSR_DebugSpawnedUnits, unit)
+
+	-- MP: mirror to clients (host-only; self-gated inside broadcast_scrapper_spawn).
+	broadcast_scrapper_spawn(unit, pos, rot, def)
+
 	return unit
 end
 
@@ -244,6 +276,8 @@ end
 -- the auto-spawn latch so the next heist rolls a fresh count.
 Hooks:Add("BaseNetworkSessionOnLoadComplete", "CSR_ScrapperSpawner_SessionReset", function()
 	_G.CSR_DebugSpawnedUnits = {}
+	-- Drop the client-side spawn dedup set so next heist's mirrored scrappers spawn.
+	_G.CSR_SeenScrapperSpawns = {}
 	_G.CSR_AutoScrapperSpawned = false
 end)
 
@@ -364,6 +398,56 @@ local PROX_RANGE_SQ = PROX_RANGE * PROX_RANGE
 -- (our prox hook, vanilla's selected/unselect, Clientsided Uppers wrappers,
 -- etc.). Mirrors the pattern in copier_spawner.lua.
 _G.CSR_ScrapperProxState = _G.CSR_ScrapperProxState or setmetatable({}, { __mode = "k" })
+
+-- === M3: client-side mirror of host-spawned scrappers ===
+-- The host broadcasts each shredder spawn (broadcast_scrapper_spawn); a client
+-- spawns its own local copy and registers it in CSR_DebugSpawnedUnits, so the
+-- existing interaction (_is_csr_owned scans that list) lights up and the scrapper
+-- menu operates on this peer's own (guest-session) inventory.
+_G.CSR_SeenScrapperSpawns = _G.CSR_SeenScrapperSpawns or {}
+
+local function on_scrapper_spawn(payload)
+	-- Mirror only on a real client; SP/host spawn natively and never receive this.
+	if not (_G.CSR_MP and _G.CSR_MP.is_client and _G.CSR_MP.is_client()) then
+		return
+	end
+	local def = DEBUG_PROPS[1] -- shredder is the first (and only spawn_at) entry
+	if not def then
+		return
+	end
+	local key, x, y, z, yaw, pitch, roll =
+		string.match(tostring(payload), "^([^~]+)~([^~]+)~([^~]+)~([^~]+)~([^~]+)~([^~]+)~([^~]+)$")
+	if not key then
+		log("[CSR DebugProp] on_scrapper_spawn: parse fail '" .. tostring(payload) .. "'")
+		return
+	end
+	if _G.CSR_SeenScrapperSpawns[key] then
+		return
+	end
+	if not (DB and DB.has and DB:has(UNIT_EXT, def.unit_idstring)) then
+		log("[CSR DebugProp] on_scrapper_spawn: shredder unit not in DB, skipping")
+		return
+	end
+
+	_G.CSR_SeenScrapperSpawns[key] = true
+	local pos = Vector3(tonumber(x), tonumber(y), tonumber(z))
+	local rot = Rotation(tonumber(yaw), tonumber(pitch), tonumber(roll))
+
+	-- Native-AV guard before the direct spawn. The host's own scrapper path trusts
+	-- DB:has and spawns directly (is_ready lies for this supermod.xml-mounted unit),
+	-- so we mirror that and add PackageManager:has as the only catchable safety net.
+	if PackageManager and PackageManager.has and not PackageManager:has(UNIT_EXT, def.unit_idstring) then
+		log("[CSR DebugProp] on_scrapper_spawn: package not mounted, skipping (native-AV guard)")
+		return
+	end
+	spawn_at(pos, rot, def)
+end
+
+if _G.CSR_MP and _G.CSR_MP.register_handler and _G.CSR_MP.MSG then
+	_G.CSR_MP.register_handler(_G.CSR_MP.MSG.SCRAPPER_SPAWN, function(sender, data)
+		on_scrapper_spawn(data)
+	end)
+end
 
 Hooks:Add("GameSetupUpdate", "CSR_ScrapperProximityContour", function(t, dt)
 	local list = _G.CSR_DebugSpawnedUnits

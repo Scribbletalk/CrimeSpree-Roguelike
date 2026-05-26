@@ -124,16 +124,17 @@ _G.CSR.register_item({
 			end)
 
 			-- A peer's broadcast chip-kill: play it locally at the sent position.
-			Hooks:Add("NetworkReceivedData", "CSR_BonnieChip_NetKill", function(sender, id, data)
-				if id ~= BONNIE_CHIP_RPC then
-					return
-				end
-				local x, y, z = tostring(data):match("([^,]+),([^,]+),([^,]+)")
-				x, y, z = tonumber(x), tonumber(y), tonumber(z)
-				if x and y and z then
-					bonnie_play_chip_at(Vector3(x, y, z))
-				end
-			end)
+			-- Routed through the shared MP router (mp_sync.lua); it dispatches by id,
+			-- so the handler no longer filters. nil-guard for load-order safety.
+			if _G.CSR_MP and _G.CSR_MP.register_handler then
+				_G.CSR_MP.register_handler(BONNIE_CHIP_RPC, function(sender, data)
+					local x, y, z = tostring(data):match("([^,]+),([^,]+),([^,]+)")
+					x, y, z = tonumber(x), tonumber(y), tonumber(z)
+					if x and y and z then
+						bonnie_play_chip_at(Vector3(x, y, z))
+					end
+				end)
+			end
 		end,
 	},
 })

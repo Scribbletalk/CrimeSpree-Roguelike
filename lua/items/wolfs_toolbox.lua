@@ -181,15 +181,15 @@ _G.CSR.register_item({
 			end)
 
 			-- Host applies a client's kill reduction to its authoritative timers.
-			Hooks:Add("NetworkReceivedData", "CSR_WolfsToolbox_NetKill", function(sender, id, data)
-				if id ~= WOLF_KILL_RPC then
-					return
-				end
-				if not Network:is_server() then
-					return
-				end
-				apply_drill_reduction(tonumber(data) or 0)
-			end)
+			-- Routed through the shared MP router (mp_sync.lua); it dispatches by id.
+			if _G.CSR_MP and _G.CSR_MP.register_handler then
+				_G.CSR_MP.register_handler(WOLF_KILL_RPC, function(sender, data)
+					if not Network:is_server() then
+						return
+					end
+					apply_drill_reduction(tonumber(data) or 0)
+				end)
+			end
 		end,
 
 		["lib/units/props/timergui"] = function()

@@ -33,6 +33,19 @@ local GRID_ITEMS_PER_ROW = 10
 local GRID_MARGIN_X = 0
 local GRID_MARGIN_Y = 0
 
+-- Items-tab vertical layout. The content box keeps its original size and centered
+-- position; these only move the *contents* (tab bar + grid) higher INSIDE the box.
+-- Tightened from the old defaults (tab bar 60 / items panel 100 / grid inset 30 /
+-- nav 44) so the reclaimed ~88px lets a fourth 90px row fit within the same box,
+-- without shrinking the icons. The catalogue shows GRID_ROWS_PER_PAGE rows.
+local GRID_ROWS_PER_PAGE = 4
+local TAB_BAR_TOP = 24 -- tab bar y inside the content box (was 60)
+local TAB_BAR_HEIGHT = 30
+local ITEMS_PANEL_TOP = 66 -- items-tab panel y inside the content box (was 100)
+local ITEMS_PANEL_BOTTOM_PAD = 12 -- gap below the items panel inside the box (was 20)
+local GRID_INNER_TOP = 16 -- grid y inside the items panel (was 30)
+local GRID_NAV_RESERVE = 40 -- page-nav row budget at the items-panel bottom (was 44)
+
 -- Logbook-only per-icon scale overrides. Takes precedence over _G.CSR_IconScale
 -- so the items tab / wildcard slot can keep their own sizing.
 local LOGBOOK_ICON_SCALE = {
@@ -354,8 +367,8 @@ function CrimeSpreeLogbookMenuComponent:_create_tabs()
 	local margin_left = math.floor((panel_w - grid_total_w) / 2)
 	local margin_right = margin_left
 	local tab_spacing = 10
-	local tab_height = 30
-	local start_y = 60
+	local tab_height = TAB_BAR_HEIGHT
+	local start_y = TAB_BAR_TOP
 
 	-- Compute tab width so tabs fill the full panel width evenly
 	local available_width = panel_w - margin_left - margin_right - (tab_spacing * (#tabs - 1))
@@ -415,10 +428,10 @@ function CrimeSpreeLogbookMenuComponent:_create_tabs()
 end
 
 function CrimeSpreeLogbookMenuComponent:_create_tab_panels()
-	local panel_w = self._content_panel:w() - 40
-	local panel_h = self._content_panel:h() - 120
 	local panel_x = 20
-	local panel_y = 100 -- Sits below the tab bar (was 90)
+	local panel_y = ITEMS_PANEL_TOP -- sits just below the tab bar / divider
+	local panel_w = self._content_panel:w() - 40
+	local panel_h = self._content_panel:h() - panel_y - ITEMS_PANEL_BOTTOM_PAD
 
 	-- Items tab panel
 	self._tab_panels["items"] = self._content_panel:panel({
@@ -538,16 +551,16 @@ function CrimeSpreeLogbookMenuComponent:_build_items_list()
 	return list
 end
 
--- Full grid rows that fit the items panel height (reserving room for the
--- page-nav row). The grid is ALWAYS drawn at this many rows regardless of how
--- many items occupy it, so an empty / partially-filled page still shows the full
--- grid frame.
+-- Rows shown per page: capped at GRID_ROWS_PER_PAGE (the box is sized for exactly
+-- that many) but allowed to drop below it on a short workspace that can't fit them.
+-- The cap stops a tall workspace from sprouting sparse 5th+ rows of empty cells.
+-- The grid is ALWAYS drawn at this many rows regardless of fill, so a partially
+-- filled page still shows the full grid frame.
 function CrimeSpreeLogbookMenuComponent:_grid_rows_per_page()
 	local panel = self._tab_panels and self._tab_panels["items"]
 	local h = (panel and alive(panel) and panel:h()) or 480
-	local start_y = 30
-	local nav_h = 44
-	return math.max(1, math.floor((h - start_y - nav_h) / (GRID_FRAME_SIZE + GRID_PADDING_Y)))
+	local fit = math.max(1, math.floor((h - GRID_INNER_TOP - GRID_NAV_RESERVE) / (GRID_FRAME_SIZE + GRID_PADDING_Y)))
+	return math.min(GRID_ROWS_PER_PAGE, fit)
 end
 
 -- Item cells per page = full rows × per-row count.
@@ -824,7 +837,7 @@ function CrimeSpreeLogbookMenuComponent:_create_icons_grid()
 	local margin_x = GRID_MARGIN_X
 	local margin_y = GRID_MARGIN_Y
 	local ICON_SCALE = _G.CSR_IconScale or {}
-	local start_y = 30 -- Vertically aligned with the statistics tab
+	local start_y = GRID_INNER_TOP -- Vertically aligned with the statistics tab
 
 	-- Use the tab's own panel instead of the master content panel
 	local panel = self._items_panel_ref or self._content_panel

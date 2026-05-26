@@ -50,7 +50,7 @@ local function unselected_item_count()
 		return 0
 	end
 	local host_rank = managers.csr:host_rank() or 0
-	local owned = managers.csr:total_item_count(managers.csr:local_peer_id()) or 0
+	local owned = managers.csr:rank_item_count(managers.csr:local_peer_id()) or 0
 	return math.max(0, host_rank - owned)
 end
 
@@ -257,7 +257,12 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_REMINDER_INPUT_HOOKED then
 	local orig_mouse_moved = MissionBriefingGui.mouse_moved
 	if orig_mouse_moved then
 		function MissionBriefingGui:mouse_moved(x, y)
-			if _G._csr_item_selection then
+			-- Modal selection window open OR briefing disabled (a sub-screen --
+			-- preplanning / loadout / skill tree -- sits on top; vanilla gates
+			-- its own input on self._enabled): clear the reminder hover and don't
+			-- hit-test. Vanilla returns nil when not self._enabled, so yielding
+			-- here matches its contract.
+			if _G._csr_item_selection or not self._enabled then
 				if self._csr_reminder_set_hover then
 					self:_csr_reminder_set_hover(false)
 				end
@@ -277,7 +282,12 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_REMINDER_INPUT_HOOKED then
 	local orig_mouse_pressed = MissionBriefingGui.mouse_pressed
 	if orig_mouse_pressed then
 		function MissionBriefingGui:mouse_pressed(button, x, y)
-			if _G._csr_item_selection then
+			-- Modal open OR briefing disabled (preplanning / loadout / skill tree
+			-- on top -- vanilla gates input on self._enabled): don't consume,
+			-- don't run the reminder hit-test. Yielding nil lets the modal's live
+			-- component pick up the click; when merely disabled vanilla bails to
+			-- nil here anyway.
+			if _G._csr_item_selection or not self._enabled then
 				return
 			end
 			if self._csr_reminder_hit_test and self:_csr_reminder_hit_test(x, y) then

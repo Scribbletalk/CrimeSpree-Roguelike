@@ -23,7 +23,7 @@
 --
 -- Trigger: lobby "unselected items" reminder click (missions_menu.lua
 -- `_on_unselected_items_clicked`). The reminder is rank-vs-owned-gated
--- (visible only when host_rank > total_item_count), so it enforces "one pick
+-- (visible only when host_rank > rank_item_count), so it enforces "one pick
 -- per rank earned" -- and the click passes the gap as the pick quota
 -- (CSR_OpenItemSelection(num_to_select)), which the component then chews
 -- through one pick at a time via _advance_pick before closing.
@@ -684,8 +684,8 @@ end
 --
 -- Pick-cap gate: handled OUTSIDE this function via the lobby reminder. The
 -- reminder is the production trigger and is rank-vs-owned-gated (only visible
--- while host_rank > total_item_count), so add_item is naturally bounded to the
--- "one pick per rank earned" budget on that path. The debug keybind bypasses
+-- while host_rank > rank_item_count, which excludes shop purchases), so add_item
+-- is naturally bounded to the "one pick per rank earned" budget on that path. The debug keybind bypasses
 -- the gate -- intentional, dev-only escape hatch. Selection-pool weighting
 -- (60/24/4/12 per rarity) is still parked separately.
 function CSRItemSelectionComponent:_on_finalize_item()
@@ -722,6 +722,12 @@ function CSRItemSelectionComponent:_on_finalize_item()
 				.. "type="
 				.. tostring(item_type)
 		)
+	end
+
+	-- MP (M2b): announce the updated inventory so every peer's items panel reflects
+	-- the pick. broadcast_own_items self-gates on is_multiplayer (no-op in SP).
+	if _G.CSR_MP and _G.CSR_MP.broadcast_own_items then
+		_G.CSR_MP.broadcast_own_items()
 	end
 
 	managers.menu_component:post_event("item_buy")
@@ -1045,6 +1051,18 @@ local function csr_hide_lobby_chrome()
 		hidden.node_gui = node_gui
 	end
 
+	-- MP lobby-code widget draws on layer 100 -- ABOVE the modal's dark/blur
+	-- backdrop -- so it stays visible over the popup unless hidden too (user report
+	-- 2026-05-25). Nil in SP (no lobby code) -> skipped.
+	local code_gui = mcm and mcm._lobby_code_gui
+	if code_gui and code_gui.panel then
+		local cp = code_gui:panel()
+		if cp and alive(cp) and cp:visible() then
+			cp:set_visible(false)
+			hidden.lobby_code = code_gui
+		end
+	end
+
 	_G._csr_item_selection_hidden = hidden
 end
 
@@ -1067,6 +1085,13 @@ local function csr_restore_lobby_chrome()
 
 	if hidden.node_gui and hidden.node_gui.set_visible then
 		hidden.node_gui:set_visible(true)
+	end
+
+	if hidden.lobby_code and hidden.lobby_code.panel then
+		local cp = hidden.lobby_code:panel()
+		if cp and alive(cp) then
+			cp:set_visible(true)
+		end
 	end
 end
 
@@ -1177,6 +1202,24 @@ function _G.CSR_OpenItemSelection(num_to_select)
 	_G._csr_item_selection = comp
 	csr_hide_lobby_chrome()
 	log("[CSR] item selection window opened")
+end
+
+-- While the item-selection modal is open, report it as the active "crime spree
+-- modifiers" component so vanilla surfaces gating on it behave as during vanilla
+-- modifier selection. The sole reader is CrimeSpreeContractBoxGui:can_take_input()
+-- (crimespreecontractboxgui.lua:154) -> it then ignores the peer-panel click that
+-- opens a player's profile / FBI-files overlay through the modal (user report
+-- 2026-05-25). crime_spree_modifiers() is a pure boolean gate (verified: that
+-- can_take_input is its only reader), so returning our component is safe. PostHook
+-- return-override per mods/base/req/core/Hooks.lua; a nil return leaves vanilla's
+-- value intact, so this is inert whenever our modal is closed.
+if MenuComponentManager and not _G._CSR_ITEMSEL_INPUT_GATE then
+	_G._CSR_ITEMSEL_INPUT_GATE = true
+	Hooks:PostHook(MenuComponentManager, "crime_spree_modifiers", "CSR_ItemSelInputGate", function(self)
+		if _G._csr_item_selection then
+			return _G._csr_item_selection
+		end
+	end)
 end
 
 log("[CSR] item_selection.lua loaded (forked selection window)")

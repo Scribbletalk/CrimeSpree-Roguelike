@@ -117,6 +117,7 @@ function CSRCrimeSpreeResultTabItem:_setup()
 	})
 
 	self:_create_level(0.75)
+	self:_create_token_convert()
 end
 
 -- CSR has no per-mission failure state yet (Slice B). Success is purely the
@@ -252,6 +253,154 @@ function CSRCrimeSpreeResultTabItem:_create_level(total_w)
 	-- This tab only owns the animated rank-GAIN number.
 end
 
+-- Stage-2 panel: animates the run's looted cash converting into Gage Tokens
+-- (project_csr_token_earning). Mirrors the pre-refactor cash->rank bar, but the
+-- right-side counter is the token gain (completion tokens shown first, then loot
+-- tokens added as the cash drains) with the shop's token glyph. Display-only:
+-- the wallet was already credited at mission end; this reads the values
+-- managers.csr stashed there (_last_heist_rewards). Built hidden (alpha 0) and
+-- revealed by _update_token_convert; skipped on failure / no data.
+function CSRCrimeSpreeResultTabItem:_create_token_convert()
+	if not self:success() then
+		return
+	end
+	local r = managers.csr and managers.csr._last_heist_rewards
+	if not r then
+		return
+	end
+	local completion = math.max(0, math.floor(r.completion_tokens or 0))
+	local loot = math.max(0, math.floor(r.loot_tokens or 0))
+	local per_token = r.per_token or 0
+	local remainder = math.max(0, r.remainder or 0)
+	if completion <= 0 and loot <= 0 then
+		return
+	end
+
+	local cs_panel = self._cs_panel
+	if not cs_panel or not alive(cs_panel) then
+		return
+	end
+
+	local panel_w = math.floor(cs_panel:w() * 0.6)
+	local panel = cs_panel:panel({
+		name = "csr_token_convert",
+		w = panel_w,
+		h = 90,
+		alpha = 0,
+		layer = 15,
+	})
+	-- Right-of-centre + upper area (user feedback 2026-05-26: the centred 0.30
+	-- placement was still too low and too far left). center_x 0.62 keeps the
+	-- 0.6-wide panel fully on-screen (right edge ~0.92w); y 0.16 sits it near the
+	-- top, clear of the reminder / status bar in the reserved bottom strip.
+	panel:set_center_x(cs_panel:w() * 0.62)
+	panel:set_y(math.floor(cs_panel:h() * 0.16))
+
+	-- Gold, to read as coins / match the Gage Token theme.
+	local token_color = Color(1, 1, 0.8, 0.2)
+	local small_font = tweak_data.menu.pd2_small_font
+	local small_size = tweak_data.menu.pd2_small_font_size
+	local med_font = tweak_data.menu.pd2_medium_font
+	local med_size = tweak_data.menu.pd2_medium_font_size
+
+	local title = panel:text({
+		name = "title",
+		text = managers.localization:to_upper_text("csr_token_convert_title"),
+		font = small_font,
+		font_size = small_size,
+		color = token_color,
+		align = "center",
+		vertical = "top",
+		blend_mode = "add",
+		layer = 1,
+		w = panel_w,
+		h = small_size,
+	})
+	title:set_top(0)
+
+	local money = panel:text({
+		name = "money",
+		text = "$" .. managers.experience:cash_string(0, ""),
+		font = med_font,
+		font_size = med_size,
+		color = Color.white,
+		align = "left",
+		vertical = "center",
+		blend_mode = "add",
+		layer = 1,
+		w = panel_w * 0.5,
+		h = med_size,
+	})
+	money:set_left(10)
+	money:set_top(title:bottom() + 4)
+
+	local icon = panel:bitmap({
+		name = "token_icon",
+		texture = "guis/textures/pd2/crime_spree/csr_gage_token",
+		w = med_size,
+		h = med_size,
+		layer = 1,
+	})
+	icon:set_right(panel_w - 10)
+	icon:set_top(money:top())
+
+	local count = panel:text({
+		name = "count",
+		text = "+0",
+		font = med_font,
+		font_size = med_size,
+		color = token_color,
+		align = "right",
+		vertical = "center",
+		blend_mode = "add",
+		layer = 1,
+		w = panel_w * 0.5 - med_size - 4,
+		h = med_size,
+	})
+	count:set_top(money:top())
+	count:set_right(icon:left() - 4)
+
+	local bar_w = math.min(400, panel_w - 20)
+	local bar_h = 16
+	local bar_x = math.floor((panel_w - bar_w) * 0.5)
+	local bar_y = money:bottom() + 8
+
+	panel:rect({
+		name = "bar_bg",
+		color = Color.black,
+		alpha = 0.4,
+		layer = 2,
+		w = bar_w,
+		h = bar_h,
+		x = bar_x,
+		y = bar_y,
+	})
+	local fg = panel:rect({
+		name = "bar_fg",
+		color = token_color,
+		layer = 3,
+		w = 0,
+		h = bar_h,
+		x = bar_x,
+		y = bar_y,
+	})
+
+	self._csr_token_convert = {
+		completion = completion,
+		loot = loot,
+		per_token = per_token,
+		remainder = remainder,
+		-- Exact (never negative) pool of cash converted on screen: the loot that
+		-- became tokens this call plus the remainder carried to the next heist.
+		pool_cash = loot * per_token + remainder,
+		panel = panel,
+		money = money,
+		count = count,
+		fg = fg,
+		bar_w = bar_w,
+	}
+end
+
 function CSRCrimeSpreeResultTabItem:set_stats(stats_data) end
 
 function CSRCrimeSpreeResultTabItem:feed_statistics(stats_data) end
@@ -262,6 +411,10 @@ CSRCrimeSpreeResultTabItem.stages = {
 	{
 		delay = 1,
 		func = "_update_gain_calculate",
+	},
+	{
+		delay = 0.3,
+		func = "_update_token_convert",
 	},
 }
 
@@ -388,6 +541,143 @@ function CSRCrimeSpreeResultTabItem:_update_gain_calculate(t, dt)
 	end
 
 	self:_advance_stage(t)
+end
+
+-- Stage 2: reveal the completion-token count, then drain the looted cash into the
+-- extra loot tokens (user design: completion first, loot added on top). Phases:
+-- fade_in -> completion_hold -> filling -> carry_reveal -> hold -> fade_out. The
+-- bar fills once per loot token (total fill time budgeted so a big haul stays
+-- snappy); the final partial fill is the remainder carried to the next heist.
+-- Sub-state rides self._csr_tc_state (cleared before _advance_stage). Reads only
+-- the stashed display values -- never touches the wallet.
+function CSRCrimeSpreeResultTabItem:_update_token_convert(t, dt)
+	local cc = self._csr_token_convert
+	if not cc then
+		self:_advance_stage()
+		return
+	end
+
+	local st = self._csr_tc_state
+	if not st then
+		st = {
+			phase = "fade_in",
+			elapsed = 0,
+			token_idx = 0,
+			fill_elapsed = 0,
+			fill_duration = 0.6,
+		}
+		self._csr_tc_state = st
+		cc.count:set_text("+" .. cc.completion)
+		cc.money:set_text("$" .. managers.experience:cash_string(math.floor(cc.pool_cash), ""))
+	end
+
+	st.elapsed = st.elapsed + dt
+
+	if st.phase == "fade_in" then
+		local p = math.min(st.elapsed / 0.5, 1)
+		cc.panel:set_alpha(p)
+		if p >= 1 then
+			st.phase = "completion_hold"
+			st.elapsed = 0
+		end
+		return
+	end
+
+	-- Hold so the player reads the completion-token count before loot adds on.
+	if st.phase == "completion_hold" then
+		if st.elapsed >= 1.2 then
+			if cc.loot > 0 then
+				st.phase = "filling"
+				st.elapsed = 0
+				st.token_idx = 1
+				st.fill_elapsed = 0
+				-- Budget total fill time so a big haul still resolves (<= ~4.5s) while
+				-- a small one is slow enough to read each token tick.
+				st.fill_duration = math.max(0.12, math.min(1.0, 4.5 / cc.loot))
+				if managers.menu_component then
+					managers.menu_component:post_event("count_1")
+				end
+			else
+				st.phase = "hold"
+				st.elapsed = 0
+			end
+		end
+		return
+	end
+
+	-- Fill the bar once per loot token; each token consumes per_token cash from the
+	-- displayed pool and bumps the counter by one.
+	if st.phase == "filling" then
+		st.fill_elapsed = st.fill_elapsed + dt
+		local p = math.min(st.fill_elapsed / st.fill_duration, 1)
+		cc.fg:set_w(math.floor(cc.bar_w * p))
+
+		local cash_before = cc.pool_cash - (st.token_idx - 1) * cc.per_token
+		local money_now = math.floor(math.lerp(cash_before, cash_before - cc.per_token, p))
+		cc.money:set_text("$" .. managers.experience:cash_string(math.max(0, money_now), ""))
+
+		if p >= 1 then
+			cc.count:set_text("+" .. (cc.completion + st.token_idx))
+			cc.money:set_text(
+				"$"
+					.. managers.experience:cash_string(
+						math.max(0, math.floor(cc.pool_cash - st.token_idx * cc.per_token)),
+						""
+					)
+			)
+
+			if st.token_idx < cc.loot then
+				st.token_idx = st.token_idx + 1
+				st.fill_elapsed = 0
+				cc.fg:set_w(0)
+			else
+				if managers.menu_component then
+					managers.menu_component:post_event("count_1_finished")
+				end
+				-- Show the carried remainder as a partial bar (progress toward the
+				-- next token, kept for the next heist).
+				if cc.remainder > 0 and cc.per_token > 0 then
+					st.phase = "carry_reveal"
+					st.elapsed = 0
+					cc.fg:set_w(0)
+				else
+					st.phase = "hold"
+					st.elapsed = 0
+				end
+			end
+		end
+		return
+	end
+
+	if st.phase == "carry_reveal" then
+		local p = math.min(st.elapsed / 0.6, 1)
+		local end_w = math.floor((cc.remainder / cc.per_token) * cc.bar_w)
+		cc.fg:set_w(math.floor(math.lerp(0, end_w, p)))
+		if p >= 1 then
+			cc.fg:set_w(end_w)
+			st.phase = "hold"
+			st.elapsed = 0
+		end
+		return
+	end
+
+	if st.phase == "hold" then
+		if st.elapsed >= 1.0 then
+			st.phase = "fade_out"
+			st.elapsed = 0
+		end
+		return
+	end
+
+	if st.phase == "fade_out" then
+		local p = math.min(st.elapsed / 0.5, 1)
+		cc.panel:set_alpha(1 - p)
+		if p >= 1 then
+			self._csr_tc_state = nil
+			self:_advance_stage()
+		end
+		return
+	end
 end
 
 -- =====================================================================

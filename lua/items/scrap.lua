@@ -26,7 +26,7 @@ for _, s in ipairs(SCRAP_TIERS) do
 		name = "csr_logbook_" .. s.type .. "_name",
 		desc = "csr_item_" .. s.type .. "_desc",
 		icon = "csr_scrap",
-		icon_scale = 1.0,
+		icon_scale = 0.95,
 		is_scrap = true,
 	})
 end

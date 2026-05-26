@@ -92,7 +92,28 @@ function CSR_Shop.credit(peer_id, amount)
 		return
 	end
 	peer_id = peer_id or CSR_Shop.local_peer_id()
-	CSR_Shop.set_tokens(peer_id, CSR_Shop.tokens(peer_id) + amount)
+	-- Bump the gross-earned accumulator (run-scoped, monotonic): credit() is the
+	-- single choke point both earn paths (completion + loot) funnel through. Never
+	-- reduced -- debit() and the reroll refund use set_tokens directly -- so it
+	-- tracks total tokens EARNED this run. That gross figure is what a host pushes
+	-- to seed a late-joining guest's wallet (project_csr_late_join_grant_model).
+	local m = mgr()
+	if m and m.peer_entry then
+		local entry = m:peer_entry(peer_id)
+		entry.tokens_earned = (entry.tokens_earned or 0) + amount
+	end
+	CSR_Shop.set_tokens(peer_id, CSR_Shop.tokens(peer_id) + amount) -- set_tokens saves
+end
+
+-- Gross tokens EARNED this run (monotonic; never reduced by spend/refund). The
+-- host-state push (mp_session.lua) carries this so a late-joining guest's wallet
+-- can be seeded to it exactly (project_csr_late_join_grant_model).
+function CSR_Shop.gross_earned(peer_id)
+	local m = mgr()
+	if not m or not m.peer_entry then
+		return 0
+	end
+	return m:peer_entry(peer_id or CSR_Shop.local_peer_id()).tokens_earned or 0
 end
 
 function CSR_Shop.debit(peer_id, amount)
@@ -276,9 +297,18 @@ function CSR_Shop.buy(peer_id, slot_index)
 	if CSR_Shop.tokens(peer_id) < price then
 		return false, "cant_afford"
 	end
+	-- Tally this as a SHOP purchase BEFORE add_item, so add_item's on_item_added
+	-- callback (the lobby/briefing reminder) reads a consistent rank-item count:
+	-- a purchase adds an item but does NOT consume a rank pick (the manager's
+	-- rank_item_count = total minus shop_item_count). Stored on the same per-peer
+	-- entry as the wallet/lineup; rolled back if the (registry-validated) add
+	-- somehow fails so a bad type never inflates the count.
+	local entry = m:peer_entry(peer_id)
+	entry.shop_item_count = (entry.shop_item_count or 0) + 1
 	-- add_item validates the type against the registry and persists; only charge
 	-- once it sticks, so a bad type never costs tokens.
 	if not m:add_item(peer_id, slot.type) then
+		entry.shop_item_count = entry.shop_item_count - 1
 		return false, "add_failed"
 	end
 	CSR_Shop.debit(peer_id, price)
@@ -318,7 +348,9 @@ function CSR_Shop.reroll(peer_id)
 	end
 	local prev = CSR_Shop.get_reroll_count(peer_id)
 	if not CSR_Shop.roll_lineup(peer_id) then
-		CSR_Shop.credit(peer_id, cost) -- refund on roll failure
+		-- Refund on roll failure -- set_tokens (NOT credit) so the refund does not
+		-- inflate the gross-earned accumulator (a refund is not an earn).
+		CSR_Shop.set_tokens(peer_id, CSR_Shop.tokens(peer_id) + cost)
 		return false
 	end
 	-- roll_lineup reset reroll_count to 0; restore + increment so the next reroll

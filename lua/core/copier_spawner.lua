@@ -478,10 +478,43 @@ local function use_copier(c)
 		mgr:add_item(pid, c.offer_type)
 		log("[CSR Copier] Exchange: " .. tostring(sacrifice.type) .. " -> " .. tostring(c.offer_type))
 
+		-- MP: our counts changed (sacrifice removed, offer added) -- tell the other
+		-- peers so their items panel converges. Self-gates on multiplayer (SP no-op).
+		if _G.CSR_MP and _G.CSR_MP.broadcast_own_items then
+			_G.CSR_MP.broadcast_own_items()
+		end
+
 		if managers.chat then
 			managers.chat:_receive_message(1, tostring(c.offer_name or c.offer_type), "printed!", color)
 		end
 	end)
+end
+
+-- Host -> all: mirror a just-spawned copier so every client spawns a local copy
+-- showing the SAME offer. The host unit key doubles as a dedup token (real-time
+-- broadcast vs late-join replay); pos/rot are serialised in full (the placement
+-- rotation is Rotation(-normal_flat, math.UP), not just a yaw) and round-trip
+-- exactly through Rotation(yaw, pitch, roll). Self-gates to host-in-MP inside
+-- CSR_MP.broadcast_prop, so the client's own _spawn_copier never re-broadcasts.
+local function broadcast_copier_spawn(unit, pos, rot, offer_type)
+	if not (_G.CSR_MP and _G.CSR_MP.broadcast_prop and _G.CSR_MP.MSG) then
+		return
+	end
+	if not (alive(unit) and pos and rot) then
+		return
+	end
+	local payload = string.format(
+		"%s~%.2f~%.2f~%.2f~%.4f~%.4f~%.4f~%s",
+		tostring(unit:key()),
+		pos.x,
+		pos.y,
+		pos.z,
+		rot:yaw(),
+		rot:pitch(),
+		rot:roll(),
+		tostring(offer_type or "")
+	)
+	_G.CSR_MP.broadcast_prop(_G.CSR_MP.MSG.COPIER_SPAWN, payload)
 end
 
 -- Shared spawn core. Caller supplies position + rotation + offer_def. Returns
@@ -553,6 +586,10 @@ local function _spawn_copier(pos, rot, offer_def)
 		end
 		copier_entry.billboard_ws = create_billboard(unit, offer_icon, tier)
 	end)
+
+	-- MP: mirror to clients (host-only; self-gated, so a client's own spawn from
+	-- a received CSR_CopierSpawn does not echo back out).
+	broadcast_copier_spawn(unit, pos, rot, offer_def and offer_def.type)
 
 	return copier_entry
 end
@@ -1481,6 +1518,8 @@ Hooks:Add("BaseNetworkSessionOnLoadComplete", "CSR_CopierSpawner_SessionReset", 
 		destroy_billboard(c.billboard_ws)
 	end
 	_G.CSR_Copiers = {}
+	-- Drop the client-side spawn dedup set so next heist's mirrored copiers spawn.
+	_G.CSR_SeenCopierSpawns = {}
 	-- Re-arm the auto-spawner; GameSetupUpdate re-latches once nav data is ready
 	-- and the CSR-heist gate opens.
 	_G.CSR_AutoCopierSpawned = false
@@ -1563,5 +1602,86 @@ end)
 -- any future tweak to placement rules (rejection radii, fallback behavior,
 -- player-reachability gating) is applied uniformly to printers AND scrappers.
 _G.CSR_PickCoverSpawns = pick_cover_spawns
+
+-- === M3: client-side mirror of host-spawned copiers ===
+-- The host broadcasts each spawn (broadcast_copier_spawn); a client spawns its
+-- own local copy from the synced pos/rot/offer and registers it in CSR_Copiers,
+-- so the existing interaction (_is_csr_owned -> CSR_FindCopierByUnit) lights up
+-- and the exchange runs against this peer's own (guest-session) inventory.
+
+-- Resolve a registry def by its item type (for the synced offer). Cheap: one
+-- scan per mirrored spawn (a handful per heist), not a hot path.
+local function find_def_by_type(item_type)
+	local mgr = managers.csr
+	if not (item_type and item_type ~= "" and mgr and mgr.registered_items) then
+		return nil
+	end
+	for _, def in ipairs(mgr:registered_items()) do
+		if def.type == item_type then
+			return def
+		end
+	end
+	return nil
+end
+
+-- Client dedup: the real-time broadcast and the late-join replay can both carry
+-- the same spawn; key on the host unit key so each copier spawns exactly once.
+_G.CSR_SeenCopierSpawns = _G.CSR_SeenCopierSpawns or {}
+
+local function on_copier_spawn(payload)
+	-- Mirror only on a real client; SP/host spawn natively and never receive this.
+	if not (_G.CSR_MP and _G.CSR_MP.is_client and _G.CSR_MP.is_client()) then
+		return
+	end
+	local key, x, y, z, yaw, pitch, roll, offer_type =
+		string.match(tostring(payload), "^([^~]+)~([^~]+)~([^~]+)~([^~]+)~([^~]+)~([^~]+)~([^~]+)~([^~]*)$")
+	if not key then
+		log("[CSR Copier] on_copier_spawn: parse fail '" .. tostring(payload) .. "'")
+		return
+	end
+	if _G.CSR_SeenCopierSpawns[key] then
+		return
+	end
+	-- Asset must be registered (a mismatched client install can lack it).
+	if not (DB and DB.has and DB:has(UNIT_EXT, UNIT_NAME)) then
+		log("[CSR Copier] on_copier_spawn: copier unit not in DB, skipping")
+		return
+	end
+
+	_G.CSR_SeenCopierSpawns[key] = true
+	local pos = Vector3(tonumber(x), tonumber(y), tonumber(z))
+	local rot = Rotation(tonumber(yaw), tonumber(pitch), tonumber(roll))
+	local offer_def = find_def_by_type(offer_type)
+
+	local function do_spawn()
+		-- Native-AV guard: spawning a unit whose package isn't mounted AVs in C++
+		-- (pcall can't catch it). supermod.xml mounts ours on every client, but a
+		-- partial/mismatched install might not -- PackageManager:has + skip is the
+		-- only safe net. Client-path only; the host keeps its proven is_ready gate.
+		if PackageManager and PackageManager.has and not PackageManager:has(UNIT_EXT, UNIT_NAME) then
+			log("[CSR Copier] on_copier_spawn: package not mounted, skipping (native-AV guard)")
+			return
+		end
+		_spawn_copier(pos, rot, offer_def)
+	end
+
+	-- Same load gate the host's auto-spawn uses: spawn now if the dyn resource is
+	-- ready, else lazy-load then spawn in the callback.
+	if is_ready() then
+		do_spawn()
+	elseif managers.dyn_resource then
+		managers.dyn_resource:load(UNIT_EXT, UNIT_NAME, PKG_NAME, function(status)
+			if status then
+				do_spawn()
+			end
+		end)
+	end
+end
+
+if _G.CSR_MP and _G.CSR_MP.register_handler and _G.CSR_MP.MSG then
+	_G.CSR_MP.register_handler(_G.CSR_MP.MSG.COPIER_SPAWN, function(sender, data)
+		on_copier_spawn(data)
+	end)
+end
 
 log("[CSR Copier] copier_spawner.lua loaded — F7 spawn, interact key to use")

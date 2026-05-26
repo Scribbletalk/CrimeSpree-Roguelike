@@ -282,6 +282,13 @@ local function on_pick(group)
 		end)
 	end
 
+	-- MP: our counts changed (real item removed, scrap added) -- tell the other
+	-- peers so their items panel converges. Self-gates on multiplayer (SP no-op).
+	-- Mirrors the copier exchange (copier_spawner.lua use_copier).
+	if removed > 0 and _G.CSR_MP and _G.CSR_MP.broadcast_own_items then
+		_G.CSR_MP.broadcast_own_items()
+	end
+
 	play_scrapper_anim()
 	close_menu(POST_CLICK_INPUT_GRACE)
 end

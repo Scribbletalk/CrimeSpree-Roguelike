@@ -82,12 +82,28 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 		-- the lobby card (short = 1, medium = 2, long = 3; see rank_for_mission).
 		-- Read the played mission id BEFORE generate_mission_set clears
 		-- current_mission below.
+		-- A guest playing in a host's lobby PAUSES its own run: rank, mission count,
+		-- loot->rank and the mission set must NOT advance. The heist reward is banked
+		-- into bucket B (valued at the HOST difficulty) and paid at the guest's own End
+		-- Spree as A + B (project_csr_mp_reward_model). Host/SP advance as before.
+		local guesting = managers.csr.is_guesting and managers.csr:is_guesting()
+		-- Rank value of this heist (length-based clock category). Host/SP reads the
+		-- picked mission (current_mission is still set here -- generate_mission_set
+		-- clears it below); a guest didn't pick it, so resolve from the loaded level.
 		local played_id = managers.csr:current_mission()
-		local gain = managers.csr:rank_for_mission(played_id)
-		managers.csr:progress_rank(gain)
-		-- Track completed-heist count for the run independently of rank (the
-		-- lobby header shows it next to RANK; the two are distinct concepts).
-		managers.csr:record_mission_completed()
+		local gain
+		if guesting then
+			gain = managers.csr:rank_for_current_level()
+		else
+			gain = managers.csr:rank_for_mission(played_id)
+		end
+		if guesting then
+			managers.csr:accrue_mp_earnings(gain)
+		else
+			managers.csr:progress_rank(gain)
+			-- Completed-heist counter, independent of rank (lobby header shows both).
+			managers.csr:record_mission_completed()
+		end
 
 		-- Looted cash this heist = full secured value (bags + small loot). It drives
 		-- TWO independent rewards, both measured against the run's per-rank payout
@@ -113,11 +129,47 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 			completion_tokens = CSR_Shop.award_completion_tokens(pid, gain)
 			loot_tokens = CSR_Shop.accrue_loot_tokens(pid, loot_cash)
 		end
-		local loot_ranks = managers.csr:accrue_loot_rank(loot_cash)
+		-- Looted cash -> ranks. Host/SP advances its OWN run (accrue_loot_rank); a
+		-- guest banks the equivalent into bucket B at host difficulty
+		-- (accrue_guest_loot_rank) -- the "MP rewards per rank" the guest cashes out
+		-- at its own End Spree, while the host gets the literal ranks.
+		local loot_ranks
+		if guesting then
+			loot_ranks = managers.csr:accrue_guest_loot_rank(loot_cash)
+		else
+			loot_ranks = managers.csr:accrue_loot_rank(loot_cash)
+		end
 
-		-- Mirror vanilla on_mission_completed: clear the played mission and roll
-		-- a fresh set so the lobby shows new cards on return.
-		managers.csr:generate_mission_set()
+		-- Stash this heist's token gain for the end-screen conversion animation
+		-- (stage_endscreen.lua). Display-only; the wallet is already credited above.
+		-- Runtime field, not serialized (not in _meta/_state). per_token mirrors
+		-- CSR_Shop.accrue_loot_tokens' threshold; remainder is the loot cash carried
+		-- toward the next token.
+		local per_token = managers.csr:reward_per_rank_cash() / ((_G.CSR_Shop and CSR_Shop.TOKENS_PER_RANK) or 5)
+		local reward_entry = managers.csr:peer_entry(pid)
+		managers.csr._last_heist_rewards = {
+			completion_tokens = completion_tokens,
+			loot_tokens = loot_tokens,
+			loot_cash = loot_cash,
+			per_token = per_token,
+			remainder = (reward_entry and reward_entry.loot_token_cash) or 0,
+		}
+
+		-- Restock the shop: completing a heist is the shop's refresh boundary, the
+		-- same way generate_mission_set (below) rolls fresh mission cards. Per-peer +
+		-- local like the token earn above; roll_lineup also resets the reroll cost.
+		-- The lock-on-first-open pattern still holds WITHIN a heist -- this call is the
+		-- period advance, not a mid-period reshuffle (feedback_lock_offers_on_first_open).
+		if _G.CSR_Shop and CSR_Shop.roll_lineup then
+			CSR_Shop.roll_lineup(pid)
+		end
+
+		-- Mirror vanilla on_mission_completed: clear the played mission and roll a
+		-- fresh set so the lobby shows new cards on return. Own-run state -> host/SP
+		-- only; a guest's lobby is driven by the host, not rolled here.
+		if not guesting then
+			managers.csr:generate_mission_set()
+		end
 		log_csr(
 			"mission completed: +"
 				.. tostring(gain)

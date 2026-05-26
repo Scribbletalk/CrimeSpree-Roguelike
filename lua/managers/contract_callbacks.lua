@@ -82,6 +82,13 @@ function MenuCallbackHandler:return_to_csr_lobby_visible()
 		return false
 	end
 
+	-- Hidden for a connected CLIENT (guest): a guest doesn't drive return-to-lobby
+	-- (it leaves via the host's flow), mirroring the lobby action buttons hidden for
+	-- clients in missions_menu.lua:_refresh_action_buttons.
+	if Network and Network.is_client and Network:is_client() then
+		return false
+	end
+
 	local state = game_state_machine:current_state_name()
 
 	-- Endscreen states: clear post-heist signal. Always show.
@@ -327,17 +334,36 @@ function MenuCallbackHandler:_dialog_end_csr_yes()
 	-- Rewards: compute BEFORE end_run and stash on managers.csr; the vanilla
 	-- crime_spree_claim_rewards screen (driven by end_spree_rewards.lua) then
 	-- displays + grants them via the standard CS reward animation. The award is
-	-- player-local, so each player who ends the spree gets their own payout. A
-	-- rank-0 run earned nothing -> skip the screen and just end/leave.
+	-- player-local, so each player who ends the spree gets their own payout. A run that
+	-- earned nothing (own rank 0 AND no banked guest earnings) skips the screen.
 	-- _dialog_leave_lobby_yes is the verified vanilla leave-lobby path
 	-- (menumanager.lua:3574 -> managers.menu:on_leave_lobby; its
 	-- crime_spree:disable_crime_spree_gamemode is a harmless no-op for CSR).
 	local mgr = managers.csr
-	local rank = (mgr and mgr.host_rank and mgr:host_rank()) or 0
-	local show_rewards = rank > 0
+	-- Pay bucket A (own run: own rank + own difficulty) PLUS bucket B (guest earnings
+	-- banked while playing in hosts' lobbies, at host difficulty -- accrue_mp_earnings).
+	-- Show the rewards screen when EITHER is non-empty, so a pure-client whose own rank
+	-- is 0 but who banked B still cashes out (project_csr_mp_reward_model). Uses OWN
+	-- rank() for bucket A, NOT host_rank() (a guest's own-run payout is its own progress).
+	local own_rank = (mgr and mgr.rank and mgr:rank()) or 0
+	local has_b = mgr and mgr.has_mp_earnings and mgr:has_mp_earnings()
+	local show_rewards = own_rank > 0 or has_b
 
 	if show_rewards and mgr.projected_rewards then
-		mgr._pending_end_rewards = mgr:projected_rewards()
+		local a = mgr:projected_rewards()
+		local b = (mgr.mp_earnings and mgr:mp_earnings()) or {}
+		mgr._pending_end_rewards = {
+			cash = (a.cash or 0) + (b.cash or 0),
+			experience = (a.experience or 0) + (b.experience or 0),
+			continental_coins = (a.continental_coins or 0) + (b.continental_coins or 0),
+			loot_drop = (a.loot_drop or 0) + (b.loot_drop or 0),
+		}
+	end
+
+	-- Bucket B is now captured in the pending table (or was empty); zero it so a later
+	-- End Spree can't pay the same banked earnings twice. No-op when already empty.
+	if mgr.reset_mp_earnings then
+		mgr:reset_mp_earnings()
 	end
 
 	mgr:end_run()

@@ -21,6 +21,12 @@ local SAVE_FILE = "csr_save.json"
 local LEGACY_SETTINGS_FILE = "crime_spree_roguelike.json"
 local LEGACY_MP_SESSIONS_FILE = "csr_mp_sessions.json"
 
+-- Guest session-store TTL: a per-host guest inventory is pruned this many days
+-- after it was last touched. Items-only expiry per the locked MP reward model
+-- (~7 days); the cash earnings bucket B lives in _meta with NO expiry. os.time()
+-- is available in the PD2 Lua sandbox (used throughout the pre-refactor tree).
+local MP_SESSION_TTL_DAYS = 7
+
 local function log_csr(msg)
 	log("[CSR] " .. tostring(msg))
 end
@@ -31,6 +37,19 @@ local function default_meta()
 		stats = {},
 		unlocks = {},
 		settings = {},
+		-- Per-host GUEST session stores, keyed by the host's run seed ("h<seed>").
+		-- While guesting, the local player's inventory/tokens/offers live here, NOT in
+		-- the paused solo run's _state.peer_items. In _meta so they survive the
+		-- player's own start_run/end_run wipe; pruned by age (MP_SESSION_TTL_DAYS),
+		-- never by run transitions. See _own_entry / _guest_session_entry below and
+		-- project_csr_mp_reward_model (item inventory = per-host cache, items-only TTL).
+		mp_sessions = {},
+		-- Guest EARNINGS bucket B (project_csr_mp_reward_model): rewards banked while
+		-- playing in a host's lobby (own run paused). ONE global accumulator across all
+		-- hosts, real banked money, NO TTL -- lives until claimed at the guest's own End
+		-- Spree (paid as A + B). In _meta so it survives start_run/end_run; NOT per-host
+		-- (unlike mp_sessions inventory). Old saves lacking it inherit these zeros.
+		mp_earnings = { cash = 0, experience = 0, continental_coins = 0, loot_drop = 0 },
 	}
 end
 
@@ -111,6 +130,11 @@ function CSRGameManager:init()
 	self._meta = default_meta()
 	self._state = default_state()
 	self._registry = default_registry()
+	-- Remote peers' synced item counts (MP visibility): { [peer_id] = { counts, name } }.
+	-- RUNTIME ONLY -- never written into _state, so other players' inventories never
+	-- leak into our csr_save.json. Filled by the MP item sync (mp_sync.lua) and read
+	-- back through player_items() for the per-peer items panel.
+	self._remote_peer_items = {}
 	self._callbacks = {
 		on_mission_started = {},
 		on_mission_completed = {},
@@ -135,12 +159,15 @@ function CSRGameManager:init()
 		_G.CSR._apply_modifier_registrations(self)
 	end
 	-- After live addons have registered, prune any owned counts whose addon is
-	-- gone. For selection-window items (only current source) this lowers
-	-- total_item_count -- the lobby reminder auto-reappears (host_rank >
-	-- owned) and the player can reselect a different item. Shop-sourced items
-	-- (when the shop ports) will branch here for a token refund instead;
-	-- source-tracking lands with the shop port.
+	-- gone. For rank-pick items this lowers rank_item_count so the lobby reminder
+	-- auto-reappears (host_rank > rank_item_count) and the player can reselect.
+	-- A dropped SHOP-sourced orphan can wrongly re-arm a pick (the shop tally is
+	-- not decremented) -- known deferred edge; a token refund + source-aware drop
+	-- is still TODO.
 	self:_drop_orphan_items()
+	-- Expire stale guest session stores (items-only TTL). Sessions persist across the
+	-- guest's own runs (in _meta), so age is the only thing that clears them.
+	self:_prune_expired_sessions()
 	-- Callback escape-hatch wiring: reconcile applied-state on every ownership /
 	-- run transition, and once now so items already owned in a loaded run
 	-- (save-reload) get on_apply. Listeners go into the fresh _callbacks table
@@ -345,9 +372,12 @@ end
 -- REWARD_PAYOUT_MULT (module-level) mirrors vanilla difficulty_multiplier_payout
 -- (moneytweakdata.lua); XP_MULT is 1 + vanilla experience difficulty_multiplier
 -- (tweakdata.lua), normal=0.
-function CSRGameManager:projected_rewards()
-	local rank = self:rank()
-	local idx = self:reward_difficulty_index()
+-- The reward components for `rank` ranks at CSR difficulty index `idx`. Shared by
+-- projected_rewards (own run, bucket A) and accrue_mp_earnings (guest run, bucket B,
+-- at the HOST difficulty index). Linear in rank, so summing per-heist accruals is
+-- mathematically identical to one projection at the final rank.
+function CSRGameManager:_rewards_for(rank, idx)
+	rank = tonumber(rank) or 0
 	local XP_MULT = { 0, 2, 5, 10, 11.5, 13, 14 }
 
 	local cash = 100000 * (REWARD_PAYOUT_MULT[idx] or 1) * rank
@@ -371,15 +401,134 @@ function CSRGameManager:projected_rewards()
 	}
 end
 
--- Cash value of one rank at the run's CURRENT difficulty -- the same per-rank
--- payout projected_rewards/End Spree use (100k x payout_mult[diff]). Looted cash is
--- measured against this: a full reward_per_rank_cash() of loot earns +1 rank
--- (accrue_loot_rank) and reward_per_rank_cash()/TOKENS_PER_RANK of loot earns one
--- Gage Token (shop). Uses self:difficulty() (own run difficulty); an MP client
--- playing a host's heist must instead measure at the host difficulty -- deferred
--- with the rest of the MP slice (project_csr_mp_reward_model).
+function CSRGameManager:projected_rewards()
+	-- Bucket A: own run rank + own difficulty (NOT host_rank/host difficulty -- a
+	-- guest's own-run payout is its own paused progress; the host-difficulty guest
+	-- earnings are bucket B, summed in separately at End Spree).
+	return self:_rewards_for(self:rank(), self:reward_difficulty_index())
+end
+
+-- CSR difficulty index for the HOST's synced difficulty (bucket B accrual). Falls
+-- back to the own-run index when no host difficulty is synced (not guesting / not yet
+-- pushed). Same 1..7 clamp as reward_difficulty_index.
+function CSRGameManager:host_reward_difficulty_index()
+	local hd = self:mp_host_difficulty()
+	if type(hd) ~= "string" then
+		return self:reward_difficulty_index()
+	end
+	local di = (tweak_data and tweak_data.difficulty_to_index and tweak_data:difficulty_to_index(hd)) or 2
+	return math.max(1, math.min(7, di - 1))
+end
+
+-- =====================================================
+-- Guest earnings bucket B (project_csr_mp_reward_model)
+-- =====================================================
+
+-- Bank a completed GUEST heist's reward into _meta.mp_earnings. `rank_gained` =
+-- the heist's rank value (length-based, same as a host/solo heist); valued at the
+-- HOST difficulty per the model. Called ONLY from the guest fork in
+-- mission_lifecycle.lua (own run is paused there). Returns the accrued delta for
+-- logging; persists immediately (real banked money, never lost on a later crash).
+function CSRGameManager:accrue_mp_earnings(rank_gained)
+	rank_gained = tonumber(rank_gained) or 0
+	if rank_gained <= 0 then
+		return nil
+	end
+	local r = self:_rewards_for(rank_gained, self:host_reward_difficulty_index())
+	local b = self._meta.mp_earnings or { cash = 0, experience = 0, continental_coins = 0, loot_drop = 0 }
+	b.cash = (b.cash or 0) + r.cash
+	b.experience = (b.experience or 0) + r.experience
+	b.continental_coins = (b.continental_coins or 0) + r.continental_coins
+	b.loot_drop = (b.loot_drop or 0) + r.loot_drop
+	self._meta.mp_earnings = b
+	self:save()
+	log_csr(
+		"accrue_mp_earnings: +"
+			.. tostring(r.cash)
+			.. " cash / +"
+			.. tostring(r.experience)
+			.. " xp (bucket B now "
+			.. tostring(b.cash)
+			.. " cash)"
+	)
+	return r
+end
+
+-- A guest's looted cash -> bucket B rank rewards (the MP analogue of the own-run
+-- accrue_loot_rank): every full per-rank of loot banks one rank's worth into bucket B,
+-- the remainder carried on the guest SESSION entry (per-host, in _meta, so it survives
+-- across the host's heists). reward_per_rank_cash() returns the HOST per-rank while
+-- guesting (and this only runs while guesting), so a guest's SHARED loot banks the same
+-- rank value the host gets as literal ranks (accrue_loot_rank). Returns ranks banked.
+function CSRGameManager:accrue_guest_loot_rank(loot_cash)
+	loot_cash = tonumber(loot_cash) or 0
+	if loot_cash <= 0 then
+		return 0
+	end
+	local per_rank = self:reward_per_rank_cash()
+	if per_rank <= 0 then
+		return 0
+	end
+	local entry = self:_guest_session_entry(true)
+	if not entry then
+		return 0
+	end
+	local acc = (entry.loot_rank_cash or 0) + loot_cash
+	local ranks = math.floor(acc / per_rank)
+	entry.loot_rank_cash = acc - ranks * per_rank
+	if ranks > 0 then
+		self:accrue_mp_earnings(ranks) -- accrue_mp_earnings saves
+	else
+		self:save() -- persist the carried remainder
+	end
+	return ranks
+end
+
+-- Read-only copy of bucket B (zeros when empty -- always a full table for callers).
+function CSRGameManager:mp_earnings()
+	local b = self._meta.mp_earnings or {}
+	return {
+		cash = b.cash or 0,
+		experience = b.experience or 0,
+		continental_coins = b.continental_coins or 0,
+		loot_drop = b.loot_drop or 0,
+	}
+end
+
+-- True when bucket B holds anything claimable -- used to widen the End Spree rank-0
+-- gate so a pure-client (own rank 0) who banked guest earnings still cashes out.
+function CSRGameManager:has_mp_earnings()
+	local b = self._meta.mp_earnings
+	if not b then
+		return false
+	end
+	return (b.cash or 0) > 0 or (b.experience or 0) > 0 or (b.continental_coins or 0) > 0 or (b.loot_drop or 0) > 0
+end
+
+-- Zero bucket B after it has been paid out (End Spree A + B). Persists.
+function CSRGameManager:reset_mp_earnings()
+	self._meta.mp_earnings = { cash = 0, experience = 0, continental_coins = 0, loot_drop = 0 }
+	self:save()
+end
+
+-- Public guesting check (delegates to _is_guesting): true while the local player is a
+-- client in a host's announced CSR run. Reward + lifecycle code outside game_manager
+-- forks on this to pause the own run and bank into bucket B instead.
+function CSRGameManager:is_guesting()
+	return self:_is_guesting()
+end
+
+-- Cash value of one rank at the difficulty the player is CURRENTLY earning at -- the
+-- per-rank yardstick looted cash is measured against (a full reward_per_rank_cash() of
+-- loot earns +1 rank via accrue_loot_rank, reward_per_rank_cash()/TOKENS_PER_RANK earns
+-- one Gage Token in the shop). Own run difficulty normally; while GUESTING it returns
+-- the HOST difficulty, so a guest's SHARED loot yields the SAME tokens + end-screen
+-- conversion as the host (PD2 loot is shared, so the per-rank economy a guest measures
+-- it against must be the host's, not its own paused run's). Bucket A (projected_rewards)
+-- reads _rewards_for directly, NOT this, so it is unaffected and stays own-difficulty.
 function CSRGameManager:reward_per_rank_cash()
-	return 100000 * (REWARD_PAYOUT_MULT[self:reward_difficulty_index()] or 1)
+	local idx = self:_is_guesting() and self:host_reward_difficulty_index() or self:reward_difficulty_index()
+	return 100000 * (REWARD_PAYOUT_MULT[idx] or 1)
 end
 
 -- Feed a completed heist's looted cash into the run's loot->rank accumulator. Every
@@ -433,11 +582,13 @@ function CSRGameManager:host_rank()
 	return self._state.rank or 0
 end
 
--- Client-side: store the host's synced run rank + difficulty (from the MP
--- host-state push in mp_session.lua). host_rank() returns host_rank while
--- guesting; host_difficulty is banked for the (next-pass) guest reward bucket.
--- Host/SP never call this.
-function CSRGameManager:set_mp_host_state(host_rank, host_difficulty)
+-- Client-side: store the host's synced run rank + difficulty + run seed (from the
+-- MP host-state push in mp_session.lua). host_rank() returns host_rank while
+-- guesting; host_difficulty is banked for the (next-pass) guest reward bucket; and
+-- host_seed keys the per-host guest session store (_guest_session_key / _own_entry)
+-- so the guest's inventory/tokens live separate from the paused solo run. Host/SP
+-- never call this.
+function CSRGameManager:set_mp_host_state(host_rank, host_difficulty, host_seed)
 	self._state.mp_session = self._state.mp_session or {}
 	local mp = self._state.mp_session
 	if type(host_rank) == "number" then
@@ -446,17 +597,24 @@ function CSRGameManager:set_mp_host_state(host_rank, host_difficulty)
 	if type(host_difficulty) == "string" then
 		mp.host_difficulty = host_difficulty
 	end
+	if type(host_seed) == "number" then
+		mp.host_seed = host_seed
+	end
 end
 
--- Drop synced host state (leaving a host's session / between heists). Preserves a
--- manual debug-sim override so a solo sim survives heist transitions.
+-- Drop synced host state (leaving a host's session / between heists). Preserves the
+-- manual debug-sim overrides (host_rank sim, guest-session sim) so a solo sim
+-- survives heist transitions. Clears host_seed too: during the heist-load window
+-- (before the host re-pushes) the guest falls back to its own _state -- the same
+-- fallback host_rank() uses -- and no inventory mutation happens on the load screen.
 function CSRGameManager:clear_mp_host_state()
 	local mp = self._state.mp_session
-	if not mp or mp._debug_force then
+	if not mp or mp._debug_force or mp._debug_guest then
 		return
 	end
 	mp.host_rank = nil
 	mp.host_difficulty = nil
+	mp.host_seed = nil
 end
 
 -- Host difficulty synced while guesting (nil when not). For the next-pass guest
@@ -464,6 +622,36 @@ end
 function CSRGameManager:mp_host_difficulty()
 	local mp = self._state.mp_session
 	return mp and mp.host_difficulty or nil
+end
+
+-- Late-join token seed bookkeeping (project_csr_late_join_grant_model). The guest's
+-- wallet is seeded to the host's GROSS earned tokens ONCE per host run; the guard
+-- rides the guest SESSION record (in _meta), not a runtime global, so re-joining the
+-- SAME host -- even after a game restart -- never re-seeds over what the guest has
+-- spent/hoarded. A different host = a different session = re-seed. Both no-op outside
+-- a keyed guest session (returns false / does nothing), so host/SP are unaffected.
+function CSRGameManager:guest_tokens_seeded()
+	local key = self:_guest_session_key()
+	if not key then
+		return false
+	end
+	local sess = self._meta.mp_sessions and self._meta.mp_sessions[key]
+	return (sess and sess.tokens_seeded) == true
+end
+
+function CSRGameManager:mark_guest_tokens_seeded()
+	local key = self:_guest_session_key()
+	if not key then
+		return
+	end
+	-- Ensure the session record exists (the wallet write that precedes this already
+	-- created it, but guard anyway), then flag + persist.
+	self:_guest_session_entry(true)
+	local sess = self._meta.mp_sessions and self._meta.mp_sessions[key]
+	if sess then
+		sess.tokens_seeded = true
+		self:save()
+	end
 end
 
 -- Public mod version (for MP version/addon-mismatch reporting). Reads the meta
@@ -487,6 +675,27 @@ function CSRGameManager:debug_force_host_rank(value)
 		mp._debug_force = true
 		mp.host_rank = value
 	end
+end
+
+-- Debug-only: simulate guesting in SOLO so the per-host guest session-store redirect
+-- (M5) can be exercised without a second instance. _debug_guest makes _is_guesting()
+-- true and the fake host_seed gives _guest_session_key something to resolve, so the
+-- local player's inventory / tokens / offers route to the session store instead of
+-- the solo run's _state (which stays untouched -- the sim is fully reversible).
+-- Combine with debug_force_host_rank to reproduce a guest's scaling too. Toggles;
+-- returns true when enabled, false when cleared. Wired to csr_debug_mp_guest
+-- (stripped at release).
+function CSRGameManager:debug_toggle_guest_session()
+	self._state.mp_session = self._state.mp_session or {}
+	local mp = self._state.mp_session
+	if mp._debug_guest then
+		mp._debug_guest = nil
+		mp.host_seed = nil
+		return false
+	end
+	mp._debug_guest = true
+	mp.host_seed = mp.host_seed or -1 -- fake key so _guest_session_key() resolves
+	return true
 end
 
 -- =====================================================
@@ -534,27 +743,165 @@ local function get_or_create_peer_entry(state, peer_id)
 		entry.items = nil
 	end
 	entry.counts = entry.counts or {}
+	-- Acquisition order: item types in the sequence the player FIRST obtained them
+	-- (add_item appends a NEW type, remove_item drops it at zero so a re-acquire is
+	-- "new" again). Drives the Items panel sort. Absent on legacy/pre-order saves --
+	-- player_items_order self-heals from counts, so a nil here is safe.
+	entry.order = entry.order or {}
 	return entry
+end
+
+-- Wall-clock unix time for the session-store TTL, pcall-guarded. os.time() is
+-- available in the PD2 sandbox; on the off chance it errors, returning 0 makes
+-- pruning never expire anything (now - last_seen < 0) rather than wrongly wipe.
+function CSRGameManager:_now()
+	local ok, t = pcall(os.time)
+	return (ok and type(t) == "number") and t or 0
+end
+
+-- True while the local player is GUESTING in another host's CSR run: a real network
+-- client AND the host has announced its run (host_seed known -- which is also what
+-- host_rank() needs to scale). While guesting, the local player's inventory / tokens
+-- / pending offers live in a per-host SESSION store (keyed by the host's run seed, in
+-- _meta so it survives the player's own start_run/end_run wipe), NOT the paused solo
+-- run's _state.peer_items. The _debug_guest flag forces it in SOLO for testing.
+function CSRGameManager:_is_guesting()
+	local mp = self._state.mp_session
+	if mp and mp._debug_guest then
+		return true
+	end
+	local net = _G.CSR_MP
+	if not (net and net.is_client and net.is_client()) then
+		return false
+	end
+	return mp ~= nil and mp.host_seed ~= nil
+end
+
+-- Storage key for the active guest session: the host's run seed. nil when not
+-- guesting / the host hasn't announced its seed yet (the redirect then stays off and
+-- inventory falls back to _state -- the same fallback host_rank() uses).
+function CSRGameManager:_guest_session_key()
+	local mp = self._state.mp_session
+	local seed = mp and mp.host_seed
+	if seed == nil then
+		return nil
+	end
+	return "h" .. tostring(seed)
+end
+
+-- The per-host guest session entry ({ counts, pending_offers, tokens, shop, ... } --
+-- same shape as a _state.peer_items entry). Lazily created under create=true (which
+-- also refreshes the TTL clock); read-only callers pass false and get nil when no
+-- session exists yet. Lives in _meta.mp_sessions so it persists across the guest's
+-- own runs and is pruned only by age (_prune_expired_sessions), not run transitions.
+function CSRGameManager:_guest_session_entry(create)
+	local key = self:_guest_session_key()
+	if not key then
+		return nil
+	end
+	self._meta.mp_sessions = self._meta.mp_sessions or {}
+	local sess = self._meta.mp_sessions[key]
+	if not sess then
+		if not create then
+			return nil
+		end
+		sess = { entry = { counts = {}, order = {} }, last_seen = self:_now() }
+		self._meta.mp_sessions[key] = sess
+	elseif create then
+		sess.last_seen = self:_now()
+	end
+	sess.entry = sess.entry or { counts = {}, order = {} }
+	sess.entry.counts = sess.entry.counts or {}
+	sess.entry.order = sess.entry.order or {}
+	return sess.entry
+end
+
+-- Resolve the OWN-side inventory entry for `peer_id`: the per-host guest session
+-- store while the LOCAL player is guesting, else the _state.peer_items entry. `create`
+-- lazily makes the entry (writers pass true; read-only callers pass false to get nil
+-- when nothing exists, so a stray/unsynced peer id never pollutes _state). Remote
+-- peers are display-only and are resolved by _peer_counts before reaching here.
+function CSRGameManager:_own_entry(peer_id, create)
+	if peer_id == self:local_peer_id() and self:_is_guesting() then
+		return self:_guest_session_entry(create)
+	end
+	if create then
+		return get_or_create_peer_entry(self._state, peer_id)
+	end
+	return self._state.peer_items[peer_id]
+end
+
+-- Counts table for ANY peer. A REMOTE peer's synced items (runtime, never saved)
+-- win; otherwise the own-side entry (_own_entry: guest session store while guesting,
+-- else _state). Remote peers are never written into _state.peer_items, and the local
+-- peer is never put in _remote_peer_items, so the two never collide. Read-only (no
+-- create), so enumerating peers never spawns spurious entries. Returns nil when the
+-- peer has no record.
+function CSRGameManager:_peer_counts(peer_id)
+	local remote = self._remote_peer_items and self._remote_peer_items[peer_id]
+	if remote then
+		return remote.counts
+	end
+	local entry = self:_own_entry(peer_id, false)
+	return entry and entry.counts
 end
 
 -- Read-only { [type] = n } map of everything the peer owns ({} if nothing).
 function CSRGameManager:player_items(peer_id)
-	local entry = self._state.peer_items[peer_id]
-	return (entry and entry.counts) or {}
+	return self:_peer_counts(peer_id) or {}
+end
+
+-- Stored acquisition-order array for a peer (the raw list; may be stale/missing).
+-- A remote peer's synced order wins; otherwise the own-side entry's order.
+function CSRGameManager:_peer_order(peer_id)
+	local remote = self._remote_peer_items and self._remote_peer_items[peer_id]
+	if remote then
+		return remote.order
+	end
+	local entry = self:_own_entry(peer_id, false)
+	return entry and entry.order
+end
+
+-- Owned item types in acquisition order (first-obtained first), self-healing: it
+-- reconciles the stored order against the live counts so it is always correct even
+-- for a legacy save (no order field) or a remote peer synced without one --
+-- recognised types keep their recorded order, any owned-but-untracked type is
+-- appended in a deterministic (type-sorted) fallback. Duplicates never reorder.
+function CSRGameManager:player_items_order(peer_id)
+	local counts = self:_peer_counts(peer_id) or {}
+	local stored = self:_peer_order(peer_id)
+	local result, seen = {}, {}
+	if type(stored) == "table" then
+		for _, item_type in ipairs(stored) do
+			if (counts[item_type] or 0) > 0 and not seen[item_type] then
+				result[#result + 1] = item_type
+				seen[item_type] = true
+			end
+		end
+	end
+	local missing = {}
+	for item_type, n in pairs(counts) do
+		if type(n) == "number" and n > 0 and not seen[item_type] then
+			missing[#missing + 1] = item_type
+		end
+	end
+	table.sort(missing)
+	for _, item_type in ipairs(missing) do
+		result[#result + 1] = item_type
+	end
+	return result
 end
 
 -- Owned stacks of ONE item type.
 function CSRGameManager:item_count(peer_id, item_type)
-	local entry = self._state.peer_items[peer_id]
-	local counts = entry and entry.counts
+	local counts = self:_peer_counts(peer_id)
 	return (counts and counts[item_type]) or 0
 end
 
 -- Total stacks across ALL types. One rank == one pick, so the lobby
 -- "unselected items" reminder subtracts this from host rank.
 function CSRGameManager:total_item_count(peer_id)
-	local entry = self._state.peer_items[peer_id]
-	local counts = entry and entry.counts
+	local counts = self:_peer_counts(peer_id)
 	if not counts then
 		return 0
 	end
@@ -569,6 +916,98 @@ function CSRGameManager:has_item(peer_id, item_type)
 	return self:item_count(peer_id, item_type) > 0
 end
 
+-- Items NOT earned through the rank-pick window (currently: Black Market
+-- purchases) must NOT count toward the rank quota -- the player is entitled to
+-- one pick PER RANK no matter how many extra items they bought/printed (user
+-- spec 2026-05-26). A per-peer aggregate, bumped on purchase (shop.lua buy());
+-- resets with the run (peer_items wiped on start_run).
+--
+-- It honours "a scrapped/printed item keeps its source" for free: both the
+-- scrapper and the in-world copier are NET-ZERO on total_item_count (remove the
+-- input stack, add the output stack), so rank_item_count is preserved through
+-- any real<->scrap<->real chain -- no per-instance provenance needed. (Orphan-
+-- drop of a purchased item is a known deferred edge; see _drop_orphan_items.)
+function CSRGameManager:shop_item_count(peer_id)
+	local entry = self:_own_entry(peer_id or self:local_peer_id(), false)
+	return (entry and entry.shop_item_count) or 0
+end
+
+-- Owned stacks that DID come from rank picks = total minus purchases. This is
+-- what the lobby/briefing reminder compares against host rank.
+function CSRGameManager:rank_item_count(peer_id)
+	peer_id = peer_id or self:local_peer_id()
+	return math.max(0, self:total_item_count(peer_id) - self:shop_item_count(peer_id))
+end
+
+-- =====================================================
+-- Remote peers' synced inventories (MP visibility; runtime-only, never saved)
+-- =====================================================
+
+-- Store a remote peer's synced item counts + display name. Does NOT fire the
+-- on_item_added/removed callbacks (remote items apply on THEIR machine, not ours --
+-- host-authoritative) and does NOT save (these never persist into our save).
+-- `order` is the acquisition-order sequence as received over the wire (optional;
+-- player_items_order self-heals from counts when absent, e.g. the SP debug peer).
+function CSRGameManager:set_remote_peer_items(peer_id, counts, name, order)
+	if not peer_id then
+		return
+	end
+	self._remote_peer_items = self._remote_peer_items or {}
+	self._remote_peer_items[peer_id] = { counts = counts or {}, name = name, order = order }
+end
+
+function CSRGameManager:remove_remote_peer(peer_id)
+	if self._remote_peer_items then
+		self._remote_peer_items[peer_id] = nil
+	end
+end
+
+function CSRGameManager:clear_remote_peers()
+	self._remote_peer_items = {}
+end
+
+function CSRGameManager:remote_peer_name(peer_id)
+	local r = self._remote_peer_items and self._remote_peer_items[peer_id]
+	return r and r.name
+end
+
+-- Peer ids we hold synced inventories for, so the items panel can enumerate them
+-- even when the live session peer list lags (and the SP debug fake peer).
+function CSRGameManager:remote_peer_ids()
+	local ids = {}
+	if self._remote_peer_items then
+		for pid in pairs(self._remote_peer_items) do
+			ids[#ids + 1] = pid
+		end
+	end
+	return ids
+end
+
+-- Debug-only: inject/clear a fake remote peer holding a few real item types so the
+-- per-peer items panel can be checked in SOLO without a second instance. Toggles
+-- (returns true when injected, false when cleared). Wired to the
+-- csr_debug_mp_fake_peer keybind (stripped at release).
+function CSRGameManager:debug_toggle_fake_peer()
+	self._remote_peer_items = self._remote_peer_items or {}
+	local FAKE_PID = 99
+	if self._remote_peer_items[FAKE_PID] then
+		self._remote_peer_items[FAKE_PID] = nil
+		return false
+	end
+	local counts, n = {}, 0
+	for _, def in ipairs(self:registered_items()) do
+		if not def.is_scrap then
+			counts[def.type] = (n % 3) + 1
+			n = n + 1
+			if n >= 5 then
+				break
+			end
+		end
+	end
+	self._remote_peer_items[FAKE_PID] = { counts = counts, name = "Fake Peer" }
+	return true
+end
+
 -- Convenience for item hook code (CSR's own + addons): owned stacks of an item
 -- by the LOCAL player, so a hook doesn't repeat the local_peer_id() plumbing.
 function CSRGameManager:owned(item_type)
@@ -577,10 +1016,12 @@ end
 
 -- Mutable per-peer state record (counts + subsystem-owned fields). Lazy-created.
 -- The shop (lua/managers/shop.lua) stashes its token wallet + lineup here so they
--- ride the manager's own save() and the start_run/end_run inventory wipe. Callers
--- that mutate the returned table must call :save() to persist.
+-- ride the manager's own save() and the start_run/end_run inventory wipe. While the
+-- local player is guesting this returns the per-host guest session entry instead, so
+-- guest tokens/lineup/offers never touch the paused solo run (M5, _own_entry).
+-- Callers that mutate the returned table must call :save() to persist.
 function CSRGameManager:peer_entry(peer_id)
-	return get_or_create_peer_entry(self._state, peer_id or self:local_peer_id())
+	return self:_own_entry(peer_id or self:local_peer_id(), true)
 end
 
 function CSRGameManager:add_item(peer_id, item_type)
@@ -588,8 +1029,15 @@ function CSRGameManager:add_item(peer_id, item_type)
 		log_csr("add_item: unknown type '" .. tostring(item_type) .. "' — ignored")
 		return false
 	end
-	local entry = get_or_create_peer_entry(self._state, peer_id)
-	entry.counts[item_type] = (entry.counts[item_type] or 0) + 1
+	local entry = self:_own_entry(peer_id, true)
+	local was = entry.counts[item_type] or 0
+	entry.counts[item_type] = was + 1
+	-- First copy of this type -> record it at the end of the acquisition order.
+	-- A duplicate (was > 0) only bumps the count and keeps its existing position.
+	if was == 0 then
+		entry.order = entry.order or {}
+		entry.order[#entry.order + 1] = item_type
+	end
 	for _, fn in ipairs(self._callbacks.on_item_added) do
 		fn(peer_id, item_type, entry.counts[item_type])
 	end
@@ -599,7 +1047,7 @@ function CSRGameManager:add_item(peer_id, item_type)
 end
 
 function CSRGameManager:remove_item(peer_id, item_type)
-	local entry = self._state.peer_items[peer_id]
+	local entry = self:_own_entry(peer_id, false)
 	local counts = entry and entry.counts
 	if not counts or not counts[item_type] or counts[item_type] <= 0 then
 		return false
@@ -607,6 +1055,16 @@ function CSRGameManager:remove_item(peer_id, item_type)
 	counts[item_type] = counts[item_type] - 1
 	if counts[item_type] <= 0 then
 		counts[item_type] = nil
+		-- Last copy gone: drop it from the acquisition order so a future re-acquire
+		-- counts as "new" and appends at the end (matches the count going 0 -> 1).
+		if entry.order then
+			for i = #entry.order, 1, -1 do
+				if entry.order[i] == item_type then
+					table.remove(entry.order, i)
+					break
+				end
+			end
+		end
 	end
 	for _, fn in ipairs(self._callbacks.on_item_removed) do
 		fn(peer_id, item_type, counts[item_type] or 0)
@@ -1274,21 +1732,33 @@ function CSRGameManager:tick_callback_items(dt)
 end
 
 -- Remove owned counts whose `type` is no longer in the registry (addon
--- uninstalled / disabled / renamed type). For now -- selection-window-only
--- world -- the strategy is "drop", because dropping naturally re-arms the
--- lobby reminder (host_rank > total_item_count) and the player gets a fresh
--- pick window. Shop-sourced items, when the shop ports, need a different
--- branch (refund tokens instead of just dropping); source-tracking +
--- per-source branching lands with the shop port.
+-- uninstalled / disabled / renamed type). The strategy is "drop": dropping a
+-- rank-pick orphan re-arms the lobby reminder (host_rank > rank_item_count) so
+-- the player gets a fresh pick. Shop-sourced orphans aren't distinguished here
+-- (the shop tally isn't decremented), a known deferred edge -- a token refund +
+-- per-source branching is still TODO.
 function CSRGameManager:_drop_orphan_items()
 	local dropped = 0
+	local function sweep(counts)
+		if not counts then
+			return
+		end
+		for type_id, n in pairs(counts) do
+			if not self._registry.by_type[type_id] then
+				counts[type_id] = nil
+				dropped = dropped + n
+			end
+		end
+	end
+	-- Own run inventories...
 	for _, entry in pairs(self._state.peer_items) do
-		if entry.counts then
-			for type_id, n in pairs(entry.counts) do
-				if not self._registry.by_type[type_id] then
-					entry.counts[type_id] = nil
-					dropped = dropped + n
-				end
+		sweep(entry.counts)
+	end
+	-- ...and every cached guest session inventory (same orphan-drop invariant).
+	if type(self._meta.mp_sessions) == "table" then
+		for _, sess in pairs(self._meta.mp_sessions) do
+			if type(sess) == "table" and sess.entry then
+				sweep(sess.entry.counts)
 			end
 		end
 	end
@@ -1298,6 +1768,31 @@ function CSRGameManager:_drop_orphan_items()
 				.. dropped
 				.. " stack(s) of unregistered item(s); lobby reminder will re-arm so the player can reselect"
 		)
+		self:save()
+	end
+end
+
+-- Prune guest session stores not touched within MP_SESSION_TTL_DAYS (items-only
+-- expiry per the locked MP reward model). Runs once at init after load; cheap
+-- (a handful of sessions at most). The cash earnings bucket B lives elsewhere in
+-- _meta with NO expiry and is never touched here.
+function CSRGameManager:_prune_expired_sessions()
+	local sessions = self._meta.mp_sessions
+	if type(sessions) ~= "table" then
+		return
+	end
+	local now = self:_now()
+	local cutoff = MP_SESSION_TTL_DAYS * 86400
+	local removed = 0
+	for key, sess in pairs(sessions) do
+		local last = (type(sess) == "table" and tonumber(sess.last_seen)) or 0
+		if now - last > cutoff then
+			sessions[key] = nil
+			removed = removed + 1
+		end
+	end
+	if removed > 0 then
+		log_csr("_prune_expired_sessions: removed " .. removed .. " stale guest session(s)")
 		self:save()
 	end
 end
@@ -1430,7 +1925,7 @@ end
 -- live roll_item_pool with current weights + dedupe.
 function CSRGameManager:ensure_offers(peer_id, n)
 	n = math.max(0, tonumber(n) or 0)
-	local entry = get_or_create_peer_entry(self._state, peer_id)
+	local entry = self:_own_entry(peer_id, true)
 	entry.pending_offers = entry.pending_offers or {}
 	local needed = n - #entry.pending_offers
 	if needed <= 0 then
@@ -1457,7 +1952,7 @@ function CSRGameManager:ensure_offers(peer_id, n)
 end
 
 function CSRGameManager:pending_offer_count(peer_id)
-	local entry = self._state.peer_items[peer_id]
+	local entry = self:_own_entry(peer_id, false)
 	return (entry and entry.pending_offers and #entry.pending_offers) or 0
 end
 
@@ -1465,7 +1960,7 @@ end
 -- Types whose addon vanished are filtered out (so the player never sees a
 -- card backed by nothing). Returns nil when no offer is stored. Does NOT pop.
 function CSRGameManager:peek_offer(peer_id)
-	local entry = self._state.peer_items[peer_id]
+	local entry = self:_own_entry(peer_id, false)
 	local offers = entry and entry.pending_offers
 	if not offers or #offers == 0 then
 		return nil
@@ -1485,7 +1980,7 @@ end
 -- right after add_item, so the picked offer is consumed (the OTHER cards in
 -- that offer -- the ones the player didn't pick -- are discarded with it).
 function CSRGameManager:pop_offer(peer_id)
-	local entry = self._state.peer_items[peer_id]
+	local entry = self:_own_entry(peer_id, false)
 	local offers = entry and entry.pending_offers
 	if not offers or #offers == 0 then
 		return nil

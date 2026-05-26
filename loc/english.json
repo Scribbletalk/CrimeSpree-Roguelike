@@ -49,6 +49,7 @@
 	"csr_black_market_buy": "Buy",
 	"csr_black_market_sold": "SOLD",
 	"csr_black_market_owned_x": "x $count owned",
+	"csr_token_convert_title": "CASH >>> TOKENS",
 	"csr_gage_line_greeting_1": "Hello, stranger.",
 	"csr_gage_line_greeting_2": "'What are you buying?' Heh, always wanted to say that.",
 	"csr_gage_line_greeting_3": "Back so soon? Let's see what I've got.",

@@ -1,10 +1,12 @@
--- Crime Spree Roguelike - Multiplayer session sync (M1: host-state push).
+-- Crime Spree Roguelike - Multiplayer session sync (host-state push).
 --
--- The host announces its run rank + difficulty to all peers at heist start; a
--- guest stores them (managers.csr:set_mp_host_state) so its per-rank player
--- scaling + item-selection quota follow the host via host_rank(). No
--- client->host handshake yet -- the host is authoritative and simply pushes.
--- The request/response handshake + per-peer item sync land in M2.
+-- At heist start the host announces { rank, difficulty, run_seed, tokens_gross }
+-- to all peers. A guest stores rank/difficulty (managers.csr:set_mp_host_state) so
+-- its per-rank player scaling + item-selection quota follow the host via
+-- host_rank(), and seeds its Gage Token wallet to the host's gross-earned ONCE per
+-- run (project_csr_late_join_grant_model). Host-authoritative push -- no
+-- client->host handshake. Per-peer item visibility is a separate channel
+-- (mp_sync.lua M2: broadcast/relay/request).
 --
 -- Hook point mirrors combat_modifiers.lua: IngameWaitingForPlayersState:at_enter,
 -- gated by the no-leak job signal csr_heist_active() (current_job_id ==
@@ -54,6 +56,9 @@ local function broadcast_host_state()
 		host_rank = mgr:rank(),
 		host_difficulty = mgr:difficulty(),
 		run_seed = mgr:seed(),
+		-- Host's GROSS tokens earned this run -> seeds a late-joining guest's wallet
+		-- (project_csr_late_join_grant_model). 0 when the shop logic isn't loaded.
+		host_tokens_gross = (_G.CSR_Shop and _G.CSR_Shop.gross_earned and _G.CSR_Shop.gross_earned()) or 0,
 	})
 	LuaNetworking:SendToPeers(CSR_MP.MSG.HANDSHAKE_OK, payload)
 	if CSR_MP.log then
@@ -78,7 +83,7 @@ if CSR_MP and CSR_MP.register_handler then
 		end
 		local mgr = managers and managers.csr
 		if mgr and mgr.set_mp_host_state then
-			mgr:set_mp_host_state(tonumber(payload.host_rank), payload.host_difficulty)
+			mgr:set_mp_host_state(tonumber(payload.host_rank), payload.host_difficulty, tonumber(payload.run_seed))
 			-- If the guest is in the CSR lobby when the host rank arrives, repaint
 			-- its RANK readout + item quota immediately (no-op otherwise).
 			local comp = managers.menu_component and managers.menu_component._crime_spree_missions
@@ -91,6 +96,36 @@ if CSR_MP and CSR_MP.register_handler then
 						.. tostring(payload.host_rank)
 						.. " diff="
 						.. tostring(payload.host_difficulty)
+				)
+			end
+		end
+
+		-- Late-join token seed (project_csr_late_join_grant_model): set the guest's
+		-- wallet EXACTLY to the host's GROSS earned tokens, ONCE per host run. The
+		-- once-guard rides the guest SESSION record (managers.csr:guest_tokens_seeded,
+		-- in _meta, keyed by host run_seed) -- so re-joining the SAME host preserves the
+		-- guest's agency (no re-seed over what they spent/hoarded) even across a game
+		-- restart, while a DIFFERENT host re-seeds. set_mp_host_state above stored
+		-- host_seed, so _is_guesting() is now true and set_tokens (NOT credit, so the
+		-- seed doesn't inflate gross) writes the GUEST SESSION wallet (M5), not the
+		-- paused solo run. gross>0 guard avoids wiping a wallet to 0 on a host that
+		-- earned nothing yet.
+		local gross = tonumber(payload.host_tokens_gross)
+		if
+			gross
+			and gross > 0
+			and _G.CSR_Shop
+			and mgr
+			and mgr.guest_tokens_seeded
+			and not mgr:guest_tokens_seeded()
+		then
+			_G.CSR_Shop.set_tokens(CSR_MP.local_peer_id(), gross)
+			if mgr.mark_guest_tokens_seeded then
+				mgr:mark_guest_tokens_seeded()
+			end
+			if CSR_MP.log then
+				CSR_MP.log(
+					"late-join token seed: wallet=" .. tostring(gross) .. " run_seed=" .. tostring(payload.run_seed)
 				)
 			end
 		end

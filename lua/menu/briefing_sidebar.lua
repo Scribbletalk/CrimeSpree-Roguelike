@@ -302,11 +302,18 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 	local orig_mouse_moved = MissionBriefingGui.mouse_moved
 	if orig_mouse_moved then
 		function MissionBriefingGui:mouse_moved(x, y)
-			if _G._csr_item_selection then
-				-- Clear any sticky hover state on every CSR surface while
-				-- the modal is open. mouse_moved(-9999,-9999) is the
-				-- standard "send pointer far away" pattern: every per-row
-				-- inside() check returns false, every highlight clears.
+			-- Suppress every CSR surface while EITHER the modal selection window
+			-- is open OR the briefing is disabled (self._enabled is false
+			-- whenever a sub-screen node -- preplanning / loadout / skill tree --
+			-- sits on top of us; vanilla gates ALL of its own mouse_moved /
+			-- mouse_pressed on the same flag). MenuComponentManager keeps feeding
+			-- us events because the gui only goes nil on close(), so without this
+			-- the sidebar still hit-tests its rows under the sub-screen
+			-- ("invisible but clickable" -- :inside() tests geometry regardless
+			-- of visibility). Clear sticky hover (-9999,-9999 = "send pointer far
+			-- away": every inside() returns false) and fall through to vanilla,
+			-- which itself bails on not self._enabled.
+			if _G._csr_item_selection or not self._enabled then
 				if self._sidebar and self._sidebar.mouse_moved then
 					self._sidebar:mouse_moved(-9999, -9999)
 				end
@@ -352,7 +359,12 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 	local orig_mouse_pressed = MissionBriefingGui.mouse_pressed
 	if orig_mouse_pressed then
 		function MissionBriefingGui:mouse_pressed(button, x, y)
-			if _G._csr_item_selection then
+			-- Modal selection window open OR briefing disabled (preplanning /
+			-- loadout / skill tree sub-screen on top -- vanilla gates input on
+			-- self._enabled the same way): the sidebar + wheel + sub-tab handling
+			-- must NOT run. Fall through to the inner wrap (reminder -> vanilla);
+			-- vanilla returns early on not self._enabled, so nothing is consumed.
+			if _G._csr_item_selection or not self._enabled then
 				return orig_mouse_pressed(self, button, x, y)
 			end
 			-- The briefing receives mouse-wheel as a mouse_pressed with a wheel

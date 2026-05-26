@@ -205,12 +205,12 @@ _G.CSR.register_modifier({
 
 			-- Client receiver: the host says a Taser died near me -> slow locally.
 			-- Trusts the host (see header) -- no active_modifiers re-check.
-			Hooks:Add("NetworkReceivedData", "CSR_ShockingSurprise_Net", function(sender, id, data)
-				if id ~= RPC_NAME then
-					return
-				end
-				slow_local()
-			end)
+			-- Routed through the shared MP router (mp_sync.lua); it dispatches by id.
+			if _G.CSR_MP and _G.CSR_MP.register_handler then
+				_G.CSR_MP.register_handler(RPC_NAME, function(sender, data)
+					slow_local()
+				end)
+			end
 		end,
 	},
 })
