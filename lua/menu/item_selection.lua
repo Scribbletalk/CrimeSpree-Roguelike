@@ -106,6 +106,10 @@ local RARITY_COLORS = {
 -- there is no size jump on the first update tick.
 local FRAME_SCALE = 2.0
 
+-- Owned-items strip (the read-only inventory row above the title) is the shared
+-- CSROwnedItemsStrip widget (lua/menu/owned_items_strip.lua) -- created in :_setup,
+-- rebuilt after each pick, and destroyed in :close.
+
 -- ===================================================================
 -- CSRItemSelectionButton — one selectable item card.
 -- Fork of CrimeSpreeModifierButton with the rarity frame baked in and the
@@ -454,6 +458,13 @@ function CSRItemSelectionComponent:init(ws, fullscreen_ws, items, num_to_select)
 end
 
 function CSRItemSelectionComponent:close()
+	-- The owned strip + its hover tooltip live on the headers' workspace (so they can
+	-- sit ABOVE the popup), which does not clean them up on its own -- the widget's
+	-- destroy() removes both.
+	if self._owned_strip then
+		self._owned_strip:destroy()
+		self._owned_strip = nil
+	end
 	self._ws:panel():remove(self._panel)
 	self._ws:panel():remove(self._text_header)
 	self._ws:panel():remove(self._number_header)
@@ -546,6 +557,30 @@ function CSRItemSelectionComponent:_setup()
 	self._number_header:set_left(self._panel:left())
 	self._number_header:set_bottom(self._panel:top())
 	self:_update_counter_text()
+
+	-- Owned-items strip above the title: the shared CSROwnedItemsStrip widget. Lives
+	-- on the headers' workspace (NOT inside self._panel) so it can sit above the popup.
+	-- Width = popup width; anchored centred just above the title; rebuilt after each
+	-- pick (_advance_pick) and destroyed in close(). max_height keeps a large inventory
+	-- from climbing past the screen top (space above the title, minus margins).
+	if CSROwnedItemsStrip then
+		local title_top = (self._text_header and alive(self._text_header) and self._text_header:top())
+			or self._panel:top()
+		self._owned_strip = CSROwnedItemsStrip:new({
+			parent = self._ws:panel(),
+			tooltip_parent = self._ws:panel(),
+			width = self._panel:w(),
+			layer = 51,
+			max_height = math.max(64, title_top - 12),
+			-- Items hug the left (no centring), matching the Black Market strip.
+			align = "left",
+			anchor = function(panel)
+				panel:set_center_x(self._panel:center_x())
+				panel:set_bottom(title_top - padding)
+			end,
+		})
+		self._owned_strip:rebuild()
+	end
 
 	self._items_panel = self._panel:panel({
 		x = padding,
@@ -838,6 +873,12 @@ function CSRItemSelectionComponent:_advance_pick()
 	if not managers.menu:is_pc_controller() and self._move_selection then
 		self:_move_selection("up")
 	end
+
+	-- Reflect the item just granted by the previous pick (count bumped / new type
+	-- added) in the owned strip before the next card set is chosen.
+	if self._owned_strip then
+		self._owned_strip:rebuild()
+	end
 end
 
 function CSRItemSelectionComponent:_on_back()
@@ -914,6 +955,14 @@ end
 function CSRItemSelectionComponent:mouse_moved(o, x, y)
 	if not managers.menu:is_pc_controller() or not alive(self._panel) then
 		return
+	end
+
+	-- Owned-strip hover (above the popup, outside self._panel): handled as a side
+	-- effect here -- this body always runs for the live modal regardless of cursor
+	-- position, and we leave the return value to the popup-body logic below so the
+	-- non-interactive strip never claims clicks or breaks the existing routing.
+	if self._owned_strip then
+		self._owned_strip:mouse_moved(x, y)
 	end
 
 	local inside = self._panel:inside(x, y)

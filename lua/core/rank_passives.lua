@@ -17,7 +17,9 @@ if not RequiredScript then
 	return
 end
 
-local PER_RANK = 0.01 -- +1% per rank, to HP / armor / all damage
+local PER_RANK = 0.01 -- +1% per rank, to HP / armor / all damage (players)
+local BOT_HP_PER_RANK = 0.01 -- +1% per rank to bot max HP
+local BOT_DMG_PER_RANK = 0.05 -- +5% per rank to bot weapon damage
 
 -- Current run rank for the local view (0 outside a run). host_rank so a client scales
 -- off the host's synced rank, exactly like the enemy scaling + active_modifiers.
@@ -39,6 +41,23 @@ local function dbg_mult(stat, value)
 	if mgr and mgr._debug_stat then
 		mgr:_debug_stat("rank_passive", stat, value)
 	end
+end
+
+-- Returns true if `unit` is an AI bot teammate (not a human player).
+-- Used to route bots to their own scaling path and skip the player weapon wrap.
+local function is_bot_unit(unit)
+	if not alive(unit) then
+		return false
+	end
+	local crim = managers.criminals
+	if not crim or not crim.has_character_by_unit then
+		return false
+	end
+	if not crim:has_character_by_unit(unit) then
+		return false
+	end
+	local data = crim:character_data_by_unit(unit)
+	return data ~= nil and data.ai == true
 end
 
 -- +1%/rank to the health skill multiplier (the field Dog Tags also adds to; the Heister
@@ -71,7 +90,8 @@ if PlayerDamage and not _G._CSR_RankPassive_Armor then
 end
 
 -- +1%/rank to ranged weapon damage (RaycastWeaponBase:_get_current_damage -- the gun
--- point the pre-refactor "all damage" buff used).
+-- point the pre-refactor "all damage" buff used). Bots are excluded here: they get their
+-- own separate scaling in the NewRaycastWeaponBase._fire_raycast wrap below.
 if RaycastWeaponBase and not _G._CSR_RankPassive_Dmg then
 	_G._CSR_RankPassive_Dmg = true
 	local orig = RaycastWeaponBase._get_current_damage
@@ -79,6 +99,10 @@ if RaycastWeaponBase and not _G._CSR_RankPassive_Dmg then
 		function RaycastWeaponBase:_get_current_damage(...)
 			local dmg = orig(self, ...)
 			if type(dmg) == "number" then
+				local user = self._setup and self._setup.user_unit
+				if user and is_bot_unit(user) then
+					return dmg
+				end
 				local r = run_rank()
 				dbg_mult("ranged_dmg_mult", 1 + PER_RANK * r)
 				return dmg * (1 + PER_RANK * r)
@@ -170,6 +194,46 @@ if SentryGunWeapon and not _G._CSR_RankPassive_Sentry then
 				return res
 			end
 			return orig(self, ...)
+		end
+	end
+end
+
+-- +1%/rank to bot max HP. PostHook on TeamAIDamage:init -- the fields are already set by
+-- the time the hook fires, so we multiply them in-place. All five HP fields must be
+-- scaled together or the bleedout / percentage math diverges.
+if TeamAIDamage and not _G._CSR_BotHP then
+	_G._CSR_BotHP = true
+	Hooks:PostHook(TeamAIDamage, "init", "CSR_BotHPPassive", function(self)
+		local r = run_rank()
+		if r > 0 then
+			local mul = 1 + BOT_HP_PER_RANK * r
+			dbg_mult("bot_max_hp_mult", mul)
+			self._HEALTH_INIT = self._HEALTH_INIT * mul
+			self._HEALTH_BLEEDOUT_INIT = self._HEALTH_BLEEDOUT_INIT * mul
+			self._HEALTH_TOTAL = self._HEALTH_TOTAL * mul
+			self._HEALTH_TOTAL_PERCENT = self._HEALTH_TOTAL_PERCENT * mul
+			self._health = self._health * mul
+		end
+	end)
+end
+
+-- +5%/rank to bot weapon damage. Wrapped at NewRaycastWeaponBase._fire_raycast so bots
+-- get their own multiplier independent of the player _get_current_damage path. Host-only:
+-- bot AI fires server-side (clients use HuskTeamAIDamage which doesn't fire directly).
+if NewRaycastWeaponBase and not _G._CSR_BotDmg then
+	_G._CSR_BotDmg = true
+	local orig = NewRaycastWeaponBase._fire_raycast
+	if orig then
+		function NewRaycastWeaponBase:_fire_raycast(user_unit, from_pos, direction, dmg_mul, ...)
+			if Network:is_server() and is_bot_unit(user_unit) then
+				local r = run_rank()
+				if r > 0 then
+					local mul = 1 + BOT_DMG_PER_RANK * r
+					dbg_mult("bot_dmg_mult", mul)
+					dmg_mul = (dmg_mul or 1) * mul
+				end
+			end
+			return orig(self, user_unit, from_pos, direction, dmg_mul, ...)
 		end
 	end
 end

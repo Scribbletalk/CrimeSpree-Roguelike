@@ -73,6 +73,8 @@
 	"csr_gage_line_purchase_3": "Don't lose it out there.",
 	"csr_gage_line_purchase_4": "Sold.",
 	"csr_gage_line_purchase_5": "Another satisfied customer.",
+	"csr_gage_line_soldout_1": "Is your name 'Big D*ck Money Bags' by any chance?",
+	"csr_gage_line_soldout_2": "Bought everything? Don't worry, I have plenty of stock.",
 	"csr_interact_copier": "Hold $BTN_INTERACT to use printer",
 	"csr_interact_copier_action": "USING PRINTER",
 	"csr_copier_no_item": "No matching-tier item to exchange",
@@ -106,6 +108,7 @@
 	"csr_lobby_difficulty": "DIFFICULTY",
 	"csr_lobby_missions_completed": "MISSIONS COMPLETED",
 	"csr_lobby_unselected_items": "You have $count unselected item(s)",
+	"csr_briefing_bm_affordable": "Visit Black Market to spend you tokens",
 
 	"csr_item_dog_tags_desc": "Increases your max health.",
 	"csr_item_duct_tape_desc": "Increases your interaction speed.",

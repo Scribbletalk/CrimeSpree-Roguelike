@@ -66,13 +66,72 @@ function CrimeSpreeBlackMarketShopPage:init(panel, parent)
 end
 
 function CrimeSpreeBlackMarketShopPage:_setup()
+	-- Restock a fully sold-out lineup on open so the shop never reopens as a dead
+	-- end (e.g. the player bought the last card then closed before the deferred
+	-- free restock fired). roll_lineup is free (no debit).
+	if CSR_Shop.lineup_sold_out and CSR_Shop.lineup_sold_out() then
+		CSR_Shop.roll_lineup()
+	end
 	self:_create_token_counter()
 	self:_create_reroll_button()
 	self:_create_dialogue_strip()
 	self:_create_cards()
+	self:_create_owned_strip()
 	-- Animate the persisted greeting line typewriter-style on open.
 	self:_set_dialogue_line(CSR_Shop.get_or_pick_greeting(), true)
 	self:refresh()
+end
+
+-- Read-only owned-items strip ABOVE the Black Market box (user request), sized to
+-- roughly the item-selection popup width (NOT the full shop width) so it reads as a
+-- compact inventory band. Rebuilt by refresh() so a purchase shows up immediately.
+--
+-- Hosted on the component's OUTER panel (comp._panel), NOT the shop tab panel: the
+-- tab panel is nested under the content box's opaque (alpha 0.92) background, where
+-- the strip's content layers do not composite through -- hence "tooltip shows but
+-- icons don't". The outer panel is top-level (like the selection window's ws panel),
+-- so the strip draws cleanly; the component's close() removes the outer panel, which
+-- cascades the strip + tooltip away -- no explicit destroy needed.
+function CrimeSpreeBlackMarketShopPage:_create_owned_strip()
+	if not CSROwnedItemsStrip then
+		return
+	end
+	local comp = self._parent
+	local outer = comp and comp._panel
+	local box = comp and comp._content_panel
+	if not (outer and alive(outer) and box and alive(box)) then
+		return
+	end
+	-- ~3 selection cards wide ((208 + 10) * 3 + 10 = 664).
+	local strip_w = 664
+	-- Explicit compact height cap: there is plenty of room here, so a box-relative
+	-- bound never shrank the strip -- this fixed cap makes the widget shrink its cell
+	-- to a compact band. Lower it to shrink further, raise it to grow.
+	local COMPACT_STRIP_H = 48
+	self._owned_strip = CSROwnedItemsStrip:new({
+		parent = outer,
+		tooltip_parent = outer,
+		width = strip_w,
+		-- Header / back button sit at layer 60 on the outer panel; match it so the
+		-- strip draws above the content box (layer 10) wherever they meet.
+		layer = 60,
+		max_height = COMPACT_STRIP_H,
+		-- Items hug the left inset (no centring) so the row flows rightward from just
+		-- past the header, continuing the header's line.
+		align = "left",
+		anchor = function(panel)
+			panel:set_center_x(box:center_x())
+			-- Sit on the "BLACK MARKET" header's line (top-left): centre vertically on
+			-- the header, clamped so a strip taller than the header band is not pushed
+			-- off the panel top.
+			local hdr = comp and comp._header
+			local cy = (hdr and alive(hdr) and hdr:center_y()) or 20
+			panel:set_center_y(cy)
+			if panel:top() < 2 then
+				panel:set_top(2)
+			end
+		end,
+	})
 end
 
 function CrimeSpreeBlackMarketShopPage:_create_dialogue_strip()
@@ -352,22 +411,6 @@ function CrimeSpreeBlackMarketShopPage:_build_card_visuals(card, entry)
 		layer = 2,
 	})
 
-	-- Owned-stack badge (hidden until refresh shows it).
-	card.owned_text = panel:text({
-		name = "owned",
-		text = "",
-		font = tweak_data.menu.pd2_small_font,
-		font_size = 20,
-		color = Color(1, 1, 0.7, 0.2),
-		align = "center",
-		x = 0,
-		y = 302,
-		w = panel:w(),
-		h = 18,
-		visible = false,
-		layer = 2,
-	})
-
 	-- Price icon + number (bottom-left).
 	local price = CSR_Shop.price_for_rarity(entry.rarity)
 	local price_font_size = 24
@@ -499,6 +542,11 @@ function CrimeSpreeBlackMarketShopPage:refresh()
 	for i = 1, 3 do
 		self:_refresh_card(i, lineup[i], wallet)
 	end
+
+	-- Reflect the current inventory (a purchase just added an item) in the strip.
+	if self._owned_strip then
+		self._owned_strip:rebuild()
+	end
 end
 
 function CrimeSpreeBlackMarketShopPage:_refresh_card(slot_index, slot, wallet)
@@ -526,7 +574,7 @@ function CrimeSpreeBlackMarketShopPage:_refresh_card(slot_index, slot, wallet)
 			card.frame, card.icon, card.name_text, card.effect_text = nil, nil, nil, nil
 			card.price_text, card.price_icon = nil, nil
 			card.buy_panel, card.buy_text, card.buy_underline = nil, nil, nil
-			card.owned_text, card.sold_overlay = nil, nil
+			card.sold_overlay = nil
 		end
 		self:_build_card_visuals(card, entry)
 		card.populated = true
@@ -546,19 +594,6 @@ function CrimeSpreeBlackMarketShopPage:_refresh_card(slot_index, slot, wallet)
 		local price = CSR_Shop.price_for_rarity(entry.rarity)
 		local can_buy = not slot.sold and wallet >= price
 		card.price_text:set_color(can_buy and Color.white or Color(1, 1, 0.5, 0.5))
-	end
-
-	-- Owned-stack badge.
-	if card.owned_text then
-		local owned = CSR_Shop.owned_count(CSR_Shop.local_peer_id(), slot.type)
-		if owned > 0 then
-			card.owned_text:set_text(
-				managers.localization:text("csr_black_market_owned_x", { count = tostring(owned) })
-			)
-			card.owned_text:set_visible(true)
-		else
-			card.owned_text:set_visible(false)
-		end
 	end
 end
 
@@ -592,6 +627,12 @@ function CrimeSpreeBlackMarketShopPage:mouse_pressed(button, x, y)
 end
 
 function CrimeSpreeBlackMarketShopPage:mouse_moved(o, x, y)
+	-- Owned-strip hover tooltip: a side effect (the strip is non-interactive), so the
+	-- buy/reroll hover + return value below are untouched.
+	if self._owned_strip then
+		self._owned_strip:mouse_moved(x, y)
+	end
+
 	local hovered = nil
 
 	if self._reroll_panel and self._reroll_panel:inside(x, y) then
@@ -678,16 +719,49 @@ function CrimeSpreeBlackMarketShopPage:_on_reroll()
 end
 
 function CrimeSpreeBlackMarketShopPage:_on_buy(slot_index)
-	if CSR_Shop.buy(CSR_Shop.local_peer_id(), slot_index) then
-		if managers.menu_component and managers.menu_component.post_event then
-			managers.menu_component:post_event("item_sell")
-		end
-		self:_set_dialogue_line(CSR_Shop.pick_purchase_line(), true)
-		self:refresh()
-	else
+	local ok, result = CSR_Shop.buy(CSR_Shop.local_peer_id(), slot_index)
+	if not ok then
 		if managers.menu_component and managers.menu_component.post_event then
 			managers.menu_component:post_event("menu_error")
 		end
 		self:_flash_token_denied()
+		return
+	end
+
+	if managers.menu_component and managers.menu_component.post_event then
+		managers.menu_component:post_event("item_sell")
+	end
+
+	-- Normal purchase: confirm and refresh in place.
+	if result ~= "sold_out" then
+		self:_set_dialogue_line(CSR_Shop.pick_purchase_line(), true)
+		self:refresh()
+		return
+	end
+
+	-- Bought the last card: show the sold-out lineup for a 0.5s beat, then the shop
+	-- restocks for FREE. The restock runs via DelayedCalls (ticked on MenuUpdate),
+	-- so it fires even if the player closes the menu first -- the lineup never stays
+	-- stuck sold-out (the page also self-heals on open). roll_lineup carries no debit.
+	self:refresh() -- render all three cards as sold for the beat
+	local page = self
+	local function restock()
+		if CSR_Shop.lineup_sold_out() then
+			CSR_Shop.roll_lineup() -- free restock; resets reroll cost to base
+		end
+		if not alive(page._panel) then
+			return -- menu closed during the delay; data already restocked above
+		end
+		if managers.menu_component and managers.menu_component.post_event then
+			managers.menu_component:post_event("stinger_new_weapon")
+		end
+		page._dialogue_target = nil -- force re-animate even if the line repeats
+		page:_set_dialogue_line(CSR_Shop.pick_soldout_line(), true)
+		page:refresh()
+	end
+	if DelayedCalls and DelayedCalls.Add then
+		DelayedCalls:Add("csr_black_market_restock", 0.5, restock)
+	else
+		restock() -- no timer available: restock immediately
 	end
 end

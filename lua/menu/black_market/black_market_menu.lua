@@ -120,6 +120,8 @@ function CrimeSpreeBlackMarketMenuComponent:_setup()
 	-- the lobby's implicit (0,0) maps here 1:1.
 	header:set_left(0)
 	header:set_top(0)
+	-- Exposed so the shop page's owned-items strip can align itself to the header line.
+	self._header = header
 	header_ghost:set_world_left(header:world_left())
 	header_ghost:set_world_center_y(header:world_center_y())
 	header_ghost:move(-13, 9)

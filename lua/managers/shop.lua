@@ -272,6 +272,22 @@ function CSR_Shop.get_lineup(peer_id)
 	return entry.shop.lineup
 end
 
+-- True only when every slot in the current lineup has been sold. A sold-out
+-- lineup still holds LINEUP_SIZE entries (each with sold = true), so get_lineup
+-- won't re-roll it on its own -- buy() uses this to trigger the free refresh.
+function CSR_Shop.lineup_sold_out(peer_id)
+	local lineup = CSR_Shop.get_lineup(peer_id)
+	if not lineup or #lineup == 0 then
+		return false
+	end
+	for _, slot in ipairs(lineup) do
+		if not slot.sold then
+			return false
+		end
+	end
+	return true
+end
+
 -- Buy slot N of the current lineup. Returns true on success; false + a reason
 -- string ("no_slot" / "sold" / "no_price" / "cant_afford" / "add_failed") otherwise.
 -- Local-only by design (mirrors the old shop): add_item mutates the local peer's
@@ -317,6 +333,15 @@ function CSR_Shop.buy(peer_id, slot_index)
 	log(
 		"[CSR] shop: bought slot " .. tostring(slot_index) .. " (" .. tostring(slot.type) .. ") for " .. tostring(price)
 	)
+	-- Buying out the last unsold card flags a FREE restock (return "sold_out"); the
+	-- actual re-roll is deferred to the UI so it can show the sold-out lineup for a
+	-- short beat before swapping in fresh cards. The shop page also self-heals a
+	-- sold-out lineup on open, so it never stays a dead end even if that deferred
+	-- re-roll is missed. roll_lineup (no debit) keeps this free. Local-only.
+	if CSR_Shop.lineup_sold_out(peer_id) then
+		log("[CSR] shop: lineup sold out -> free restock pending")
+		return true, "sold_out"
+	end
 	return true
 end
 
@@ -371,10 +396,11 @@ end
 
 -- ===== Gage dialogue =====
 -- Loc-key counts must match the csr_gage_line_<category>_<n> entries in
--- english.json (greeting 12, reroll 6, purchase 5). Picker is 1..N inclusive.
+-- english.json (greeting 12, reroll 6, purchase 5, soldout 2). Picker is 1..N.
 local GREETING_COUNT = 12
 local REROLL_COUNT = 6
 local PURCHASE_COUNT = 5
+local SOLDOUT_COUNT = 2
 
 -- Greeting persists across menu open/close (stored on the per-peer entry, next
 -- to the wallet/lineup) so re-opening the shop keeps the same line. Picked lazily.
@@ -406,6 +432,11 @@ end
 
 function CSR_Shop.pick_purchase_line()
 	return "csr_gage_line_purchase_" .. tostring(math.random(1, PURCHASE_COUNT))
+end
+
+-- Said when a purchase empties the whole lineup (the free restock case).
+function CSR_Shop.pick_soldout_line()
+	return "csr_gage_line_soldout_" .. tostring(math.random(1, SOLDOUT_COUNT))
 end
 
 log("[CSR] shop.lua loaded (Gage Services logic)")
