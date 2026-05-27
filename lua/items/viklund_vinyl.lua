@@ -12,10 +12,13 @@
 -- The fake col_ray MUST carry a REAL Body (unit:body(0)); vanilla damage_bullet
 -- calls native body:name()/position()/key() and a plain Lua table crashes.
 --
--- Deferred: the 6.2 electric "taser_hittarget" spark on chained enemies (and its
--- per-frame effect-queue/flush). That's a known vanilla particle but it isn't in
--- the extracted-asset set I can verify, so it's left out for now (polish, like
--- half_a_glass's contour). The chain damage works without it.
+-- Visual: each chained enemy gets the vanilla electric "taser_hittarget" spark
+-- (parented to its Spine1 bone) for 0.6s. It's a LOOPING particle, so it must be
+-- fade_kill'd or it sticks forever -- each spawn schedules its OWN DelayedCalls
+-- fade_kill (no per-frame flush, unlike 6.2). The spark is purely local/cosmetic
+-- (World:effect_manager() does not replicate), so only the item owner who procs the
+-- chain sees it; the chain DAMAGE still replicates to all peers via damage_bullet.
+-- MAX_CONCURRENT_FX caps live sparks so sustained fire can't flood particles.
 --
 -- Values mirror the 6.2 constants except chain damage, rebalanced down to 0.20
 -- (was 0.25) for U1 (proc 0.80 / chain 0.20 / count 2 / radius 500cm +200/stack /
@@ -33,12 +36,23 @@ local RADIUS_BASE = 500
 local RADIUS_STEP = 200
 local DIRECT_HIT_WINDOW = 0.15
 
+-- Electric spark on chained enemies (cosmetic, local-only -- see header). The
+-- vanilla taser particle + a spine bone to parent it to; both Idstring'd once at
+-- load (Idstring is a core engine global available from the first script).
+local ELECTRIC_EFFECT_IDS = Idstring("effects/payday2/particles/character/taser_hittarget")
+local ELECTRIC_SPINE_IDS = Idstring("Spine1")
+local ELECTRIC_EFFECT_DURATION = 0.6
+local MAX_CONCURRENT_FX = 16
+
 -- File-locals (the item file is dofile'd once, so these are shared by the hook
 -- closures): anti-recursion guard + the just-directly-hit set (excluded from
--- chains so multi-hit melee can't chain back into its own targets).
+-- chains so multi-hit melee can't chain back into its own targets) + the live
+-- spark count and a monotonic id source for the per-spark DelayedCalls fade_kill.
 local chaining = false
 local direct_hits = {}
 local direct_expiry = 0
+local active_fx = 0
+local fx_counter = 0
 
 -- Specials (armored / high-resist) take a reduced cut of the chain damage.
 -- Bulldozers use the "tank" tweak_table prefix.
@@ -81,6 +95,35 @@ end
 local function pos_dist_sq(a, b)
 	local dx, dy, dz = a.x - b.x, a.y - b.y, a.z - b.z
 	return dx * dx + dy * dy + dz * dz
+end
+
+-- Spawn the local-only electric spark on a chained enemy and schedule its fade_kill.
+-- The particle loops, so it must be killed; each spark gets a unique DelayedCalls id
+-- (duplicate ids replace) and the callback decrements the live count. Whole body is
+-- pcall-guarded: get_object / effect_manager spawn touch native code that can fail on
+-- a unit dying mid-frame. MAX_CONCURRENT_FX bounds sustained-fire particle spam.
+local function spawn_electric_effect(unit)
+	if active_fx >= MAX_CONCURRENT_FX or not alive(unit) or not unit:movement() then
+		return
+	end
+	pcall(function()
+		local spine = unit:get_object(ELECTRIC_SPINE_IDS)
+		if not spine then
+			return
+		end
+		local fx = World:effect_manager():spawn({ effect = ELECTRIC_EFFECT_IDS, parent = spine })
+		if not fx then
+			return
+		end
+		active_fx = active_fx + 1
+		fx_counter = fx_counter + 1
+		DelayedCalls:Add("CSR_ViklundVinyl_FX_" .. fx_counter, ELECTRIC_EFFECT_DURATION, function()
+			active_fx = active_fx - 1
+			pcall(function()
+				World:effect_manager():fade_kill(fx)
+			end)
+		end)
+	end)
 end
 
 local function run_chain(original_damage, attacker_unit, weapon_unit, initial_target, stacks)
@@ -147,6 +190,11 @@ local function run_chain(original_damage, attacker_unit, weapon_unit, initial_ta
 					origin = attacker_pos,
 				})
 			end)
+			-- Cosmetic spark on the chained enemy (re-check alive: the hit above may
+			-- have killed it). Spawns on the item owner's client only.
+			if alive(unit) then
+				spawn_electric_effect(unit)
+			end
 		end
 	end
 end

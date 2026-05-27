@@ -607,7 +607,13 @@ end
 
 -- Host's completed-heist count while guesting (nil on host/SP -> caller uses own).
 -- The lobby + briefing headers show this so a guest reads the HOST's run progress.
+-- Gated on _is_guesting() for the same reason as mp_host_difficulty: clear_mp_host_state
+-- runs only on the client path, so a stale host_missions would otherwise leak into the
+-- header after the player leaves a host and starts hosting their own run.
 function CSRGameManager:mp_host_missions_completed()
+	if not self:_is_guesting() then
+		return nil
+	end
 	local mp = self._state.mp_session
 	return mp and mp.host_missions or nil
 end
@@ -633,7 +639,16 @@ end
 
 -- Host difficulty synced while guesting (nil when not). For the next-pass guest
 -- reward bucket; combat already follows host via host_rank().
+--
+-- Gated on _is_guesting() (mirrors how host_rank() self-gates on is_client): a
+-- stale host_difficulty lingers in _state.mp_session after the player leaves a host
+-- and starts hosting their OWN run, because clear_mp_host_state() runs only on the
+-- client path (mp_session.lua at_enter). Without the gate the lobby/briefing showed
+-- the previous host's difficulty (e.g. overkill) instead of the player's own pick.
 function CSRGameManager:mp_host_difficulty()
+	if not self:_is_guesting() then
+		return nil
+	end
 	local mp = self._state.mp_session
 	return mp and mp.host_difficulty or nil
 end
