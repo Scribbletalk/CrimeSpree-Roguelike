@@ -1409,4 +1409,4 @@ function CSRStageEndScreenGui:reload()
 	CSRStageEndScreenGui.init(self, self._safe_workspace, self._full_workspace, self._data)
 end
 
-log("[CSR] stage_endscreen.lua loaded (CSRStageEndScreenGui + CSRCrimeSpreeResultTabItem fork)")
+csr_log("[CSR] stage_endscreen.lua loaded (CSRStageEndScreenGui + CSRCrimeSpreeResultTabItem fork)")

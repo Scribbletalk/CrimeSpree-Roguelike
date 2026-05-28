@@ -14,16 +14,16 @@ end
 -- MenuCallbackHandler is already defined (same proven point csr_contract_callbacks
 -- uses).
 if not MenuCallbackHandler then
-	log("[CSR Logbook] logbook_button: early return (MenuCallbackHandler missing)")
+	csr_log("[CSR Logbook] logbook_button: early return (MenuCallbackHandler missing)")
 	return
 end
 
 -- Diagnostic load trace (click-triggered subsystem, kept per debug policy).
-log("[CSR Logbook] logbook_button.lua loaded; CSR_OpenLogbook registered")
+csr_log("[CSR Logbook] logbook_button.lua loaded; CSR_OpenLogbook registered")
 
 -- Register callback (invoked by the sidebar Logbook row)
 MenuCallbackHandler.CSR_OpenLogbook = function(this, item)
-	log("[CSR Logbook] CSR_OpenLogbook fired -> open_node(csr_logbook_screen)")
+	csr_log("[CSR Logbook] CSR_OpenLogbook fired -> open_node(csr_logbook_screen)")
 
 	local ok, err = pcall(function()
 		managers.menu:open_node("logbook_screen")

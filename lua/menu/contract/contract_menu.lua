@@ -568,4 +568,4 @@ function MenuCSRContractInitiator:modify_node(original_node, data)
 	return node
 end
 
-log("[CSR] contract_menu.lua loaded (Slice 2 fork)")
+csr_log("[CSR] contract_menu.lua loaded (Slice 2 fork)")

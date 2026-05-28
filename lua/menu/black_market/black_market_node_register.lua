@@ -3,7 +3,7 @@
 -- mirroring logbook_node_register.lua. Opened from the lobby sidebar "Black
 -- Market" row (missions_menu.lua csr_open_shop -> MenuCallbackHandler:CSR_OpenBlackMarket).
 
-log("[CSR Shop] black_market_node_register.lua loaded")
+csr_log("[CSR Shop] black_market_node_register.lua loaded")
 
 Hooks:Add("CoreMenuData.LoadDataMenu", "CSR_BlackMarketNodeRegister", function(menu_id, menu)
 	-- Guard: don't double-register the node.
@@ -20,7 +20,7 @@ Hooks:Add("CoreMenuData.LoadDataMenu", "CSR_BlackMarketNodeRegister", function(m
 		menu_components = "black_market_component",
 		scene_state = "crew_management",
 	})
-	log("[CSR Shop] LoadDataMenu(" .. tostring(menu_id) .. "): node black_market_screen ADDED")
+	csr_log("[CSR Shop] LoadDataMenu(" .. tostring(menu_id) .. "): node black_market_screen ADDED")
 end)
 
 -- Callback on returning from the screen (parity with the logbook node).

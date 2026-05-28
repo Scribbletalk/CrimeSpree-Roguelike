@@ -1,14 +1,14 @@
 -- Crime Spree Roguelike - Logbook MenuNode Registration
 -- Registers a dedicated Logbook screen via CoreMenuData (BLT pattern)
 
-log("[CSR Logbook] logbook_node_register.lua loaded; CSR_LogbookNodeRegister listener added")
+csr_log("[CSR Logbook] logbook_node_register.lua loaded; CSR_LogbookNodeRegister listener added")
 
 -- Register MenuNode via CoreMenuData.LoadDataMenu (BLT pattern)
 Hooks:Add("CoreMenuData.LoadDataMenu", "CSR_LogbookNodeRegister", function(menu_id, menu)
 	-- Guard: check that node is not already registered
 	for _, node_data in ipairs(menu) do
 		if node_data.name == "logbook_screen" then
-			log("[CSR Logbook] LoadDataMenu(" .. tostring(menu_id) .. "): node already present, skip")
+			csr_log("[CSR Logbook] LoadDataMenu(" .. tostring(menu_id) .. "): node already present, skip")
 			return
 		end
 	end
@@ -23,7 +23,7 @@ Hooks:Add("CoreMenuData.LoadDataMenu", "CSR_LogbookNodeRegister", function(menu_
 		-- Removed [1] back item - ESC now goes to our component
 	}
 	table.insert(menu, logbook_node)
-	log("[CSR Logbook] LoadDataMenu(" .. tostring(menu_id) .. "): node csr_logbook_screen ADDED")
+	csr_log("[CSR Logbook] LoadDataMenu(" .. tostring(menu_id) .. "): node csr_logbook_screen ADDED")
 end)
 
 -- Callback on returning from Logbook

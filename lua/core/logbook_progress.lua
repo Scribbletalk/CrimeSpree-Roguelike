@@ -6,7 +6,7 @@ if not RequiredScript then
 end
 
 local function CSR_log(msg)
-	if _G.CSR_Settings and _G.CSR_Settings.values and _G.CSR_Settings.values.debug_mode then
+	if _G.CSR_DEBUG then
 		log(msg)
 	end
 end
@@ -168,4 +168,4 @@ if not _G.CSR_Logbook then
 end
 
 -- Diagnostic load trace (kept per debug policy).
-log("[CSR Logbook] logbook_progress.lua loaded; _G.CSR_Logbook=" .. tostring(_G.CSR_Logbook ~= nil))
+csr_log("[CSR Logbook] logbook_progress.lua loaded; _G.CSR_Logbook=" .. tostring(_G.CSR_Logbook ~= nil))

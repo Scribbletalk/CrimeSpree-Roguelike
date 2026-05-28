@@ -63,9 +63,9 @@ if GameSetup and not _G._CSR_HEIST_PACKAGES_HOOKED then
 					matched = matched + 1
 					local package = data.package
 					if not package then
-						log("[CSR] heist_packages: job '" .. tostring(job_id) .. "' matches but has NO package")
+						csr_log("[CSR] heist_packages: job '" .. tostring(job_id) .. "' matches but has NO package")
 					elseif not PackageManager:package_exists(package) then
-						log(
+						csr_log(
 							"[CSR] heist_packages: job '"
 								.. tostring(job_id)
 								.. "' package '"
@@ -73,7 +73,7 @@ if GameSetup and not _G._CSR_HEIST_PACKAGES_HOOKED then
 								.. "' does NOT exist"
 						)
 					elseif PackageManager:loaded(package) then
-						log(
+						csr_log(
 							"[CSR] heist_packages: job '"
 								.. tostring(job_id)
 								.. "' package '"
@@ -84,7 +84,7 @@ if GameSetup and not _G._CSR_HEIST_PACKAGES_HOOKED then
 						table.insert(self._loaded_job_packages, package)
 						PackageManager:load(package)
 						loaded = loaded + 1
-						log(
+						csr_log(
 							"[CSR] heist_packages: LOADED '"
 								.. tostring(package)
 								.. "' (job '"
@@ -95,7 +95,7 @@ if GameSetup and not _G._CSR_HEIST_PACKAGES_HOOKED then
 				end
 			end
 		end
-		log(
+		csr_log(
 			"[CSR] heist_packages: level '"
 				.. tostring(level_id)
 				.. "': "
@@ -137,7 +137,7 @@ if ElementSpawnEnemyDummy and not _G._CSR_SPAWN_SAFETY_HOOKED then
 					local name_ids = type(name) == "userdata" and name or Idstring(tostring(name))
 					if not PackageManager:has(UNIT_EXT, name_ids) then
 						if not PackageManager:has(UNIT_EXT, DEFAULT_ENEMY) then
-							log(
+							csr_log(
 								"[CSR] spawn-safety: SKIPPED unloaded enemy unit '"
 									.. tostring(name)
 									.. "' (key="
@@ -146,7 +146,7 @@ if ElementSpawnEnemyDummy and not _G._CSR_SPAWN_SAFETY_HOOKED then
 							)
 							return
 						end
-						log(
+						csr_log(
 							"[CSR] spawn-safety: substituting default SWAT for unloaded enemy unit '"
 								.. tostring(name)
 								.. "' (key="
@@ -182,4 +182,4 @@ if ElementSpawnEnemyDummy and not _G._CSR_SPAWN_SAFETY_HOOKED then
 	end
 end
 
-log("[CSR] heist_packages.lua loaded (GameSetup job-package loader + spawn safety net)")
+csr_log("[CSR] heist_packages.lua loaded (GameSetup job-package loader + spawn safety net)")

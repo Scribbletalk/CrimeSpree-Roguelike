@@ -238,4 +238,4 @@ if NewRaycastWeaponBase and not _G._CSR_BotDmg then
 	end
 end
 
-log("[CSR] rank_passives.lua loaded (per-rank player HP/armor/damage passive)")
+csr_log("[CSR] rank_passives.lua loaded (per-rank player HP/armor/damage passive)")

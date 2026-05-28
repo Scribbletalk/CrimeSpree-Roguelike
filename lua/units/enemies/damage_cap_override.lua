@@ -269,4 +269,4 @@ if CopDamage then
 	end)
 end
 
-log("[CSR] damage_cap_override.lua loaded (per-hit enemy damage-cap removal)")
+csr_log("[CSR] damage_cap_override.lua loaded (per-hit enemy damage-cap removal)")

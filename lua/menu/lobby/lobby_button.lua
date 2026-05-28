@@ -264,4 +264,4 @@ end
 
 function CSRStartButton:update(t, dt) end
 
-log("[CSR] lobby_button.lua loaded (Slice 1 fork)")
+csr_log("[CSR] lobby_button.lua loaded (Slice 1 fork)")

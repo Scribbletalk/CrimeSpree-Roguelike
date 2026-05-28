@@ -33,6 +33,19 @@ _G.CSR._bootstrapped = true
 -- Integer API version. Addons may gate on it; bump on any breaking change to
 -- the register_* contract (design open item O2).
 _G.CSR.API_VERSION = 1
+
+-- Bootstrap the debug flag + the project-wide gated log helper. This file
+-- loads first (lib/entry), so all later files can safely call csr_log().
+-- game_manager.lua re-initialises both after loading the saved debug_mode
+-- setting, so the final value is always settings-driven.
+_G.CSR_DEBUG = _G.CSR_DEBUG or false
+if not _G.csr_log then
+	_G.csr_log = function(msg)
+		if _G.CSR_DEBUG then
+			log(msg)
+		end
+	end
+end
 -- Persistent: never cleared. Replayed into every CSRGameManager instance.
 _G.CSR._registrations = _G.CSR._registrations or {}
 _G.CSR._modifier_registrations = _G.CSR._modifier_registrations or {}
@@ -242,7 +255,7 @@ local function load_item_defs()
 		return
 	end
 	local count = run_lua_dir(ModPath .. "lua/items/", "items")
-	log("[CSR][api] items: ran " .. count .. " item file(s)")
+	csr_log("[CSR][api] items: ran " .. count .. " item file(s)")
 end
 
 -- Same auto-load for modifier passports under lua/modifiers/ (incl. the loud/
@@ -253,7 +266,7 @@ local function load_modifier_defs()
 		return
 	end
 	local count = run_lua_dir(ModPath .. "lua/modifiers/", "modifiers")
-	log("[CSR][api] modifiers: ran " .. count .. " modifier file(s)")
+	csr_log("[CSR][api] modifiers: ran " .. count .. " modifier file(s)")
 end
 
 load_item_defs()
@@ -272,4 +285,4 @@ if _G.__CSR_pending_reqs then
 	end
 end
 
-log("[CSR] extension_api.lua loaded (public _G.CSR shim, API v" .. tostring(_G.CSR.API_VERSION) .. ")")
+csr_log("[CSR] extension_api.lua loaded (public _G.CSR shim, API v" .. tostring(_G.CSR.API_VERSION) .. ")")

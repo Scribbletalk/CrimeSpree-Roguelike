@@ -92,4 +92,4 @@ Hooks:OverrideFunction(MoneyManager, "on_mission_completed", function(self, num_
 	self:_add_to_total(total_payout, nil, TelemetryConst.economy_origin.mission_complete_reward)
 end)
 
-log("[CSR] endscreen_economy.lua loaded (per-heist cash suppressed for CSR)")
+csr_log("[CSR] endscreen_economy.lua loaded (per-heist cash suppressed for CSR)")

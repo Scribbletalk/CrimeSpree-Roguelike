@@ -66,7 +66,7 @@ local function hint(text, time)
 	if managers and managers.hud and managers.hud.show_hint then
 		managers.hud:show_hint({ text = text, time = time or 3 })
 	end
-	log("[CSR DebugProp] " .. tostring(text))
+	csr_log("[CSR DebugProp] " .. tostring(text))
 end
 
 local function is_ready(def)
@@ -328,7 +328,7 @@ local function do_auto_spawn_scrapper()
 	local mgr = managers.csr
 	local rank = (mgr and mgr.host_rank and mgr:host_rank()) or 0
 	if rank < FIRST_ITEM_RANK then
-		log(
+		csr_log(
 			"[CSR Scrapper] auto-spawn: host rank "
 				.. tostring(rank)
 				.. " below first-item rank "

@@ -65,7 +65,7 @@ Hooks:OverrideFunction(HUDManager, "setup_mission_briefing_hud", function(self)
 	local is_csr = csr_briefing_active() or (managers.csr and managers.csr.is_guesting and managers.csr:is_guesting())
 	if is_csr and CSRMissionBriefing then
 		self._hud_mission_briefing = CSRMissionBriefing:new(hud, workspace)
-		log("[CSR] wiring: mission briefing built from CSRMissionBriefing")
+		csr_log("[CSR] wiring: mission briefing built from CSRMissionBriefing")
 		return
 	end
 
@@ -74,4 +74,4 @@ Hooks:OverrideFunction(HUDManager, "setup_mission_briefing_hud", function(self)
 	self._hud_mission_briefing = HUDMissionBriefing:new(hud, workspace)
 end)
 
-log("[CSR] briefing_wiring.lua loaded (setup_mission_briefing_hud routing)")
+csr_log("[CSR] briefing_wiring.lua loaded (setup_mission_briefing_hud routing)")

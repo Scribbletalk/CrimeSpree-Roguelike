@@ -299,4 +299,4 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_REMINDER_INPUT_HOOKED then
 	end
 end
 
-log("[CSR] briefing_reminder_input.lua loaded (MissionBriefingGui workspace reminder)")
+csr_log("[CSR] briefing_reminder_input.lua loaded (MissionBriefingGui workspace reminder)")

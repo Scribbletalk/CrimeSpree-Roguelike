@@ -114,7 +114,7 @@ Hooks:Add("MenuManagerBuildCustomMenus", "CSR_PauseMenuReturnToLobby", function(
 	local insert_at = find_quit_index(node._items) or find_trailing_back_index(node._items)
 	node:insert_item(new_item, insert_at)
 
-	log(
+	csr_log(
 		"[CSR] csr_pause_menu_items: inserted Return to Lobby at index "
 			.. tostring(insert_at)
 			.. " of pause node (total items now "
@@ -123,4 +123,4 @@ Hooks:Add("MenuManagerBuildCustomMenus", "CSR_PauseMenuReturnToLobby", function(
 	)
 end)
 
-log("[CSR] pause_menu_items.lua loaded")
+csr_log("[CSR] pause_menu_items.lua loaded")

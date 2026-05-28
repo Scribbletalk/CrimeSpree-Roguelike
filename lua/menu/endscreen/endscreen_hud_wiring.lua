@@ -66,7 +66,7 @@ Hooks:OverrideFunction(HUDManager, "setup_endscreen_hud", function(self)
 	local is_csr = csr_endscreen_active() or (managers.csr and managers.csr.is_guesting and managers.csr:is_guesting())
 	if is_csr and CSRHUDStageEndScreen then
 		self._hud_stage_endscreen = CSRHUDStageEndScreen:new(hud, ws)
-		log("[CSR] wiring: endscreen HUD built from CSRHUDStageEndScreen")
+		csr_log("[CSR] wiring: endscreen HUD built from CSRHUDStageEndScreen")
 		return
 	end
 
@@ -78,4 +78,4 @@ Hooks:OverrideFunction(HUDManager, "setup_endscreen_hud", function(self)
 	end
 end)
 
-log("[CSR] endscreen_hud_wiring.lua loaded (endscreen HUD routing)")
+csr_log("[CSR] endscreen_hud_wiring.lua loaded (endscreen HUD routing)")

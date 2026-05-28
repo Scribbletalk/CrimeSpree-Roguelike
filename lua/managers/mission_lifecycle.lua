@@ -15,7 +15,9 @@
 -- vanilla-style rank-regression are both deferred.
 
 local function log_csr(msg)
-	log("[CSR] " .. tostring(msg))
+	if _G.CSR_DEBUG then
+		log("[CSR] " .. tostring(msg))
+	end
 end
 
 -- No-leak gate (feedback_csr_only_no_vanilla_leak). managers.csr:is_active() is
@@ -195,7 +197,7 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 		-- no-op if no run is active, so this is safe on any non-CSR failure
 		-- that slipped past csr_heist_active() (it cannot — but defensive).
 		managers.csr:mark_failed()
-		log_csr("mission FAILED: run marked failed (locked until Continue/End Spree)")
+		log("[CSR] mission FAILED: run marked failed (locked until Continue/End Spree)")
 	end
 end)
 

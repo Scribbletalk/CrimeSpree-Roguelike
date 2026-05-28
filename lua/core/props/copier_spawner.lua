@@ -108,7 +108,7 @@ local function hint(text, time)
 	if managers and managers.hud and managers.hud.show_hint then
 		managers.hud:show_hint({ text = text, time = time or 3 })
 	end
-	log("[CSR Copier] " .. tostring(text))
+	csr_log("[CSR Copier] " .. tostring(text))
 end
 
 local function is_ready()
@@ -323,7 +323,7 @@ local function create_billboard(unit, icon_name, tier)
 	-- coremissionelement.lua:94, adapted for a vertical basis.
 	local pos = desired_center - x_basis * 0.5 - y_basis * 0.5
 
-	log(
+	csr_log(
 		string.format(
 			"[CSR Copier] billboard anchors: pivot=%s base_pos=%s base_center=%s desired_center=%s ws_pos=%s",
 			tostring(unit:position()),
@@ -472,7 +472,7 @@ local function use_copier(c)
 		end
 
 		mgr:add_item(pid, c.offer_type)
-		log("[CSR Copier] Exchange: " .. tostring(sacrifice.type) .. " -> " .. tostring(c.offer_type))
+		csr_log("[CSR Copier] Exchange: " .. tostring(sacrifice.type) .. " -> " .. tostring(c.offer_type))
 
 		-- MP: our counts changed (sacrifice removed, offer added) -- tell the other
 		-- peers so their items panel converges. Self-gates on multiplayer (SP no-op).
@@ -542,7 +542,7 @@ local function _spawn_copier(pos, rot, offer_def)
 	-- See bugs_todo.md "💡 Suggestions (backlog)" for the nav-obstacle follow-up.
 	pcall(function()
 		local nr = unit:num_bodies()
-		log("[CSR Copier] disabling collision: num_bodies=" .. tostring(nr))
+		csr_log("[CSR Copier] disabling collision: num_bodies=" .. tostring(nr))
 		for i = 0, nr - 1 do
 			local body = unit:body(i)
 			if body then
@@ -1354,10 +1354,10 @@ local function pick_cover_spawns(n)
 	end
 
 	if skipped_unreachable > 0 then
-		log(string.format("[CSR Copier] auto-spawn: skipped %d player-unreachable segments", skipped_unreachable))
+		csr_log(string.format("[CSR Copier] auto-spawn: skipped %d player-unreachable segments", skipped_unreachable))
 	end
 	if skipped_blocked_placement > 0 then
-		log(
+		csr_log(
 			string.format(
 				"[CSR Copier] auto-spawn: skipped %d cover placement(s) blocked from intra-seg walkable area (rooftop ledge / railing)",
 				skipped_blocked_placement
@@ -1365,7 +1365,7 @@ local function pick_cover_spawns(n)
 		)
 	end
 	if skipped_blocked_player_los > 0 then
-		log(
+		csr_log(
 			string.format(
 				"[CSR Copier] auto-spawn: skipped %d nearby placement(s) blocked from host player straight LOS",
 				skipped_blocked_player_los
@@ -1420,7 +1420,9 @@ do_auto_spawn_host = function()
 
 	local reached, threshold, level = host_reached_item_threshold()
 	if not reached then
-		log(string.format("[CSR Copier] auto-spawn: host rank %d below first-item rank %d, skipping", level, threshold))
+		csr_log(
+			string.format("[CSR Copier] auto-spawn: host rank %d below first-item rank %d, skipping", level, threshold)
+		)
 		return
 	end
 
@@ -1438,7 +1440,7 @@ do_auto_spawn_host = function()
 		if offer_def then
 			local entry = _spawn_copier(s.pos, s.rot, offer_def)
 			if entry then
-				log(
+				csr_log(
 					string.format(
 						"[CSR Copier] auto-spawn %d/%d: %s (%s) at %s",
 						i,
@@ -1680,4 +1682,4 @@ if _G.CSR_MP and _G.CSR_MP.register_handler and _G.CSR_MP.MSG then
 	end)
 end
 
-log("[CSR Copier] copier_spawner.lua loaded — F7 spawn, interact key to use")
+csr_log("[CSR Copier] copier_spawner.lua loaded — F7 spawn, interact key to use")

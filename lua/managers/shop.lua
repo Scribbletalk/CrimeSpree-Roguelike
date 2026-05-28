@@ -270,11 +270,11 @@ function CSR_Shop.roll_lineup(peer_id)
 	end
 	-- Slot 4: contraband. Uniform random pick (no weights — all are equally rare).
 	local cb_pool = CSR_Shop.build_contraband_pool()
-	log("[CSR] shop: roll_lineup contraband pool size = " .. tostring(#cb_pool))
+	csr_log("[CSR] shop: roll_lineup contraband pool size = " .. tostring(#cb_pool))
 	if #cb_pool > 0 then
 		local cb = cb_pool[math.random(#cb_pool)]
 		lineup[#lineup + 1] = { type = cb.type, rarity = cb.rarity, sold = false }
-		log("[CSR] shop: roll_lineup contraband slot = " .. tostring(cb.type))
+		csr_log("[CSR] shop: roll_lineup contraband slot = " .. tostring(cb.type))
 	end
 	-- reroll_count resets to 0 on a fresh lineup; reroll() restores+increments it.
 	m:peer_entry(peer_id).shop = { lineup = lineup, reroll_count = 0 }
@@ -294,21 +294,21 @@ function CSR_Shop.get_lineup(peer_id)
 	end
 	local entry = m:peer_entry(peer_id)
 	if not entry.shop or not entry.shop.lineup or #entry.shop.lineup == 0 then
-		log("[CSR] shop: get_lineup rolling fresh lineup for peer " .. tostring(peer_id))
+		csr_log("[CSR] shop: get_lineup rolling fresh lineup for peer " .. tostring(peer_id))
 		CSR_Shop.roll_lineup(peer_id)
 		entry = m:peer_entry(peer_id)
 	elseif #entry.shop.lineup == LINEUP_SIZE then
 		-- Old save: contraband slot missing. Append one without disturbing the 3 existing cards.
-		log("[CSR] shop: migrating lineup to add contraband slot (peer " .. tostring(peer_id) .. ")")
+		csr_log("[CSR] shop: migrating lineup to add contraband slot (peer " .. tostring(peer_id) .. ")")
 		local cb_pool = CSR_Shop.build_contraband_pool()
-		log("[CSR] shop: contraband pool size = " .. tostring(#cb_pool))
+		csr_log("[CSR] shop: contraband pool size = " .. tostring(#cb_pool))
 		if #cb_pool > 0 then
 			local cb = cb_pool[math.random(#cb_pool)]
 			entry.shop.lineup[#entry.shop.lineup + 1] = { type = cb.type, rarity = cb.rarity, sold = false }
 			m:save()
 		end
 	end
-	log("[CSR] shop: get_lineup returning " .. tostring(#entry.shop.lineup) .. " slots")
+	csr_log("[CSR] shop: get_lineup returning " .. tostring(#entry.shop.lineup) .. " slots")
 	return entry.shop.lineup
 end
 
@@ -374,7 +374,7 @@ function CSR_Shop.buy(peer_id, slot_index)
 	CSR_Shop.debit(peer_id, price)
 	slot.sold = true
 	m:save()
-	log(
+	csr_log(
 		"[CSR] shop: bought slot " .. tostring(slot_index) .. " (" .. tostring(slot.type) .. ") for " .. tostring(price)
 	)
 	-- Buying the 3rd non-contraband card flags a FREE restock (return "sold_out");
@@ -383,7 +383,7 @@ function CSR_Shop.buy(peer_id, slot_index)
 	-- self-heals on open if the deferred roll was missed. roll_lineup (no debit) keeps
 	-- this free. Local-only.
 	if CSR_Shop.lineup_sold_out(peer_id) then
-		log("[CSR] shop: lineup sold out -> free restock pending")
+		csr_log("[CSR] shop: lineup sold out -> free restock pending")
 		return true, "sold_out"
 	end
 	return true
@@ -483,4 +483,4 @@ function CSR_Shop.pick_soldout_line()
 	return "csr_gage_line_soldout_" .. tostring(math.random(1, SOLDOUT_COUNT))
 end
 
-log("[CSR] shop.lua loaded (Gage Services logic)")
+csr_log("[CSR] shop.lua loaded (Gage Services logic)")

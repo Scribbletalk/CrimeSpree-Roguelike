@@ -138,7 +138,7 @@ local function install_wrap(cls, label, guard_key)
 			-- the node name + job. Kept per feedback_keep_rare_event_logs.
 			local nm = node.parameters and node:parameters().name
 
-			log(
+			csr_log(
 				"[CSR] csr_contract_difficulty: "
 					.. label
 					.. " built CS node '"
@@ -167,4 +167,4 @@ end
 install_wrap(MenuCrimeNetContractInitiator, "MenuCrimeNetContractInitiator", "_CSR_DIFF_WRAP_REGULAR")
 install_wrap(MenuCrimeNetCrimeSpreeContractInitiator, "MenuCrimeNetCrimeSpreeContractInitiator", "_CSR_DIFF_WRAP_CS")
 
-log("[CSR] contract_difficulty.lua loaded")
+csr_log("[CSR] contract_difficulty.lua loaded")

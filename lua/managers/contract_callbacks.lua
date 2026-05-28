@@ -147,7 +147,9 @@ function MenuCallbackHandler:change_csr_contract_difficulty(item)
 end
 
 function MenuCallbackHandler:accept_csr_contract(item, node)
-	log("[CSR] accept_csr_contract body running (single_player=" .. tostring(Global.game_settings.single_player) .. ")")
+	csr_log(
+		"[CSR] accept_csr_contract body running (single_player=" .. tostring(Global.game_settings.single_player) .. ")"
+	)
 	if Global.game_settings.single_player then
 		self:_accept_csr_contract_sp(item, node)
 	else
@@ -407,7 +409,7 @@ function MenuCallbackHandler:return_to_csr_lobby()
 				-- (game-state _G ≠ menu-state _G). Global survives it; _G does
 				-- not. Mirrors vanilla Global.load_start_menu_lobby.
 				Global.CSR_RETURN_TO_LOBBY = true
-				log("[CSR] return_to_csr_lobby: flag set, calling load_start_menu_lobby")
+				csr_log("[CSR] return_to_csr_lobby: flag set, calling load_start_menu_lobby")
 				self:load_start_menu_lobby()
 			end
 		end,
@@ -842,7 +844,7 @@ if MenuCallbackHandler and not _G._CSR_ACCEPT_CONTRACT_WRAPPED then
 	local original_accept = MenuCallbackHandler.accept_crime_spree_contract
 
 	function MenuCallbackHandler:accept_crime_spree_contract(item, node)
-		log("[CSR] wiring: accept_crime_spree_contract intercepted -> accept_csr_contract")
+		csr_log("[CSR] wiring: accept_crime_spree_contract intercepted -> accept_csr_contract")
 
 		if self.accept_csr_contract then
 			self:accept_csr_contract(item, node)
@@ -903,4 +905,4 @@ Hooks:PostHook(MenuCallbackHandler, "_dialog_leave_lobby_yes", "CSR_ClearMission
 	end
 end)
 
-log("[CSR] contract_callbacks.lua loaded (Slice 3 fork + Slice 5 accept wrap + Slice 8 start/reroll wrap)")
+csr_log("[CSR] contract_callbacks.lua loaded (Slice 3 fork + Slice 5 accept wrap + Slice 8 start/reroll wrap)")

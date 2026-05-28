@@ -446,4 +446,4 @@ function CSROwnedItemsStrip:destroy()
 	self._hover_target = nil
 end
 
-log("[CSR] owned_items_strip.lua loaded (reusable inventory strip widget)")
+csr_log("[CSR] owned_items_strip.lua loaded (reusable inventory strip widget)")

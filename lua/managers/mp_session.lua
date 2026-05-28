@@ -243,4 +243,4 @@ if IngameWaitingForPlayersState and not _G._CSR_MP_SESSION_HOOKED then
 	end)
 end
 
-log("[CSR] mp_session.lua loaded (host-state push on IngameWaitingForPlayersState)")
+csr_log("[CSR] mp_session.lua loaded (host-state push on IngameWaitingForPlayersState)")

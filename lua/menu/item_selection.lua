@@ -752,7 +752,7 @@ function CSRItemSelectionComponent:_on_finalize_item()
 			mgr:pop_offer(pid)
 		end
 	else
-		log(
+		csr_log(
 			"[CSR][warn] item selection finalize: cannot grant (missing manager / add_item / type) "
 				.. "type="
 				.. tostring(item_type)
@@ -1186,20 +1186,20 @@ function _G.CSR_CloseItemSelection()
 		mcm._alive_components = rebuilt
 	end
 
-	log("[CSR] item selection window closed")
+	csr_log("[CSR] item selection window closed")
 end
 
 function _G.CSR_OpenItemSelection(num_to_select)
 	local mcm = managers and managers.menu_component
 	if not mcm then
-		log("[CSR] item selection: managers.menu_component not ready")
+		csr_log("[CSR] item selection: managers.menu_component not ready")
 		return
 	end
 
 	local ws = mcm._ws
 	local fullscreen_ws = mcm._fullscreen_ws
 	if not ws or not fullscreen_ws then
-		log("[CSR] item selection: menu workspaces not ready")
+		csr_log("[CSR] item selection: menu workspaces not ready")
 		return
 	end
 
@@ -1250,7 +1250,7 @@ function _G.CSR_OpenItemSelection(num_to_select)
 	mcm:register_component(COMP_ID, comp, -100)
 	_G._csr_item_selection = comp
 	csr_hide_lobby_chrome()
-	log("[CSR] item selection window opened")
+	csr_log("[CSR] item selection window opened")
 end
 
 -- While the item-selection modal is open, report it as the active "crime spree
@@ -1271,4 +1271,4 @@ if MenuComponentManager and not _G._CSR_ITEMSEL_INPUT_GATE then
 	end)
 end
 
-log("[CSR] item_selection.lua loaded (forked selection window)")
+csr_log("[CSR] item_selection.lua loaded (forked selection window)")

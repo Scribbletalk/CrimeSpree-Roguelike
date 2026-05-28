@@ -35,7 +35,7 @@ if ElementAreaTrigger and ElementAreaTrigger.load and not _G._CSR_AREA_INTERVAL_
 		end
 	end)
 
-	log("[CSR] mission_element_safety.lua: ElementAreaTrigger:load nil-interval guard installed")
+	csr_log("[CSR] mission_element_safety.lua: ElementAreaTrigger:load nil-interval guard installed")
 end
 
 if MissionManager and MissionManager.load and not _G._CSR_MISSION_STATE_GUARD then
@@ -57,5 +57,5 @@ if MissionManager and MissionManager.load and not _G._CSR_MISSION_STATE_GUARD th
 		end
 	end)
 
-	log("[CSR] mission_element_safety.lua: MissionManager:load nil-state guard installed")
+	csr_log("[CSR] mission_element_safety.lua: MissionManager:load nil-state guard installed")
 end

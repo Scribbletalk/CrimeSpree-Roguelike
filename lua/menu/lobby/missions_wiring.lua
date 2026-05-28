@@ -108,7 +108,7 @@ Hooks:PostHook(
 		self._crime_spree_missions = CSRMissionsMenuComponent:new(self._ws, self._fullscreen_ws, node)
 
 		self:register_component("crime_spree_missions", self._crime_spree_missions)
-		log("[CSR] wiring: vanilla CS missions panel swapped for CSRMissionsMenuComponent")
+		csr_log("[CSR] wiring: vanilla CS missions panel swapped for CSRMissionsMenuComponent")
 
 		-- MP lobby: force the contract/crew box to rebuild now that
 		-- _crime_spree_missions is stored. Hosting online enters the normal "lobby"
@@ -123,7 +123,7 @@ Hooks:PostHook(
 		-- this is MP + lobby only (user report 2026-05-25).
 		if in_lobby and not Global.game_settings.single_player and self.create_contract_gui then
 			self:create_contract_gui()
-			log("[CSR] wiring: forced contract-box rebuild for CSR lobby (MP)")
+			csr_log("[CSR] wiring: forced contract-box rebuild for CSR lobby (MP)")
 		end
 
 		-- MP: sync per-peer inventories (M2b) AND pull host-state. Runs for the LOBBY
@@ -168,4 +168,4 @@ Hooks:PostHook(MenuComponentManager, "create_lobby_code_gui", "CSR_RepositionLob
 	end
 end)
 
-log("[CSR] missions_wiring.lua loaded (Slice 8 wiring)")
+csr_log("[CSR] missions_wiring.lua loaded (Slice 8 wiring)")

@@ -399,4 +399,4 @@ function HudIconsTweakData:init()
 end
 
 -- Diagnostic load trace (kept per debug policy).
-log("[CSR Logbook] hudicons.lua loaded; DB available=" .. tostring(DB ~= nil and DB.create_entry ~= nil))
+csr_log("[CSR Logbook] hudicons.lua loaded; DB available=" .. tostring(DB ~= nil and DB.create_entry ~= nil))

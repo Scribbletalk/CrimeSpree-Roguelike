@@ -273,7 +273,7 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 		end
 		if managers.job:current_job_id() == "crime_spree" and managers.csr._setup_temporary_job then
 			managers.csr:_setup_temporary_job()
-			log("[CSR] briefing: re-derived empty crime_spree chain before init (MP client)")
+			csr_log("[CSR] briefing: re-derived empty crime_spree chain before init (MP client)")
 		end
 	end)
 
@@ -472,4 +472,4 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 	end)
 end
 
-log("[CSR] briefing_sidebar.lua loaded (MissionBriefingGui workspace sidebar + feature panels)")
+csr_log("[CSR] briefing_sidebar.lua loaded (MissionBriefingGui workspace sidebar + feature panels)")

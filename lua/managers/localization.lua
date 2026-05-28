@@ -38,4 +38,4 @@ function LocalizationManager:text(string_id, macros)
 	return result
 end
 
-log("[CSR LOC] localization.lua loaded")
+csr_log("[CSR LOC] localization.lua loaded")

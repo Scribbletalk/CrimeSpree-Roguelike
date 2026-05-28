@@ -1176,4 +1176,4 @@ function CSRMissionBriefing:reload()
 	CSRMissionBriefing.init(self, self._hud, self._workspace)
 end
 
-log("[CSR] mission_briefing.lua loaded (CSRMissionBriefing fork)")
+csr_log("[CSR] mission_briefing.lua loaded (CSRMissionBriefing fork)")

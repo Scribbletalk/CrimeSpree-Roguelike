@@ -51,7 +51,7 @@ Hooks:PostHook(
 		self._csr_contract_menu_comp = CSRContractMenuComponent:new(self._ws, self._fullscreen_ws, node)
 
 		self:register_component("crimenet_crime_spree_contract", self._csr_contract_menu_comp)
-		log("[CSR] wiring: vanilla CS contract popup swapped for CSRContractMenuComponent")
+		csr_log("[CSR] wiring: vanilla CS contract popup swapped for CSRContractMenuComponent")
 	end
 )
 
@@ -71,7 +71,7 @@ Hooks:PostHook(MenuComponentManager, "close_crime_spree_contract_gui", "CSR_Swap
 		-- enable_crimenet(). Without this CrimeNet stays disabled after closing the
 		-- contract -> the whole map freezes (user-reported 2026-05-21).
 		self:enable_crimenet()
-		log("[CSR] wiring: CSRContractMenuComponent closed")
+		csr_log("[CSR] wiring: CSRContractMenuComponent closed")
 	end
 end)
 
@@ -167,4 +167,4 @@ end)
 -- MenuManagerCrimeSpreeCallbacks finishes loading, otherwise vanilla's late
 -- definition of accept_crime_spree_contract overwrites our wrap.
 
-log("[CSR] contract_wiring.lua loaded (Slice 4 wiring)")
+csr_log("[CSR] contract_wiring.lua loaded (Slice 4 wiring)")

@@ -71,7 +71,7 @@ Hooks:OverrideFunction(MenuComponentManager, "create_stage_endscreen_gui", funct
 			or (managers.csr and managers.csr.is_guesting and managers.csr:is_guesting())
 		if is_csr and CSRStageEndScreenGui then
 			self._stage_endscreen_gui = CSRStageEndScreenGui:new(self._ws, self._fullscreen_ws)
-			log("[CSR] wiring: stage endscreen built from CSRStageEndScreenGui")
+			csr_log("[CSR] wiring: stage endscreen built from CSRStageEndScreenGui")
 		else
 			-- Verbatim vanilla.
 			self._stage_endscreen_gui = StageEndScreenGui:new(self._ws, self._fullscreen_ws)
@@ -101,4 +101,4 @@ Hooks:OverrideFunction(MenuComponentManager, "create_stage_endscreen_gui", funct
 	end
 end)
 
-log("[CSR] endscreen_wiring.lua loaded (stage endscreen routing; HUD routing in endscreen_hud_wiring.lua)")
+csr_log("[CSR] endscreen_wiring.lua loaded (stage endscreen routing; HUD routing in endscreen_hud_wiring.lua)")

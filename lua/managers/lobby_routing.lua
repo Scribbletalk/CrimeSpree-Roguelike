@@ -80,7 +80,7 @@ local function csr_teardown_endscreen_hud()
 	if screen and screen._backdrop then
 		screen._backdrop:close()
 		hud._hud_stage_endscreen = nil
-		log("[CSR] lobby routing: tore down stale end-screen HUD backdrop")
+		csr_log("[CSR] lobby routing: tore down stale end-screen HUD backdrop")
 	end
 end
 
@@ -93,15 +93,15 @@ function _G.CSR_reroute_client_to_csr_lobby()
 	local active = managers.menu and managers.menu:active_menu()
 	local logic = active and active.logic
 	if not logic then
-		log("[CSR] lobby routing: client reroute skipped (no active menu logic)")
+		csr_log("[CSR] lobby routing: client reroute skipped (no active menu logic)")
 		return
 	end
 	logic:select_node("crime_spree_lobby", true, {})
-	log("[CSR] lobby routing: client rerouted -> crime_spree_lobby (host confirmed CSR)")
+	csr_log("[CSR] lobby routing: client rerouted -> crime_spree_lobby (host confirmed CSR)")
 end
 
 Hooks:PostHook(MenuManager, "on_enter_lobby", "CSR_OnEnterLobbyRoute", function(self)
-	log("[CSR] lobby routing: on_enter_lobby PostHook fired (flag=" .. tostring(Global.CSR_RETURN_TO_LOBBY) .. ")")
+	csr_log("[CSR] lobby routing: on_enter_lobby PostHook fired (flag=" .. tostring(Global.CSR_RETURN_TO_LOBBY) .. ")")
 
 	-- Joining CLIENT: ask the host whether this is a CSR lobby; the host's reply
 	-- reroutes us (mp_sync.lua LOBBY_CSR handler -> CSR_reroute_client_to_csr_lobby).
@@ -130,7 +130,7 @@ Hooks:PostHook(MenuManager, "on_enter_lobby", "CSR_OnEnterLobbyRoute", function(
 	end
 
 	logic:select_node("crime_spree_lobby", true, {})
-	log("[CSR] lobby routing: rerouted on_enter_lobby -> crime_spree_lobby node")
+	csr_log("[CSR] lobby routing: rerouted on_enter_lobby -> crime_spree_lobby node")
 end)
 
-log("[CSR] lobby_routing.lua loaded (Slice B navigation fix)")
+csr_log("[CSR] lobby_routing.lua loaded (Slice B navigation fix)")

@@ -69,4 +69,4 @@ function CrimeSpreeManager:on_spree_complete()
 	return orig_on_spree_complete(self)
 end
 
-log("[CSR] end_spree_rewards.lua loaded (vanilla reward screen driven by CSR values)")
+csr_log("[CSR] end_spree_rewards.lua loaded (vanilla reward screen driven by CSR values)")

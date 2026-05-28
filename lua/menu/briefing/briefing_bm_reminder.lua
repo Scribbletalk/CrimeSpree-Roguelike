@@ -232,17 +232,17 @@ end
 -- already exists; PostHooks + chain-wraps are safe to install here.
 if CSRMissionsMenuComponent and not _G._CSR_BM_LOBBY_REMINDER_HOOKED then
 	_G._CSR_BM_LOBBY_REMINDER_HOOKED = true
-	log("[CSR] bm_reminder: lobby section registered (CSRMissionsMenuComponent found)")
+	csr_log("[CSR] bm_reminder: lobby section registered (CSRMissionsMenuComponent found)")
 
 	function CSRMissionsMenuComponent:_csr_bm_lobby_build()
 		if self._csr_bm_lobby_panel and alive(self._csr_bm_lobby_panel) then
 			return
 		end
 		if not self._panel or not alive(self._panel) then
-			log("[CSR] bm_reminder: lobby build skipped – panel dead")
+			csr_log("[CSR] bm_reminder: lobby build skipped – panel dead")
 			return
 		end
-		log("[CSR] bm_reminder: lobby build start")
+		csr_log("[CSR] bm_reminder: lobby build start")
 		self._csr_bm_lobby_panel = self._panel:panel({ layer = 51, visible = false })
 		self._csr_bm_lobby_bg = self._panel:rect({ layer = 1, color = BM_DIM, alpha = 0.1 })
 		self._csr_bm_lobby_text = self._csr_bm_lobby_panel:text({
@@ -267,7 +267,7 @@ if CSRMissionsMenuComponent and not _G._CSR_BM_LOBBY_REMINDER_HOOKED then
 
 	function CSRMissionsMenuComponent:_csr_bm_lobby_refresh()
 		if not self._csr_bm_lobby_panel or not alive(self._csr_bm_lobby_panel) then
-			log("[CSR] bm_reminder: lobby refresh skipped – panel nil or dead")
+			csr_log("[CSR] bm_reminder: lobby refresh skipped – panel nil or dead")
 			return
 		end
 		-- Re-anchor above unselected reminder each refresh (its top shifts with digit count).
@@ -278,7 +278,7 @@ if CSRMissionsMenuComponent and not _G._CSR_BM_LOBBY_REMINDER_HOOKED then
 			end
 		end
 		local visible = can_afford_bm()
-		log("[CSR] bm_reminder: lobby refresh visible=" .. tostring(visible))
+		csr_log("[CSR] bm_reminder: lobby refresh visible=" .. tostring(visible))
 		self._csr_bm_lobby_panel:set_visible(visible)
 		if self._csr_bm_lobby_bg and alive(self._csr_bm_lobby_bg) then
 			self._csr_bm_lobby_bg:set_visible(visible)
@@ -362,4 +362,4 @@ if CSRMissionsMenuComponent and not _G._CSR_BM_LOBBY_REMINDER_HOOKED then
 	end
 end
 
-log("[CSR] briefing_bm_reminder.lua loaded (Black Market affordability reminder)")
+csr_log("[CSR] briefing_bm_reminder.lua loaded (Black Market affordability reminder)")

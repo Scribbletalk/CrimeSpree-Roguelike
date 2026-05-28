@@ -135,4 +135,4 @@ end
 
 function CSRHUDStageEndScreen:send_xp_data(data, done_clbk) end
 
-log("[CSR] hud_stage_endscreen.lua loaded (CSRHUDStageEndScreen fork)")
+csr_log("[CSR] hud_stage_endscreen.lua loaded (CSRHUDStageEndScreen fork)")

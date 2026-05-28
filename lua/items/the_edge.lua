@@ -63,7 +63,7 @@ local function do_edge_heal(self, stacks, now)
 	self._csr_edge_saved_hp = new_hp
 
 	local sfx_base = _G.XAudio and _G.XAudio._base_gains and _G.XAudio._base_gains.sfx or -1
-	log(string.format("[CSR] the_edge_activate: csr_vol=1.0 sfx_base=%.2f raw=%.2f", sfx_base, 1.0 * sfx_base))
+	csr_log(string.format("[CSR] the_edge_activate: csr_vol=1.0 sfx_base=%.2f raw=%.2f", sfx_base, 1.0 * sfx_base))
 	if _G.CSR and _G.CSR.play_sound then
 		_G.CSR.play_sound("the_edge_activate", { volume = 1.0 })
 	end

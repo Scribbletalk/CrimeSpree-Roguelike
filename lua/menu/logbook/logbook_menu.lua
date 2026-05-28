@@ -1572,7 +1572,7 @@ function CrimeSpreeLogbookMenuComponent:mouse_wheel_down(x, y)
 end
 
 -- Diagnostic load trace (click-triggered subsystem, kept per debug policy).
-log(
+csr_log(
 	"[CSR Logbook] logbook_menu.lua loaded; CrimeSpreeLogbookMenuComponent defined="
 		.. tostring(CrimeSpreeLogbookMenuComponent ~= nil)
 )

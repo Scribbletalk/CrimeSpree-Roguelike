@@ -50,4 +50,4 @@ if IngameWaitingForPlayersState and not _G._CSR_COMBAT_MODIFIERS_HOOKED then
 	end)
 end
 
-log("[CSR] combat_modifiers.lua loaded (IngameWaitingForPlayersState modifier application)")
+csr_log("[CSR] combat_modifiers.lua loaded (IngameWaitingForPlayersState modifier application)")

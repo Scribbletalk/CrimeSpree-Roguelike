@@ -621,7 +621,7 @@ function CSRMissionsMenuComponent:toggle_feature_panel(key)
 	-- hide_feature_panels does NOT touch the slot (sub-screen blanking /
 	-- sidebar collapse should not look like a user-driven close).
 	Global._csr_pinned_feature = show and key or nil
-	log(
+	csr_log(
 		"[CSR][pinned-tab] toggle: key="
 			.. tostring(key)
 			.. " show="
@@ -2084,7 +2084,7 @@ local function csr_open_logbook()
 	-- wraps managers.menu:open_node("logbook_screen"). Resolved at click
 	-- time, so load order with the logbook scripts doesn't matter.
 	local has_cb = MenuCallbackHandler ~= nil and MenuCallbackHandler.CSR_OpenLogbook ~= nil
-	log("[CSR Logbook] sidebar Logbook clicked; CSR_OpenLogbook present=" .. tostring(has_cb))
+	csr_log("[CSR Logbook] sidebar Logbook clicked; CSR_OpenLogbook present=" .. tostring(has_cb))
 
 	if has_cb then
 		MenuCallbackHandler:CSR_OpenLogbook()
@@ -2577,4 +2577,4 @@ end
 
 function CSRSidebarItem:update(t, dt) end
 
-log("[CSR] missions_menu.lua loaded (Slice 8 fork + start button)")
+csr_log("[CSR] missions_menu.lua loaded (Slice 8 fork + start button)")

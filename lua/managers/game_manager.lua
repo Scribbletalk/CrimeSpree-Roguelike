@@ -27,8 +27,21 @@ local LEGACY_MP_SESSIONS_FILE = "csr_mp_sessions.json"
 -- is available in the PD2 Lua sandbox (used throughout the pre-refactor tree).
 local MP_SESSION_TTL_DAYS = 7
 
+-- _G.CSR_DEBUG is false until CSRGameManager:init() loads settings.
+-- csr_log() is the project-wide gated helper; all non-error diagnostic
+-- logs call it so a single toggle silences them.
+_G.CSR_DEBUG = _G.CSR_DEBUG or false
+
+_G.csr_log = function(msg)
+	if _G.CSR_DEBUG then
+		log(msg)
+	end
+end
+
 local function log_csr(msg)
-	log("[CSR] " .. tostring(msg))
+	if _G.CSR_DEBUG then
+		log("[CSR] " .. tostring(msg))
+	end
 end
 
 local function default_meta()
@@ -146,6 +159,7 @@ function CSRGameManager:init()
 	-- Cache the debug-logging flag (the mod's first setting) into a plain boolean
 	-- for cheap hot-path gating; kept in sync by set_setting.
 	self._debug = (self._meta.settings and self._meta.settings.debug_mode) == true
+	_G.CSR_DEBUG = self._debug
 	-- Replay every registration (addon + csr_builtin_items.lua) into this fresh
 	-- _registry. init() runs multiple times per session and rebuilds _registry
 	-- empty each time, so this REPLAYS (idempotent via by_type), never drains.
@@ -327,7 +341,7 @@ function CSRGameManager:set_difficulty(diff)
 	end
 	local diffs = tweak_data and tweak_data.difficulties
 	if type(diffs) == "table" and not table.contains(diffs, diff) then
-		log_csr("set_difficulty: unknown difficulty '" .. tostring(diff) .. "' — ignored")
+		log("[CSR] set_difficulty: unknown difficulty '" .. tostring(diff) .. "' — ignored")
 		return false
 	end
 	self._state.difficulty = diff
@@ -988,7 +1002,7 @@ end
 
 function CSRGameManager:add_item(peer_id, item_type)
 	if not self._registry.by_type[item_type] then
-		log_csr("add_item: unknown type '" .. tostring(item_type) .. "' — ignored")
+		log("[CSR] add_item: unknown type '" .. tostring(item_type) .. "' — ignored")
 		return false
 	end
 	local entry = self:_own_entry(peer_id, true)
@@ -1079,20 +1093,20 @@ local KNOWN_EFFECT_KINDS = {
 
 function CSRGameManager:register_item(def)
 	if type(def) ~= "table" then
-		log_csr("register_item: definition not a table — skipped")
+		log("[CSR] register_item: definition not a table — skipped")
 		return false
 	end
 	local t = def.type
 	if type(t) ~= "string" or t == "" then
-		log_csr("register_item: missing/invalid 'type' — skipped")
+		log("[CSR] register_item: missing/invalid 'type' — skipped")
 		return false
 	end
 	if self._registry.by_type[t] then
-		log_csr("register_item: duplicate type '" .. t .. "' — skipped")
+		log("[CSR] register_item: duplicate type '" .. t .. "' — skipped")
 		return false
 	end
 	if not KNOWN_RARITIES[def.rarity] then
-		log_csr("register_item: '" .. t .. "' unknown rarity '" .. tostring(def.rarity) .. "' — skipped")
+		log("[CSR] register_item: '" .. t .. "' unknown rarity '" .. tostring(def.rarity) .. "' — skipped")
 		return false
 	end
 	-- effect is OPTIONAL. Three valid item shapes: (a) a declarative effect with a
@@ -1305,17 +1319,17 @@ end
 -- still listed in the UI (apply_modifiers nil-guards _G[class]).
 function CSRGameManager:register_modifier(def)
 	if type(def) ~= "table" then
-		log_csr("register_modifier: definition not a table — skipped")
+		log("[CSR] register_modifier: definition not a table — skipped")
 		return false
 	end
 	local id = def.id
 	if type(id) ~= "string" or id == "" then
-		log_csr("register_modifier: missing/invalid 'id' — skipped")
+		log("[CSR] register_modifier: missing/invalid 'id' — skipped")
 		return false
 	end
 	local mods = self._registry.modifiers
 	if mods.by_id[id] then
-		log_csr("register_modifier: duplicate id '" .. id .. "' — skipped")
+		log("[CSR] register_modifier: duplicate id '" .. id .. "' — skipped")
 		return false
 	end
 	if def.category == "loud" then
@@ -1340,7 +1354,7 @@ function CSRGameManager:register_modifier(def)
 		mods.by_id[id] = entry
 		mods.stealth_families[#mods.stealth_families + 1] = entry
 	else
-		log_csr("register_modifier: '" .. id .. "' unknown category '" .. tostring(def.category) .. "' — skipped")
+		log("[CSR] register_modifier: '" .. id .. "' unknown category '" .. tostring(def.category) .. "' — skipped")
 		return false
 	end
 	log_csr("register_modifier: '" .. id .. "' (" .. tostring(def.category) .. ")")
@@ -1539,7 +1553,7 @@ function CSRGameManager:apply_modifiers()
 			managers.modifiers:add_modifier(mod_class:new(data), "csr")
 			applied = applied + 1
 		else
-			log_csr("apply_modifiers: class '" .. tostring(class) .. "' not loaded -- effect skipped")
+			log("[CSR] apply_modifiers: class '" .. tostring(class) .. "' not loaded -- effect skipped")
 		end
 	end
 	log_csr("apply_modifiers: applied " .. applied .. " modifier(s)")
@@ -1666,7 +1680,7 @@ end
 local function safe_invoke(fn, ctx, dt, type_id, which)
 	local ok, err = pcall(fn, ctx, dt)
 	if not ok then
-		log_csr(which .. " error for '" .. tostring(type_id) .. "': " .. tostring(err))
+		log("[CSR] " .. which .. " error for '" .. tostring(type_id) .. "': " .. tostring(err))
 	end
 end
 
@@ -2437,6 +2451,7 @@ function CSRGameManager:set_setting(key, value)
 	self._meta.settings[key] = value
 	if key == "debug_mode" then
 		self._debug = value == true
+		_G.CSR_DEBUG = self._debug
 	end
 	self:save()
 end
@@ -2586,12 +2601,12 @@ function CSRGameManager:save()
 	}
 	local encoded_ok, encoded = pcall(json.encode, payload)
 	if not encoded_ok then
-		log_csr("ERROR save: json.encode failed -> " .. tostring(encoded))
+		log("[CSR] ERROR save: json.encode failed -> " .. tostring(encoded))
 		return false
 	end
 	local f = io.open(path, "w")
 	if not f then
-		log_csr("ERROR save: could not open for write -> " .. path)
+		log("[CSR] ERROR save: could not open for write -> " .. path)
 		return false
 	end
 	f:write(encoded)
@@ -2611,7 +2626,7 @@ function CSRGameManager:load()
 	f:close()
 	local decoded_ok, decoded = pcall(json.decode, raw)
 	if not decoded_ok or type(decoded) ~= "table" then
-		log_csr("ERROR load: json.decode failed -> " .. tostring(decoded))
+		log("[CSR] ERROR load: json.decode failed -> " .. tostring(decoded))
 		return false
 	end
 	if type(decoded.meta) == "table" then

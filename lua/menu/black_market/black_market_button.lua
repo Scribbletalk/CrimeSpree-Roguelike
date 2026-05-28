@@ -9,14 +9,14 @@ if not RequiredScript then
 end
 
 if not MenuCallbackHandler then
-	log("[CSR Shop] black_market_button: early return (MenuCallbackHandler missing)")
+	csr_log("[CSR Shop] black_market_button: early return (MenuCallbackHandler missing)")
 	return
 end
 
-log("[CSR Shop] black_market_button.lua loaded; CSR_OpenBlackMarket registered")
+csr_log("[CSR Shop] black_market_button.lua loaded; CSR_OpenBlackMarket registered")
 
 MenuCallbackHandler.CSR_OpenBlackMarket = function(this, item)
-	log("[CSR Shop] CSR_OpenBlackMarket fired -> open_node(black_market_screen)")
+	csr_log("[CSR Shop] CSR_OpenBlackMarket fired -> open_node(black_market_screen)")
 
 	local ok, err = pcall(function()
 		managers.menu:open_node("black_market_screen")
