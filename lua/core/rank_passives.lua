@@ -15,8 +15,8 @@ if not RequiredScript then
 	return
 end
 
-local HP_PER_RANK = 0.05 -- +5% per rank to player max HP
-local ARMOR_PER_RANK = 0.05 -- +5% per rank to player max armor
+local HP_PER_RANK = 0.025 -- +2.5% per rank to player max HP
+local ARMOR_PER_RANK = 0.025 -- +2.5% per rank to player max armor
 local DMG_PER_RANK = 0.01 -- +1% per rank to all player damage sources
 local BOT_HP_PER_RANK = 0.01 -- +1% per rank to bot max HP
 local BOT_DMG_PER_RANK = 0.10 -- +10% per rank to bot weapon damage
