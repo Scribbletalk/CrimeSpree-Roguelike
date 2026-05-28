@@ -368,7 +368,7 @@ end
 -- project_csr_reward_system_design:
 --   cash  = 200k × payout_mult[diff] × rank   (flat from rank; no skill/loot/crew)
 --   xp    = 12k × (1 + xp_mult[diff]) × rank × skill_mult × infamy_mult
---   coins = rank, loot cards = rank
+--   coins = rank * 2, loot cards = rank
 -- REWARD_PAYOUT_MULT (module-level) mirrors vanilla difficulty_multiplier_payout
 -- (moneytweakdata.lua); XP_MULT is 1 + vanilla experience difficulty_multiplier
 -- (tweakdata.lua), normal=0.
@@ -396,7 +396,7 @@ function CSRGameManager:_rewards_for(rank, idx)
 	return {
 		cash = math.round(cash),
 		experience = math.round(xp),
-		continental_coins = rank,
+		continental_coins = rank * 2,
 		loot_drop = rank,
 	}
 end
@@ -575,7 +575,7 @@ function CSRGameManager:host_rank()
 	if mp and mp.host_rank then
 		local mpnet = _G.CSR_MP
 		local guesting = mpnet and mpnet.is_client and mpnet.is_client()
-		if mp._debug_force or guesting then
+		if guesting then
 			return mp.host_rank
 		end
 	end
@@ -618,14 +618,13 @@ function CSRGameManager:mp_host_missions_completed()
 	return mp and mp.host_missions or nil
 end
 
--- Drop synced host state (leaving a host's session / between heists). Preserves the
--- manual debug-sim overrides (host_rank sim, guest-session sim) so a solo sim
--- survives heist transitions. Clears host_seed too: during the heist-load window
--- (before the host re-pushes) the guest falls back to its own _state -- the same
--- fallback host_rank() uses -- and no inventory mutation happens on the load screen.
+-- Drop synced host state (leaving a host's session / between heists). Clears
+-- host_seed too: during the heist-load window (before the host re-pushes) the guest
+-- falls back to its own _state -- the same fallback host_rank() uses -- and no
+-- inventory mutation happens on the load screen.
 function CSRGameManager:clear_mp_host_state()
 	local mp = self._state.mp_session
-	if not mp or mp._debug_force or mp._debug_guest then
+	if not mp then
 		return
 	end
 	mp.host_rank = nil
@@ -687,44 +686,6 @@ end
 -- field the save header carries.
 function CSRGameManager:mod_version()
 	return (self._meta and self._meta.version) or "unknown"
-end
-
--- Debug-only: force host_rank() to return a fake value in SOLO so the MP guest
--- scaling path (rank_passives, item-selection quota) can be exercised without a
--- second instance. _debug_force makes host_rank() honour mp_session.host_rank even
--- when not actually guesting. Pass nil to clear. Wired to the csr_debug_mp_host_rank
--- keybind (stripped at release).
-function CSRGameManager:debug_force_host_rank(value)
-	self._state.mp_session = self._state.mp_session or {}
-	local mp = self._state.mp_session
-	if value == nil then
-		mp._debug_force = nil
-		mp.host_rank = nil
-	else
-		mp._debug_force = true
-		mp.host_rank = value
-	end
-end
-
--- Debug-only: simulate guesting in SOLO so the per-host guest session-store redirect
--- (M5) can be exercised without a second instance. _debug_guest makes _is_guesting()
--- true and the fake host_seed gives _guest_session_key something to resolve, so the
--- local player's inventory / tokens / offers route to the session store instead of
--- the solo run's _state (which stays untouched -- the sim is fully reversible).
--- Combine with debug_force_host_rank to reproduce a guest's scaling too. Toggles;
--- returns true when enabled, false when cleared. Wired to csr_debug_mp_guest
--- (stripped at release).
-function CSRGameManager:debug_toggle_guest_session()
-	self._state.mp_session = self._state.mp_session or {}
-	local mp = self._state.mp_session
-	if mp._debug_guest then
-		mp._debug_guest = nil
-		mp.host_seed = nil
-		return false
-	end
-	mp._debug_guest = true
-	mp.host_seed = mp.host_seed or -1 -- fake key so _guest_session_key() resolves
-	return true
 end
 
 -- =====================================================
@@ -793,12 +754,9 @@ end
 -- host_rank() needs to scale). While guesting, the local player's inventory / tokens
 -- / pending offers live in a per-host SESSION store (keyed by the host's run seed, in
 -- _meta so it survives the player's own start_run/end_run wipe), NOT the paused solo
--- run's _state.peer_items. The _debug_guest flag forces it in SOLO for testing.
+-- run's _state.peer_items.
 function CSRGameManager:_is_guesting()
 	local mp = self._state.mp_session
-	if mp and mp._debug_guest then
-		return true
-	end
 	local net = _G.CSR_MP
 	if not (net and net.is_client and net.is_client()) then
 		return false
@@ -1010,31 +968,6 @@ function CSRGameManager:remote_peer_ids()
 		end
 	end
 	return ids
-end
-
--- Debug-only: inject/clear a fake remote peer holding a few real item types so the
--- per-peer items panel can be checked in SOLO without a second instance. Toggles
--- (returns true when injected, false when cleared). Wired to the
--- csr_debug_mp_fake_peer keybind (stripped at release).
-function CSRGameManager:debug_toggle_fake_peer()
-	self._remote_peer_items = self._remote_peer_items or {}
-	local FAKE_PID = 99
-	if self._remote_peer_items[FAKE_PID] then
-		self._remote_peer_items[FAKE_PID] = nil
-		return false
-	end
-	local counts, n = {}, 0
-	for _, def in ipairs(self:registered_items()) do
-		if not def.is_scrap then
-			counts[def.type] = (n % 3) + 1
-			n = n + 1
-			if n >= 5 then
-				break
-			end
-		end
-	end
-	self._remote_peer_items[FAKE_PID] = { counts = counts, name = "Fake Peer" }
-	return true
 end
 
 -- Convenience for item hook code (CSR's own + addons): owned stacks of an item

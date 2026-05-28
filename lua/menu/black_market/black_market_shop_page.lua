@@ -13,9 +13,9 @@ end
 
 CrimeSpreeBlackMarketShopPage = CrimeSpreeBlackMarketShopPage or class()
 
-local CARD_W = 280
+local CARD_W = 210
 local CARD_H = 360
-local CARD_GAP = 30
+local CARD_GAP = 20
 -- Vertical layout: dialogue (0..70) -> toolbar (80..116) -> cards (120..480).
 local CARD_TOP = 120
 local DIALOGUE_TOP = 0
@@ -23,12 +23,13 @@ local DIALOGUE_HEIGHT = 70
 local DIALOGUE_X = 0
 local TOOLBAR_TOP = 80
 
--- 4-arg rarity colours, matching item_selection.lua (shop never sells
--- wildcard/contraband, so only the three sellable tiers are needed).
+-- 4-arg rarity colours, matching item_selection.lua.
+-- Contraband (orange) is included: slot 4 is always a contraband card.
 local RARITY_COLORS = {
 	common = Color.white,
 	uncommon = Color(1, 0, 0.95, 0),
 	rare = Color(1, 0.3, 0.7, 1),
+	contraband = Color(1, 1, 0.4, 0),
 }
 
 -- Single frame texture, tinted per rarity at draw time (same as the logbook /
@@ -308,10 +309,10 @@ function CrimeSpreeBlackMarketShopPage:_create_reroll_button()
 end
 
 function CrimeSpreeBlackMarketShopPage:_create_cards()
-	local total_w = CARD_W * 3 + CARD_GAP * 2
+	local total_w = CARD_W * 4 + CARD_GAP * 3
 	local start_x = math.floor((self._panel:w() - total_w) / 2)
 
-	for i = 1, 3 do
+	for i = 1, 4 do
 		local card_panel = self._panel:panel({
 			name = "csr_card_" .. i,
 			w = CARD_W,
@@ -395,9 +396,11 @@ function CrimeSpreeBlackMarketShopPage:_build_card_visuals(card, entry)
 		layer = 2,
 	})
 
+	local full_desc = loc_or_blank(entry.desc)
+	local main_desc, but_desc = string.match(full_desc, "^(.-)\n(But.+)$")
 	card.effect_text = panel:text({
 		name = "effect",
-		text = loc_or_blank(entry.desc),
+		text = main_desc or full_desc,
 		font = tweak_data.menu.pd2_medium_font,
 		font_size = 20,
 		color = Color.white,
@@ -410,6 +413,25 @@ function CrimeSpreeBlackMarketShopPage:_build_card_visuals(card, entry)
 		h = 80,
 		layer = 2,
 	})
+	if but_desc then
+		local _, _, _, main_h = card.effect_text:text_rect()
+		local but_y = 220 + math.max(main_h and main_h > 4 and main_h or 26, 26)
+		card.but_text = panel:text({
+			name = "but_text",
+			text = but_desc,
+			font = tweak_data.menu.pd2_medium_font,
+			font_size = 20,
+			color = Color(1, 1, 0.3, 0.3),
+			align = "center",
+			wrap = true,
+			word_wrap = true,
+			x = 12,
+			y = but_y,
+			w = panel:w() - 24,
+			h = 40,
+			layer = 2,
+		})
+	end
 
 	-- Price icon + number (bottom-left).
 	local price = CSR_Shop.price_for_rarity(entry.rarity)
@@ -539,7 +561,7 @@ function CrimeSpreeBlackMarketShopPage:refresh()
 	end
 
 	local lineup = CSR_Shop.get_lineup(peer_id) or {}
-	for i = 1, 3 do
+	for i = 1, 4 do
 		self:_refresh_card(i, lineup[i], wallet)
 	end
 
@@ -572,6 +594,7 @@ function CrimeSpreeBlackMarketShopPage:_refresh_card(slot_index, slot, wallet)
 		if card.populated then
 			card.panel:clear()
 			card.frame, card.icon, card.name_text, card.effect_text = nil, nil, nil, nil
+			card.but_text = nil
 			card.price_text, card.price_icon = nil, nil
 			card.buy_panel, card.buy_text, card.buy_underline = nil, nil, nil
 			card.sold_overlay = nil
@@ -609,7 +632,7 @@ function CrimeSpreeBlackMarketShopPage:mouse_pressed(button, x, y)
 		return true
 	end
 
-	for i = 1, 3 do
+	for i = 1, 4 do
 		local card = self._cards[i]
 		if
 			card
@@ -640,7 +663,7 @@ function CrimeSpreeBlackMarketShopPage:mouse_moved(o, x, y)
 	end
 
 	if not hovered then
-		for i = 1, 3 do
+		for i = 1, 4 do
 			local card = self._cards[i]
 			if
 				card
@@ -660,7 +683,7 @@ function CrimeSpreeBlackMarketShopPage:mouse_moved(o, x, y)
 			managers.menu_component:post_event("highlight")
 		end
 		-- Buy buttons: hovered = bright cyan + underline; rest = default blue.
-		for i = 1, 3 do
+		for i = 1, 4 do
 			local card = self._cards[i]
 			if card and card.buy_text and card.buy_underline then
 				local is_hot = hovered == "buy_" .. i

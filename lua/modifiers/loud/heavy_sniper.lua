@@ -1,4 +1,7 @@
--- Marshal Reinforcements (loud modifier) -- additional US Marshal Marksmen.
+-- Marshal Reinforcements (loud modifier) -- additional US Marshal Marksmen per squad.
+-- Repurposes vanilla ModifierHeavySniper: disables the ZEAL Heavy Sniper unit swap
+-- and instead bumps marshal_squad group size by `amount` and caps shields at 1 per
+-- group so every extra slot spawns a marksman. Amount is additive across stacks.
 if not (_G.CSR and _G.CSR.register_modifier) then
 	return
 end
@@ -9,5 +12,94 @@ _G.CSR.register_modifier({
 	loc = "menu_cs_modifier_heavy_sniper",
 	icon = "crime_spree_heavy_sniper",
 	class = "ModifierHeavySniper",
-	data = { spawn_chance = { 5, "add" } },
+	data = { amount = { 2, "add" } },
+
+	hooks = {
+		["lib/modifiers/modifierheavysniper"] = function()
+			if _G._CSR_HEAVY_SNIPER_HOOKED then
+				return
+			end
+			_G._CSR_HEAVY_SNIPER_HOOKED = true
+
+			-- Tell the engine to accumulate `amount` instead of vanilla `spawn_chance`.
+			ModifierHeavySniper.default_value = "amount"
+
+			-- No-op: skip the vanilla ZEAL-sniper unit swap entirely.
+			local function no_modify_value(_self, _id, value)
+				return value
+			end
+
+			ModifierHeavySniper.modify_value = no_modify_value
+
+			local function _get_marshal_squad()
+				local groups = tweak_data and tweak_data.group_ai and tweak_data.group_ai.enemy_spawn_groups
+				return groups and groups.marshal_squad or nil
+			end
+
+			local function _apply(self)
+				local amount = self._data and self._data.amount or 0
+				if amount <= 0 then
+					return
+				end
+				local squad = _get_marshal_squad()
+				if not squad then
+					log("[CSR HeavySniper] no marshal_squad on this level/difficulty -- modifier inert")
+					return
+				end
+				if squad.amount then
+					if squad.amount[1] then
+						self._csr_orig_amount_min = squad.amount[1]
+						squad.amount[1] = self._csr_orig_amount_min + amount
+					end
+					if squad.amount[2] then
+						self._csr_orig_amount_max = squad.amount[2]
+						squad.amount[2] = self._csr_orig_amount_max + amount
+					end
+				end
+				-- Cap shield slots at 1: _spawn_in_group's random-fill pass decrements
+				-- amount_max and removes the entry when it hits 0, so every extra slot
+				-- goes to marksmen. Vanilla entry has no amount_max (nil), so restoring
+				-- to nil correctly removes the field.
+				if squad.spawn then
+					for _, entry in ipairs(squad.spawn) do
+						if entry.unit == "marshal_shield" then
+							self._csr_orig_shield_amount_max = entry.amount_max
+							entry.amount_max = 1
+							self._csr_shield_entry = entry
+							break
+						end
+					end
+				end
+				self._csr_applied = true
+			end
+
+			local function _restore(self)
+				if not self._csr_applied then
+					return
+				end
+				local squad = _get_marshal_squad()
+				if squad and squad.amount then
+					if self._csr_orig_amount_min then
+						squad.amount[1] = self._csr_orig_amount_min
+					end
+					if self._csr_orig_amount_max then
+						squad.amount[2] = self._csr_orig_amount_max
+					end
+				end
+				if self._csr_shield_entry then
+					self._csr_shield_entry.amount_max = self._csr_orig_shield_amount_max
+				end
+				self._csr_applied = false
+			end
+
+			Hooks:PostHook(ModifierHeavySniper, "init", "CSR_HeavySniperMarshal_Init", function(self)
+				self.modify_value = no_modify_value
+				_apply(self)
+			end)
+
+			Hooks:PreHook(ModifierHeavySniper, "destroy", "CSR_HeavySniperMarshal_Destroy", function(self)
+				_restore(self)
+			end)
+		end,
+	},
 })

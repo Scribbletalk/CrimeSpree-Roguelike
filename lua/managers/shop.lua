@@ -22,17 +22,18 @@ end
 
 CSR_Shop = {}
 
--- Price by rarity, in Gage Tokens. Wildcard + contraband are not sold (no price)
--- and are excluded from the lineup pool.
+-- Price by rarity, in Gage Tokens. Wildcard is never sold (no price). Contraband
+-- occupies slot 4 (always offered, not part of the weighted 3-card pool).
 CSR_Shop.PRICE = {
 	common = 10,
 	uncommon = 20,
 	rare = 40,
+	contraband = 30,
 }
 
--- Lineup roll weights by rarity (sellable tiers only). Mirrors CSRGameManager's
--- RARITY_WEIGHTS for common/uncommon/rare; the rarities absent here (wildcard,
--- contraband) never enter the shop pool.
+-- Lineup roll weights for the 3 standard slots (common/uncommon/rare only).
+-- Wildcard and contraband are absent: wildcard is never sold; contraband has its
+-- own dedicated 4th slot (always offered, picked from build_contraband_pool).
 local POOL_WEIGHTS = {
 	common = 60,
 	uncommon = 24,
@@ -205,6 +206,21 @@ function CSR_Shop.build_pool()
 	return pool
 end
 
+-- All contraband items eligible for the 4th shop slot.
+function CSR_Shop.build_contraband_pool()
+	local pool = {}
+	local m = mgr()
+	if not m or not m.registered_items then
+		return pool
+	end
+	for _, entry in ipairs(m:registered_items()) do
+		if entry.rarity == "contraband" and not entry.is_scrap then
+			pool[#pool + 1] = entry
+		end
+	end
+	return pool
+end
+
 -- One weighted pick (by rarity) from a pool of registry entries.
 local function pick_one(pool)
 	if not pool or #pool == 0 then
@@ -228,8 +244,10 @@ local function pick_one(pool)
 	return pool[#pool]
 end
 
--- Roll a fresh 3-slot lineup (distinct item types) and store it on the per-peer
--- entry as { shop = { lineup = { { type, rarity, sold }, ... } } } + save.
+-- Roll a fresh lineup and store it on the per-peer entry as
+-- { shop = { lineup = { { type, rarity, sold }, ... } } } + save.
+-- Slots 1-3: weighted common/uncommon/rare pick (distinct types).
+-- Slot 4:    one contraband item (uniform random from build_contraband_pool).
 function CSR_Shop.roll_lineup(peer_id)
 	peer_id = peer_id or CSR_Shop.local_peer_id()
 	local m = mgr()
@@ -250,6 +268,14 @@ function CSR_Shop.roll_lineup(peer_id)
 			lineup[#lineup + 1] = { type = entry.type, rarity = entry.rarity, sold = false }
 		end
 	end
+	-- Slot 4: contraband. Uniform random pick (no weights — all are equally rare).
+	local cb_pool = CSR_Shop.build_contraband_pool()
+	log("[CSR] shop: roll_lineup contraband pool size = " .. tostring(#cb_pool))
+	if #cb_pool > 0 then
+		local cb = cb_pool[math.random(#cb_pool)]
+		lineup[#lineup + 1] = { type = cb.type, rarity = cb.rarity, sold = false }
+		log("[CSR] shop: roll_lineup contraband slot = " .. tostring(cb.type))
+	end
 	-- reroll_count resets to 0 on a fresh lineup; reroll() restores+increments it.
 	m:peer_entry(peer_id).shop = { lineup = lineup, reroll_count = 0 }
 	m:save()
@@ -258,6 +284,8 @@ end
 
 -- Current lineup, rolled lazily on first read (a player opening the shop before
 -- any heist still sees cards).
+-- Migration: if the saved lineup has exactly LINEUP_SIZE slots (pre-contraband-slot
+-- save), append a contraband card without re-rolling the existing 3 slots.
 function CSR_Shop.get_lineup(peer_id)
 	peer_id = peer_id or CSR_Shop.local_peer_id()
 	local m = mgr()
@@ -266,26 +294,42 @@ function CSR_Shop.get_lineup(peer_id)
 	end
 	local entry = m:peer_entry(peer_id)
 	if not entry.shop or not entry.shop.lineup or #entry.shop.lineup == 0 then
+		log("[CSR] shop: get_lineup rolling fresh lineup for peer " .. tostring(peer_id))
 		CSR_Shop.roll_lineup(peer_id)
 		entry = m:peer_entry(peer_id)
+	elseif #entry.shop.lineup == LINEUP_SIZE then
+		-- Old save: contraband slot missing. Append one without disturbing the 3 existing cards.
+		log("[CSR] shop: migrating lineup to add contraband slot (peer " .. tostring(peer_id) .. ")")
+		local cb_pool = CSR_Shop.build_contraband_pool()
+		log("[CSR] shop: contraband pool size = " .. tostring(#cb_pool))
+		if #cb_pool > 0 then
+			local cb = cb_pool[math.random(#cb_pool)]
+			entry.shop.lineup[#entry.shop.lineup + 1] = { type = cb.type, rarity = cb.rarity, sold = false }
+			m:save()
+		end
 	end
+	log("[CSR] shop: get_lineup returning " .. tostring(#entry.shop.lineup) .. " slots")
 	return entry.shop.lineup
 end
 
--- True only when every slot in the current lineup has been sold. A sold-out
--- lineup still holds LINEUP_SIZE entries (each with sold = true), so get_lineup
--- won't re-roll it on its own -- buy() uses this to trigger the free refresh.
+-- True when every non-contraband slot in the current lineup has been sold.
+-- The contraband card (slot 4) is NOT required -- buying the 3 standard cards
+-- triggers the free restock regardless of whether the player bought contraband.
 function CSR_Shop.lineup_sold_out(peer_id)
 	local lineup = CSR_Shop.get_lineup(peer_id)
 	if not lineup or #lineup == 0 then
 		return false
 	end
+	local any = false
 	for _, slot in ipairs(lineup) do
-		if not slot.sold then
-			return false
+		if slot.rarity ~= "contraband" then
+			any = true
+			if not slot.sold then
+				return false
+			end
 		end
 	end
-	return true
+	return any
 end
 
 -- Buy slot N of the current lineup. Returns true on success; false + a reason
@@ -333,11 +377,11 @@ function CSR_Shop.buy(peer_id, slot_index)
 	log(
 		"[CSR] shop: bought slot " .. tostring(slot_index) .. " (" .. tostring(slot.type) .. ") for " .. tostring(price)
 	)
-	-- Buying out the last unsold card flags a FREE restock (return "sold_out"); the
-	-- actual re-roll is deferred to the UI so it can show the sold-out lineup for a
-	-- short beat before swapping in fresh cards. The shop page also self-heals a
-	-- sold-out lineup on open, so it never stays a dead end even if that deferred
-	-- re-roll is missed. roll_lineup (no debit) keeps this free. Local-only.
+	-- Buying the 3rd non-contraband card flags a FREE restock (return "sold_out");
+	-- contraband does not count toward this threshold. The actual re-roll is deferred
+	-- to the UI so it can show the lineup for a short beat first. The shop page also
+	-- self-heals on open if the deferred roll was missed. roll_lineup (no debit) keeps
+	-- this free. Local-only.
 	if CSR_Shop.lineup_sold_out(peer_id) then
 		log("[CSR] shop: lineup sold out -> free restock pending")
 		return true, "sold_out"

@@ -126,16 +126,12 @@ local function debug_log(msg)
 end
 
 -- Printer offer roll: weighted by RARITY (mirrors the U1 selection roller's
--- rarity-then-uniform model in game_manager), never wildcard, never scrap. The
--- offer's rarity sets the tier you must sacrifice, so the weights lean toward
--- common/uncommon -- the tiers a player actually holds. Contraband IS offered
--- (a contraband->contraband side-grade is net-neutral on contraband count, so
--- it isn't a new contraband source), just rarely.
+-- rarity-then-uniform model in game_manager), never wildcard, never scrap,
+-- never contraband. Contraband is exclusively a Black Market shop offering.
 local PRINTER_RARITY_WEIGHTS = {
 	common = 80,
 	uncommon = 40,
 	rare = 4,
-	contraband = 8,
 }
 
 local function roll_offer()

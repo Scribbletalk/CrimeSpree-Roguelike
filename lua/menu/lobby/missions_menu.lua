@@ -2162,7 +2162,7 @@ CSRSidebar.ITEMS = {
 	{ separator = true },
 	-- key tags the row with its feature-panel id so CSRSidebar:set_active_feature
 	-- can light up whichever row owns the currently-visible panel.
-	{ text = "Items", icon = "sidebar_basics", key = "items", callback = csr_feature_toggle("items") },
+	{ text = "Items", icon = "sidebar_casino", key = "items", callback = csr_feature_toggle("items") },
 	{ text = "Modifiers", icon = "sidebar_mutators", key = "modifiers", callback = csr_feature_toggle("modifiers") },
 	{ text = "Rewards", icon = "sidebar_broker", key = "rewards", callback = csr_feature_toggle("rewards") },
 	{ separator = true },
