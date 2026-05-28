@@ -227,6 +227,10 @@
 		},
 		{
 			"hook_id": "lib/tweak_data/hudiconstweakdata",
+			"script_path": "lua/core/extension_api.lua"
+		},
+		{
+			"hook_id": "lib/tweak_data/hudiconstweakdata",
 			"script_path": "lua/tweakdata/hudicons.lua"
 		},
 		{

@@ -1,7 +1,5 @@
--- Passive per-rank player progression: +1% Max Health, +1% Max Armor and +1% damage
--- (all sources) per Crime Spree rank (additive in rank, user balance 2026-05-24 --
--- ports the pre-refactor +0.2% HP / +0.2% armor / +0.04% damage, scaled up and rounded
--- to a flat 1% "to everything" for now). NOT an item: it scales continuously with the
+-- Passive per-rank player progression: +5% Max Health, +2.5% Max Armor and +1% damage
+-- (all sources) per Crime Spree rank. NOT an item: it scales continuously with the
 -- run rank, mirroring the per-rank ENEMY scaling in game_manager.lua apply_modifiers.
 --
 -- Applied LOCALLY on each peer (these are the player's own stat methods); rank comes
@@ -17,9 +15,11 @@ if not RequiredScript then
 	return
 end
 
-local PER_RANK = 0.01 -- +1% per rank, to HP / armor / all damage (players)
+local HP_PER_RANK = 0.05 -- +5% per rank to player max HP
+local ARMOR_PER_RANK = 0.05 -- +5% per rank to player max armor
+local DMG_PER_RANK = 0.01 -- +1% per rank to all player damage sources
 local BOT_HP_PER_RANK = 0.01 -- +1% per rank to bot max HP
-local BOT_DMG_PER_RANK = 0.05 -- +5% per rank to bot weapon damage
+local BOT_DMG_PER_RANK = 0.10 -- +10% per rank to bot weapon damage
 
 -- Current run rank for the local view (0 outside a run). host_rank so a client scales
 -- off the host's synced rank, exactly like the enemy scaling + active_modifiers.
@@ -60,7 +60,7 @@ local function is_bot_unit(unit)
 	return data ~= nil and data.ai == true
 end
 
--- +1%/rank to the health skill multiplier (the field Dog Tags also adds to; the Heister
+-- +5%/rank to the health skill multiplier (the field Dog Tags also adds to; the Heister
 -- panel reads this, so its Max Health already reflects this passive).
 if PlayerManager and not _G._CSR_RankPassive_HP then
 	_G._CSR_RankPassive_HP = true
@@ -68,13 +68,13 @@ if PlayerManager and not _G._CSR_RankPassive_HP then
 	if orig then
 		function PlayerManager:health_skill_multiplier()
 			local r = run_rank()
-			dbg_mult("max_health_add", PER_RANK * r)
-			return orig(self) + PER_RANK * r
+			dbg_mult("max_health_add", HP_PER_RANK * r)
+			return orig(self) + HP_PER_RANK * r
 		end
 	end
 end
 
--- +1%/rank to max armor (multiplies the base, like Dozer Guide). Composes with the other
+-- +2.5%/rank to max armor (multiplies the base, like Dozer Guide). Composes with the other
 -- _max_armor chain-wraps (Glass Pistol / Dozer Guide) -- multiplicative, so order between
 -- them doesn't matter.
 if PlayerDamage and not _G._CSR_RankPassive_Armor then
@@ -83,8 +83,8 @@ if PlayerDamage and not _G._CSR_RankPassive_Armor then
 	if orig then
 		function PlayerDamage:_max_armor()
 			local r = run_rank()
-			dbg_mult("max_armor_mult", 1 + PER_RANK * r)
-			return orig(self) * (1 + PER_RANK * r)
+			dbg_mult("max_armor_mult", 1 + ARMOR_PER_RANK * r)
+			return orig(self) * (1 + ARMOR_PER_RANK * r)
 		end
 	end
 end
@@ -104,8 +104,8 @@ if RaycastWeaponBase and not _G._CSR_RankPassive_Dmg then
 					return dmg
 				end
 				local r = run_rank()
-				dbg_mult("ranged_dmg_mult", 1 + PER_RANK * r)
-				return dmg * (1 + PER_RANK * r)
+				dbg_mult("ranged_dmg_mult", 1 + DMG_PER_RANK * r)
+				return dmg * (1 + DMG_PER_RANK * r)
 			end
 			return dmg
 		end
@@ -125,7 +125,7 @@ if BlackMarketManager and not _G._CSR_RankPassive_Melee then
 			local dmg, dmg_effect = orig(self, ...)
 			local rank = run_rank()
 			if rank > 0 then
-				local mul = 1 + PER_RANK * rank
+				local mul = 1 + DMG_PER_RANK * rank
 				dbg_mult("melee_dmg_mult", mul)
 				if type(dmg) == "number" then
 					dmg = dmg * mul
@@ -157,7 +157,7 @@ if CopDamage and not _G._CSR_RankDmg_CopDamage then
 		end
 		local r = run_rank()
 		if r > 0 then
-			local mul = 1 + PER_RANK * r
+			local mul = 1 + DMG_PER_RANK * r
 			dbg_mult(label, mul)
 			attack_data.damage = attack_data.damage * mul
 		end
@@ -185,7 +185,7 @@ if SentryGunWeapon and not _G._CSR_RankPassive_Sentry then
 		function SentryGunWeapon:_fire_raycast(...)
 			local r = run_rank()
 			if r > 0 and type(self._damage) == "number" then
-				local mul = 1 + PER_RANK * r
+				local mul = 1 + DMG_PER_RANK * r
 				dbg_mult("sentry_dmg_mult", mul)
 				local saved = self._damage
 				self._damage = saved * mul
