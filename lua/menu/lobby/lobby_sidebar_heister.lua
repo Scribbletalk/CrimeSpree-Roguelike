@@ -1,7 +1,8 @@
--- CSRMissionsMenuComponent — Heister feature-panel (extracted from missions_menu.lua).
--- Loads on lib/managers/menu/menucomponentmanager AFTER missions_menu.lua (mod.txt
--- order); adds the Heister panel (player combat-stats table) + its stat helpers to
--- the class. Borrowed by MissionBriefingGui (briefing_sidebar.lua) at runtime.
+-- CSRMissionsMenuComponent — Heister feature-panel (extends class from missions_menu.lua).
+-- Shows the player's combat characteristics using vanilla _get_armor_stats formulas.
+-- CSR item buffs are NOT folded in by design (standard table).
+-- Borrowed by MissionBriefingGui (briefing_sidebar.lua METHODS_TO_BORROW).
+
 if not RequiredScript then
 	return
 end
@@ -10,29 +11,14 @@ if not CSRMissionsMenuComponent then
 	return
 end
 
--- Shared feature-panel inner padding (declared locally in each sidebar file).
 local items_panel_padding = 16
 
--- Player combat characteristics for the Heister feature panel.
---
--- Computed with the SAME formulas the vanilla inventory screen uses for its
--- player-stats table (PlayerInventoryGui:_get_armor_stats in pd2_source). They
--- reflect the player's CURRENT loadout (equipped armor + skills) but NOT the CSR
--- item buffs: item numbers are hidden by design, so this "standard" table shows
--- the player's normal PD2 values. Folding the CSR item contributions into these
--- totals is a later pass (the row layout below does not change for it).
---
--- pcall-isolated at two levels (loadout lookup + each stat): a stat read must
--- never crash the lobby / briefing. On any failure a row falls back to the bare
--- base constant, so the table always renders.
+-- One-decimal with trailing zeros stripped ("230.0" → "230", "4.5" → "4.5").
 local function csr_round1(n)
-	-- format_round's non-integer branch (pd2 playerinventorygui): one decimal,
-	-- trailing zeros stripped ("230.0" -> "230", "4.5" -> "4.5").
 	return (string.format("%.1f", n):gsub("%.?0+$", ""))
 end
 
--- TOTAL (base + skill) for one stat, line-for-line from the matching branch of
--- _get_armor_stats. `name` = equipped armor id, `upgrade_level` its tier.
+-- TOTAL (base + skill) for one stat, mirrors PlayerInventoryGui:_get_armor_stats.
 local function csr_heister_stat_value(stat_name, name, upgrade_level, detection_risk, mult)
 	local player = managers.player
 	if stat_name == "health" then
@@ -58,8 +44,7 @@ local function csr_collect_heister_stats()
 	local mult = (tweak_data.gui and tweak_data.gui.stats_present_multiplier) or 10
 	local pd = tweak_data.player
 
-	-- Equipped armor id + tier + detection risk (head of _get_armor_stats). Guarded:
-	-- outside an active loadout these reads can throw.
+	-- pcall-guarded: outside an active loadout these throw.
 	local name, upgrade_level, detection_risk = nil, 0, 0
 	pcall(function()
 		name = managers.blackmarket:equipped_armor()
@@ -72,8 +57,7 @@ local function csr_collect_heister_stats()
 		detection_risk = math.round(dr * 100)
 	end)
 
-	-- Ordered combat characteristics. `fallback` = bare base constant shown if the
-	-- live read errors; `pct` rows append "%". Loc keys are vanilla (bm_menu_*).
+	-- pct rows append "%". Loc keys are vanilla bm_menu_*.
 	local defs = {
 		{ key = "health", loc = "bm_menu_health", pct = false, fallback = (pd.damage.HEALTH_INIT or 0) * mult },
 		{ key = "armor", loc = "bm_menu_armor", pct = false, fallback = (pd.damage.ARMOR_INIT or 0) * mult },
@@ -107,11 +91,7 @@ local function csr_collect_heister_stats()
 	return out
 end
 
--- Build / rebuild the Heister feature-panel content: a two-column table of the
--- player's combat characteristics (name left, value right) with a zebra band on
--- alternating rows for readability. Idempotent (prior content torn down first).
--- Borrowed by MissionBriefingGui (briefing_sidebar.lua METHODS_TO_BORROW) so both
--- the lobby and the briefing share it.
+-- Two-column stat table with zebra band on alternating rows. Idempotent.
 function CSRMissionsMenuComponent:_populate_heister_panel()
 	if not self._feature_panels or not alive(self._feature_panels.heister) then
 		return
@@ -123,17 +103,13 @@ function CSRMissionsMenuComponent:_populate_heister_panel()
 	end
 	self._heister_content = nil
 
-	local content = panel:panel({
-		layer = 5,
-	})
+	local content = panel:panel({ layer = 5 })
 	self._heister_content = content
 
 	local stats = csr_collect_heister_stats()
 	local pad = items_panel_padding
 	local row_h = tweak_data.menu.pd2_medium_font_size + 8
 	local row_gap = 4
-	-- Yellow value highlight (4-arg Color per Rule #6), same accent the status bar
-	-- uses for its dynamic rank / difficulty values.
 	local highlight = Color(1, 1, 1, 0)
 	local y = pad
 
@@ -146,8 +122,6 @@ function CSRMissionsMenuComponent:_populate_heister_panel()
 			layer = 5,
 		})
 
-		-- Zebra band on alternating rows (the same 0.4-black the vanilla inventory
-		-- stats table uses).
 		if i % 2 == 1 then
 			row:rect({
 				color = Color.black:with_alpha(0.4),

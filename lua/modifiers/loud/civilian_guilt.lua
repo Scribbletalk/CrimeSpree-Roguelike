@@ -1,30 +1,19 @@
--- Guilty Conscience (loud modifier) -- each civilian YOU kill permanently lowers
--- your max health for the mission (-5% per kill, capped at -30%) and flashes a red
--- vignette. Only the LOCAL player's kills count (teammates, cops, the environment
--- do not). Ported from the 6.2 mechanic, which lived in three places (playermanager
--- health_skill_multiplier + spawn reset, CivilianDamage:die hook, HUD flash); U1
--- keeps it all here via the modifier's behavior hooks.
---
--- No engine ModifierX class: the effect is hand-rolled below. The passport carries a
--- `hooks` table (same dispatch as items -- see extension_api register_modifier), so
--- each hook installs when its target script loads.
---
--- Values mirror the 6.2 constants guilt_hp_penalty (0.05) / guilt_max_penalty (0.30).
+-- Guilty Conscience (loud) — each civ YOU kill permanently lowers your max HP
+-- for the heist (-5% per kill, capped at -30%) and flashes a red vignette.
+-- Class-less / hand-rolled — effect lives in the hooks below.
+
 if not (_G.CSR and _G.CSR.register_modifier) then
 	return
 end
 
 local HP_PENALTY_PER_KILL = 0.05
 local MAX_PENALTY = 0.30
-local VIGNETTE_TEX = "guis/textures/pd2/crime_spree/csr_guilt_vignette" -- registered in hudicons.lua
+local VIGNETTE_TEX = "guis/textures/pd2/crime_spree/csr_guilt_vignette"
 local FLASH_DURATION = 0.5
 
--- Run-scoped kill counter. File-local: the file is dofile'd once, so the hook
--- closures below all share it; spawned_player resets it per heist.
+-- Run-scoped, reset on spawn.
 local guilt_kills = 0
 
--- True only when a run is active AND Guilty Conscience is in the active set for
--- this run (rank/seed-derived).
 local function guilt_active()
 	local mgr = managers and managers.csr
 	if not (mgr and mgr.is_run_active and mgr:is_run_active() and mgr.active_modifiers) then
@@ -38,8 +27,6 @@ local function guilt_active()
 	return false
 end
 
--- Brief red edge flash on the fullscreen HUD, fading over FLASH_DURATION. Vanilla
--- API, pcall-isolated (same panel:bitmap pattern as plush_shark.lua's vignette).
 local function trigger_guilt_flash()
 	pcall(function()
 		local hud = managers.hud and managers.hud:script(PlayerBase.PLAYER_INFO_HUD_FULLSCREEN_PD2)
@@ -55,7 +42,7 @@ local function trigger_guilt_flash()
 			name = "csr_guilt_flash",
 			texture = VIGNETTE_TEX,
 			blend_mode = "add",
-			color = Color(1, 1, 0, 0), -- 4-arg red (Rule #6)
+			color = Color(1, 1, 0, 0),
 			x = 0,
 			y = 0,
 			w = panel:w(),
@@ -89,9 +76,7 @@ _G.CSR.register_modifier({
 	data = {},
 
 	hooks = {
-		-- Max-HP penalty + per-heist reset. health_skill_multiplier is a return-value
-		-- method -> raw chain wrap (CSR convention, same as dog_tags.lua); the _G guard
-		-- stops a double-wrap. Composes with dog_tags' own wrap (each captures its orig).
+		-- HP penalty + reset on spawn.
 		["lib/managers/playermanager"] = function()
 			if _G._CSR_CIVILIAN_GUILT_HP_HOOKED then
 				return
@@ -111,14 +96,12 @@ _G.CSR.register_modifier({
 				end
 			end
 
-			-- Reset the per-heist counter when the local player spawns.
 			Hooks:PostHook(PlayerManager, "spawned_player", "CSR_CivilianGuilt_Reset", function()
 				guilt_kills = 0
 			end)
 		end,
 
-		-- Kill tracking + HP cap + flash. die() receives attack_data (verified in pd2
-		-- source). Only the LOCAL player's kills count; flash fires on every one.
+		-- Local-player civ kill: count + cap current HP to new max + flash.
 		["lib/units/civilians/civiliandamage"] = function()
 			if _G._CSR_CIVILIAN_GUILT_DIE_HOOKED then
 				return
@@ -137,8 +120,7 @@ _G.CSR.register_modifier({
 
 				guilt_kills = guilt_kills + 1
 
-				-- Cap current HP to the freshly-lowered max (health_skill_multiplier now
-				-- reflects the new kill count).
+				-- Cap current HP to the freshly-lowered max.
 				local pu = managers.player and managers.player:player_unit()
 				if pu and alive(pu) then
 					local cd = pu:character_damage()

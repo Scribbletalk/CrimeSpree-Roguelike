@@ -1,17 +1,5 @@
--- Piece of Rebar (common) -- the first hit on each enemy deals bonus damage.
---
--- Per-item-file model (see cup_of_joe.lua). Text fields are localization keys.
---
--- PreHook on the four CopDamage damage_* paths: the FIRST time the local player
--- damages a given enemy, that hit's attack_data.damage is multiplied by
--- (1 + base_bonus + (stacks-1)*extra_bonus). A per-enemy flag (cop._csr_rebar_hit)
--- makes it once-per-unit; it rides on the CopDamage instance (GC'd with the unit).
---
--- MP: amplifying attack_data.damage inside a PreHook on the ATTACKER's local
--- damage_* call routes the higher damage through vanilla's own networking (the
--- proven Bonnie's Chip path). The is_local_player gate means each peer amplifies
--- only its own first-hits, and the host never re-amplifies a client's hit.
--- Values mirror the 6.2 register line (base_bonus 0.15 / extra_bonus 0.10).
+-- Piece of Rebar (common) — first hit on each enemy deals bonus damage.
+-- Damage-amplification pattern; see csr_damage_amplification_pattern.md.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -28,8 +16,6 @@ local function rebar_apply_first_hit(cop, attack_data)
 	if not attack_data or not attack_data.damage then
 		return
 	end
-	-- Local-player attacker only (the host resolves bots' / remote peers' damage
-	-- too; without this their first hit would consume the buff and mis-scale it).
 	local au = attack_data.attacker_unit
 	if not au or not au:base() or au:base().is_local_player ~= true then
 		return

@@ -1,8 +1,5 @@
--- Keen Dispatch (stealth modifier family) -- fewer pagers can be answered per
--- heist, one fewer per tier. A stealth family: each rank advances one seeded-
--- random not-yet-exhausted family by its next tier (see active_modifiers /
--- csr_stealth_sequence). EFFECT: vanilla ModifierLessPagers, data `count` =
--- pagers removed; aggregated with "max" so the highest active tier wins.
+-- Keen Dispatch (stealth family) — fewer pagers can be answered per heist.
+-- data.count = pagers removed; "max" so the highest active tier wins.
 if not (_G.CSR and _G.CSR.register_modifier) then
 	return
 end

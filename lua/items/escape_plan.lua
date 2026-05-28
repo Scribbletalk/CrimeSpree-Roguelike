@@ -1,6 +1,5 @@
--- Escape Plan (common) -- movement speed, diminishing returns (hyperbolic).
---
--- Per-item-file model (see cup_of_joe.lua). Text fields are localization keys.
+-- Escape Plan (common) — hyperbolic movement-speed bonus.
+-- bonus = 0.5*(1 - 1/(1 + (3/47)*stacks)). ~3% at 1 stack, asymptotes to 50%.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -17,11 +16,6 @@ _G.CSR.register_item({
 	icon_scale = 1.0,
 
 	hooks = {
-		-- Multiply PlayerStandard:_get_max_walk_speed by (1 + bonus), where
-		-- bonus = cap*(1 - 1/(1 + (k_num/k_den)*stacks)) -- ~3% at 1 stack,
-		-- asymptotes to 50%. cap/k_num/k_den mirror the 6.2 constants
-		-- (escape_plan_cap 0.50 / _k_num 3 / _k_den 47). Return-value method ->
-		-- raw chain wrap; _G guard stops a double-wrap.
 		["lib/units/beings/player/states/playerstandard"] = function()
 			if _G._CSR_ESCAPE_PLAN_HOOKED then
 				return

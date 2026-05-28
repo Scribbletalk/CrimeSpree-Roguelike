@@ -1,5 +1,4 @@
--- Crime Spree Roguelike - Logbook GUI Component Registration
--- Registers GUI component via MenuHelper:AddComponent
+-- Registers the Logbook GUI component with MenuHelper.
 
 csr_log(
 	"[CSR Logbook] logbook_component_register.lua loaded; MenuHelper="
@@ -8,12 +7,11 @@ csr_log(
 		.. tostring(CrimeSpreeLogbookMenuComponent ~= nil)
 )
 
--- Register component (MenuComponentManager will instantiate it)
 if MenuHelper and CrimeSpreeLogbookMenuComponent then
 	MenuHelper:AddComponent("logbook_component", CrimeSpreeLogbookMenuComponent)
 	csr_log("[CSR Logbook] csr_logbook_component registered immediately")
 else
-	-- Defer: try registering later
+	-- Defer if component class hasn't loaded yet.
 	Hooks:Add("MenuManagerInitialize", "CSR_LogbookComponentDeferred", function(menu_manager)
 		if MenuHelper and CrimeSpreeLogbookMenuComponent then
 			MenuHelper:AddComponent("logbook_component", CrimeSpreeLogbookMenuComponent)

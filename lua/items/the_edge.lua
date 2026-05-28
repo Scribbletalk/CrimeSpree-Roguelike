@@ -1,18 +1,6 @@
--- The Edge (uncommon) -- cooldown-gated emergency heal + brief invuln when HP
+-- The Edge (uncommon) — cooldown-gated emergency heal + brief invuln when HP
 -- drops below a threshold (or a hit would be lethal).
---
--- Per-item-file model (see cup_of_joe.lua). Text fields are localization keys.
--- Local-player-scoped, so MP-symmetric.
---
--- Cross-item priority: yields its lethal-down heal while a guardian (Plush Shark)
--- is armed and will catch the down (self._csr_guardian_armed, set by that item to
--- imply "will fire"). Order-independent -- if The Edge runs first it yields; if
--- Plush runs first it heals and The Edge sees health > 0. The invuln gate stacks
--- independently with Plush's on _chk_can_take_dmg (SuperBLT keeps an earlier
--- hook's false return when a later hook returns nothing).
---
--- Values mirror the 6.2 register line (hp_threshold 0.10 / heal_pct 0.20 /
--- heal_flat 20 / heal_flat_extra 40 / invuln 1.0 / cooldown 120).
+-- Cross-item priority with Plush Shark: see csr_emergency_heal_priority.md.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -25,7 +13,6 @@ local HEAL_FLAT_EXTRA = 40
 local INVULN = 1.0
 local COOLDOWN = 120
 
--- The manager IF a run is active, else nil.
 local function csr_mgr()
 	local mgr = managers and managers.csr
 	if mgr and mgr.is_run_active and mgr:is_run_active() then
@@ -34,7 +21,6 @@ local function csr_mgr()
 	return nil
 end
 
--- True only for the local player's PlayerDamage (remote husks are ignored).
 local function is_local_pd(self)
 	local pu = managers.player and managers.player:player_unit()
 	return pu and self._unit == pu
@@ -45,13 +31,12 @@ local function edge_cd_ready(self, now)
 	return not cd or (now - cd) >= COOLDOWN
 end
 
--- Heal + arm cooldown + open the invuln window.
 local function do_edge_heal(self, stacks, now)
 	local max_hp = self:_max_health()
 	if not max_hp or max_hp <= 0 then
 		return false
 	end
-	-- Flat HP is authored in display units; /stats_present_multiplier -> internal.
+	-- Flat HP authored in display units; /scale → internal.
 	local scale = (tweak_data.gui and tweak_data.gui.stats_present_multiplier) or 10
 	local pct_heal = max_hp * HEAL_PCT
 	local flat_heal = (HEAL_FLAT + math.max(0, stacks - 1) * HEAL_FLAT_EXTRA) / scale
@@ -91,8 +76,7 @@ _G.CSR.register_item({
 			end
 			_G._CSR_THE_EDGE_HOOKED = true
 
-			-- Lethal down: heal BEFORE vanilla _check_bleed_out (it gates its body
-			-- on get_real_health() == 0). Yields to an armed guardian first.
+			-- Lethal down: heal BEFORE vanilla _check_bleed_out. Yield to an armed guardian.
 			Hooks:PreHook(PlayerDamage, "_check_bleed_out", "CSR_Edge_BleedOut", function(self)
 				local mgr = csr_mgr()
 				if not mgr or not is_local_pd(self) or not self.get_real_health then
@@ -101,8 +85,6 @@ _G.CSR.register_item({
 				if self:get_real_health() > 0 then
 					return
 				end
-				-- A guardian (Plush Shark) will catch this exact down -- stand down
-				-- and keep The Edge's cooldown for later.
 				if self._csr_guardian_armed and (self:get_revives() or 0) == 1 then
 					return
 				end
@@ -113,9 +95,8 @@ _G.CSR.register_item({
 				end
 			end)
 
-			-- Non-lethal: HP dropped below the threshold but stayed above 0. Also
-			-- re-applies the saved HP inside an active window (covers DOT/fire that
-			-- slips past _chk_can_take_dmg).
+			-- Non-lethal: dropped below threshold but still alive. Also re-applies saved HP
+			-- during an active window (covers DOT/fire slipping past _chk_can_take_dmg).
 			local function on_damage(self)
 				local mgr = csr_mgr()
 				if not mgr or not is_local_pd(self) or not self.get_real_health then
@@ -145,15 +126,13 @@ _G.CSR.register_item({
 			Hooks:PostHook(PlayerDamage, "damage_melee", "CSR_Edge_Melee", on_damage)
 			Hooks:PostHook(PlayerDamage, "damage_explosion", "CSR_Edge_Explosion", on_damage)
 
-			-- Invuln gate: block damage while the window is open. Returning nothing
-			-- keeps any earlier hook's result (e.g. Plush Shark's gate).
+			-- Invuln gate. Returning nothing keeps earlier hook's result (Plush's gate).
 			Hooks:PostHook(PlayerDamage, "_chk_can_take_dmg", "CSR_Edge_Invuln", function(self)
 				if self._csr_edge_invuln_end and TimerManager:game():time() < self._csr_edge_invuln_end then
 					return false
 				end
 			end)
 
-			-- Reset per-life state on (re)spawn.
 			Hooks:PostHook(PlayerDamage, "init", "CSR_Edge_Init", function(self)
 				self._csr_edge_cd = nil
 				self._csr_edge_invuln_end = nil

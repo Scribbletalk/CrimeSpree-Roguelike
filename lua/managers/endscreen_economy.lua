@@ -1,39 +1,7 @@
--- CSR end-screen economy gate — companion to the end-screen fork.
---
--- CSR grants NO per-heist cash: rewards accrue only at run completion (locked
--- design). Vanilla MoneyManager:on_mission_completed (moneymanager.lua:184-211)
--- already short-circuits for vanilla Crime Spree:
---   if managers.crime_spree:is_active() then
---       managers.loot:clear_postponed_small_loot()
---       return
---   end
--- but that guard is FALSE for a CSR heist (CSR runs a temporary "crime_spree"
--- job and deliberately never enables managers.crime_spree), so without this
--- the full job/bag/loot payout is computed and added to the wallet (:210),
--- driving the left-side cash count-up the player should never see.
---
--- on_mission_completed is called from MissionEndState:at_enter (:134) which
--- runs the WHOLE function before csr_mission_lifecycle's at_enter PostHook
--- fires, so the payout cannot be undone after the fact — it must be gated at
--- the source. A PostHook fires too late and a PreHook cannot abort the
--- original, so the only correct SuperBLT primitive is Hooks:OverrideFunction
--- (same pattern as csr_endscreen_wiring / csr_briefing_wiring): the vanilla
--- body is reproduced verbatim for every non-CSR path.
---
--- No-leak gate (feedback_csr_only_no_vanilla_leak): the CSR early-return is
--- taken ONLY for the run-scoped CSR-heist signal — the active job is the
--- temporary "crime_spree" job AND vanilla CS is NOT active. This is
--- byte-identical to mission_lifecycle.lua:csr_heist_active() /
--- briefing_wiring.lua, NOT the persisted (leaky) managers.csr:is_active()
--- flag. Walked:
---   normal heist  job ~= "crime_spree"                  -> vanilla payout
---   normal + stale csr is_active on disk : same          -> vanilla payout
---   vanilla CS    cs:is_active true (vanilla's own guard) -> vanilla CS path
---   Skirmish      job ~= "crime_spree"                    -> vanilla payout
---   CSR heist     job == "crime_spree", cs:is_active false -> CSR: no payout
--- Host and client both run on_mission_completed locally with the same job
--- state for a CSR heist, so both skip the payout symmetrically; no network
--- packet is involved (feedback_check_host_and_client).
+-- Suppress per-heist cash payout for CSR (rewards accrue at run completion only).
+-- Vanilla MoneyManager:on_mission_completed runs the full payout before any of our
+-- at_enter hooks fire, so this MUST be at the source — Hooks:OverrideFunction is
+-- the only correct primitive. See csr_vanilla_intercepts.md.
 
 if not RequiredScript then
 	return
@@ -53,16 +21,15 @@ local function csr_heist_active()
 end
 
 Hooks:OverrideFunction(MoneyManager, "on_mission_completed", function(self, num_winners)
-	-- CSR: no per-heist cash. Mirror vanilla CS's own short-circuit
-	-- (clear postponed small loot, then bail before any payout is set/added).
+	-- CSR: mirror vanilla CS's own short-circuit (clear postponed small loot, then bail).
 	if csr_heist_active() then
 		managers.loot:clear_postponed_small_loot()
 
 		return
 	end
 
-	-- Verbatim vanilla MoneyManager:on_mission_completed — every non-CSR path
-	-- (normal heist / vanilla CS / Skirmish) is byte-for-byte unchanged.
+	-- Verbatim vanilla MoneyManager:on_mission_completed below — every non-CSR
+	-- path (normal heist / vanilla CS / Skirmish) is byte-for-byte unchanged.
 	if managers.crime_spree:is_active() then
 		managers.loot:clear_postponed_small_loot()
 
@@ -92,4 +59,4 @@ Hooks:OverrideFunction(MoneyManager, "on_mission_completed", function(self, num_
 	self:_add_to_total(total_payout, nil, TelemetryConst.economy_origin.mission_complete_reward)
 end)
 
-csr_log("[CSR] endscreen_economy.lua loaded (per-heist cash suppressed for CSR)")
+csr_log("[CSR] endscreen_economy.lua loaded")

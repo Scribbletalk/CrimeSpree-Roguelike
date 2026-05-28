@@ -1,6 +1,5 @@
--- Worn Band-Aid (common) -- regenerates a % of max HP every N seconds.
---
--- Per-item-file model (see cup_of_joe.lua). Text fields are localization keys.
+-- Worn Band-Aid (common) — regen % of max HP every 5s.
+-- Hyperbolic: 2% at 1 stack, asymptotes to 20%.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -17,13 +16,6 @@ _G.CSR.register_item({
 	icon_scale = 1.0,
 
 	hooks = {
-		-- Heal-over-time on PlayerDamage:update (local player only -- husks use
-		-- HuskPlayerDamage). Hyperbolic stacking: regen_pct = max_pct*stacks /
-		-- (stacks + k) where k = (max_pct - first_pct)/first_pct, so it equals
-		-- first_pct at 1 stack and asymptotes to max_pct. first_pct/max_pct/interval
-		-- mirror the 6.2 constants (worn_bandaid_first_pct 0.02 / _max_pct 0.20 /
-		-- _interval 5). Per-instance timer; reset when unowned so a re-pick can't
-		-- fire a partial cycle.
 		["lib/units/beings/player/playerdamage"] = function()
 			if _G._CSR_WORN_BANDAID_HOOKED then
 				return

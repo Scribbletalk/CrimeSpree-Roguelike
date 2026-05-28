@@ -1,26 +1,7 @@
--- CSR contract wiring — Slice 4.
---
--- Hooks vanilla's MenuComponentManager so the popup that opens when the player
--- clicks the CrimeNet sidebar's "Crime Spree" entry is OUR forked
--- CSRContractMenuComponent (Slice 2) instead of vanilla's CrimeSpreeContractMenuComponent.
---
--- Sequence on each open:
---   1. Vanilla create_crime_spree_contract_gui runs:
---      - instantiates CrimeSpreeContractMenuComponent into self._crime_spree_contract_menu_comp
---      - registers it under "crimenet_crime_spree_contract"
---   2. Our PostHook fires:
---      - closes vanilla's just-created component (one-frame allocation, throwaway)
---      - instantiates CSRContractMenuComponent into self._csr_contract_menu_comp
---      - re-registers under the same name so the menu manager finds OUR component
---
--- Sequence on close:
---   1. Vanilla close_crime_spree_contract_gui runs:
---      - vanilla's cache is nil (we nil'd it during create), so vanilla no-ops
---   2. Our PostHook fires:
---      - closes our component, unregisters from the named slot
---
--- This swap does NOT touch the accept callback. Vanilla's accept_crime_spree_contract
--- still fires when the player clicks Accept. Wiring our accept_csr_contract is Slice 5.
+-- Swap vanilla CrimeSpreeContractMenuComponent for CSRContractMenuComponent on the
+-- CrimeNet CS contract popup. Vanilla create runs first (one-frame allocation,
+-- discarded), then our PostHook closes it + registers ours under the same id.
+-- Slice 5 accept-callback wrap moved to contract_callbacks.lua.
 
 if not RequiredScript then
 	return
@@ -31,14 +12,11 @@ Hooks:PostHook(
 	"create_crime_spree_contract_gui",
 	"CSR_SwapContractGuiCreate",
 	function(self, node)
-		-- Vanilla already created its component AND inserted it into _alive_components
-		-- under id "crimenet_crime_spree_contract". We must :close() AND
-		-- :unregister_component() before re-registering ours, otherwise vanilla's
-		-- dead-panel'd instance stays in the iteration list and crashes on mouse events
-		-- (PD2's register_component is first-wins on the id key — silently no-ops the second register).
+		-- Vanilla's component is already in _alive_components under the id;
+		-- close + unregister or register_component silently no-ops (first-wins)
+		-- and the dead instance crashes on later mouse iteration.
 		if self._crime_spree_contract_menu_comp then
 			self._crime_spree_contract_menu_comp:close()
-
 			self._crime_spree_contract_menu_comp = nil
 		end
 
@@ -58,76 +36,25 @@ Hooks:PostHook(
 Hooks:PostHook(MenuComponentManager, "close_crime_spree_contract_gui", "CSR_SwapContractGuiClose", function(self, node)
 	if self._csr_contract_menu_comp then
 		self._csr_contract_menu_comp:close()
-
 		self._csr_contract_menu_comp = nil
-
 		self:unregister_component("crimenet_crime_spree_contract")
 
-		-- Re-enable CrimeNet ourselves. Vanilla create_crime_spree_contract_gui
-		-- disables CrimeNet (menucomponentmanager.lua:5170) and vanilla
-		-- close_crime_spree_contract_gui re-enables it -- but ONLY inside
-		-- `if self._crime_spree_contract_menu_comp`. Our create PostHook nil'd that
-		-- vanilla field, so vanilla's close skips the whole block, including
-		-- enable_crimenet(). Without this CrimeNet stays disabled after closing the
-		-- contract -> the whole map freezes (user-reported 2026-05-21).
+		-- Vanilla close calls enable_crimenet only inside `if self._crime_spree_contract_menu_comp`.
+		-- Our create nil'd that field, so vanilla's close skips enable_crimenet → CrimeNet stays
+		-- frozen after closing the contract. Re-enable manually.
 		self:enable_crimenet()
 		csr_log("[CSR] wiring: CSRContractMenuComponent closed")
 	end
 end)
 
--- Lobby contract-box class swap.
---
--- The in-lobby contract/crew box is built by MenuComponentManager:create_contract_gui,
--- which picks its class via _contract_gui_class(). Vanilla returns
--- CrimeSpreeContractBoxGui when managers.crime_spree:is_active(); we never
--- activate vanilla CS (Slice 6), so it falls through to plain ContractBoxGui.
--- ContractBoxGui draws the "CHOOSE NEW CONTRACT FROM CRIME.NET" placeholder
--- (contractboxgui.lua:42, shown when not managers.job:has_active_job()), which
--- then bleeds through the translucent mission cards.
---
--- CrimeSpreeContractBoxGui is backend-agnostic (no managers.crime_spree reads):
--- in single player _can_update() is false so it renders nothing; in MP it shows
--- only peer character panels — exactly the vanilla CS-lobby behaviour. We mirror
--- vanilla's branch with our own active check.
---
--- SuperBLT PostHook return-override is intentional and verified
--- (mods/base/req/core/Hooks.lua:272-285): a post hook returning a non-nil value
--- replaces the original return; returning nothing leaves vanilla's choice
--- (ContractBoxGui / SkirmishContractBoxGui / real-CS CrimeSpreeContractBoxGui)
--- untouched. This keeps Critical Rule #1 (no raw override / hook shadowing).
---
--- CSR-only scoping (no vanilla leak): managers.csr:is_active() alone is NOT
--- sufficient. _state.is_active is a persisted save flag (csr_save.json) that
--- CSRGameManager:load() restores verbatim; a run whose end_run() never fired
--- (backed out / crash / alpha has no robust run-state machine) leaves it true
--- across sessions. create_contract_gui()/_contract_gui_class() runs for EVERY
--- lobby (normal "lobby" node AND "crime_spree_lobby" node), so a leaked
--- is_active=true would suppress the vanilla "CHOOSE NEW CONTRACT" box in a
--- normal lobby too.
---
--- The exact, correctly-scoped "we are in the CSR lobby" signal: our forked
--- CSRMissionsMenuComponent. set_active_components builds a node's components in
--- list order via ipairs (menucomponentmanager.lua:596-601); the crime_spree_lobby
--- node lists "crime_spree_missions" BEFORE "contract", so the
--- create_crime_spree_missions_gui PostHook has already stored our component in
--- self._crime_spree_missions by the time _contract_gui_class runs for the
--- contract component. That component is built ONLY for crime_spree_lobby (the
--- normal "lobby" node has no crime_spree_missions component), and the missions
--- wiring itself gates on managers.csr:is_active() — so checking it here pins the
--- contract-box swap to exactly the cards' lifecycle. In any normal/vanilla
--- lobby self._crime_spree_missions is nil -> we return nil -> vanilla's box is
--- preserved byte-for-byte, even with a leaked is_active.
---
--- Class identity via getmetatable is the same pattern vanilla uses at
--- menucomponentmanager.lua:660 (getmetatable(self._contract_gui) == class).
---
--- MP note: still implicitly gated on managers.csr:is_active() (the missions
--- wiring won't have built our component otherwise). Until the MP sync slice
--- lands a client whose managers.csr is not yet active gets vanilla
--- ContractBoxGui; same scope boundary as the rest of the alpha (host/SP first).
+-- Lobby contract-box class swap. Vanilla's _contract_gui_class returns
+-- ContractBoxGui (which draws "CHOOSE NEW CONTRACT FROM CRIME.NET" placeholder)
+-- because managers.crime_spree:is_active() is false for CSR. We want vanilla's
+-- CrimeSpreeContractBoxGui look (peer panels only, no placeholder text).
+-- Scope signal: our CSRMissionsMenuComponent in self._crime_spree_missions — the
+-- exact "we built the CSR lobby" flag, no leak even if managers.csr:is_active leaks.
 local function csr_lobby_is_active(mcm)
 	local comp = mcm and mcm._crime_spree_missions
-
 	return comp ~= nil and CSRMissionsMenuComponent ~= nil and getmetatable(comp) == CSRMissionsMenuComponent
 end
 
@@ -142,29 +69,15 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_ContractHeaderLocalization", funct
 		csr_header_title = "Crime Spree Roguelike",
 		csr_end_spree = "End Spree",
 		csr_return_to_lobby = "Return to Lobby",
-		-- "DIFFICULTY" label above the contract popup's difficulty selector
-		-- (contract_menu.lua). The difficulty NAMES themselves reuse vanilla's
-		-- tweak_data.difficulty_name_ids, so only this label is CSR-owned.
 		csr_contract_difficulty = "Difficulty",
-		-- Current-run status line under the difficulty skulls (contract_menu.lua
-		-- _setup_new_crime_spree). SuperBLT macros are single-$ with an optional ";"
-		-- terminator (mods/base/lua/LocalizationManager.lua:19 -- pattern
-		-- "$([%w_-]+);?"), so $status takes ONE dollar sign; a trailing $ would be
-		-- left as a literal in-game.
+		-- SuperBLT macro syntax: $name with optional ";" terminator (single $, not closing).
 		csr_current_spree = "Current Spree: $status",
 		csr_current_spree_active = "active",
 		csr_current_spree_none = "none",
-		-- CSR-owned confirm text for the End Spree button. NOT an override of
-		-- the vanilla dialog_are_you_sure_you_want_stop_cs key (that would also
-		-- rewrite vanilla CS's stop dialog -- feedback_csr_only_no_vanilla_leak).
-		-- End Spree ends the run AND grants rewards, so the copy reflects that.
+		-- CSR-owned key (NOT vanilla's dialog_are_you_sure_you_want_stop_cs — overriding that
+		-- would leak into vanilla CS). End Spree ends the run AND grants rewards.
 		csr_dialog_end_spree = "End your Crime Spree Roguelike run now and claim your rewards?",
 	})
 end)
 
--- NOTE: the Slice 5 accept-callback wrap moved to contract_callbacks.lua
--- (hooked at lib/managers/menumanager). It must wrap AFTER vanilla's
--- MenuManagerCrimeSpreeCallbacks finishes loading, otherwise vanilla's late
--- definition of accept_crime_spree_contract overwrites our wrap.
-
-csr_log("[CSR] contract_wiring.lua loaded (Slice 4 wiring)")
+csr_log("[CSR] contract_wiring.lua loaded")

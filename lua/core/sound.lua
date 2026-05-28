@@ -1,25 +1,6 @@
--- Crime Spree Roguelike — sound system (U1).
---
--- Plays CSR's custom OGG clips through one public API: _G.CSR.play_sound(name,
--- opts). Item code registers a clip (via _G.CSR.register_sound, see
--- extension_api.lua) and plays it by name.
---
--- Buffers load through BeardLib (primary) — BeardLib.Managers.Sound:AddBuffer
--- creates the XAudio.Buffer and owns its lifecycle (close-on-shutdown, dedupe).
--- Raw XAudio.Buffer:new is the fallback when BeardLib is absent.
---
--- Playback is intentionally minimal: XAudio.Source:new(buffer) enables
--- single-sound mode, so the source plays itself on the next XAudio update and
--- closes itself when the clip ends. Setting the volume BEFORE that first update
--- means the engine pushes the correct gain and THEN auto-plays (see the order in
--- XAudioSource:update) — no manual play(), no gain ramp, no force-setgain. Don't
--- reinvent what XAudio already does.
---
--- A retry loop waits for SuperBLT's XAudio Lua wrappers, then loads every clip.
--- Inter-mod load order is non-deterministic, so we poll instead of a fixed delay.
---
--- Loaded once: hooked on lib/setups/setup, fenced by _G._CSR_SOUND_LOADED. The
--- buffer cache is a file-local (single load); only the public API lives on _G.CSR.
+-- CSR sound system. Plays custom OGG clips through _G.CSR.play_sound(name, opts).
+-- Item code registers a clip via _G.CSR.register_sound (extension_api.lua) and
+-- plays it by name. BeardLib loads buffers when present; raw XAudio is the fallback.
 
 if not RequiredScript then
 	return
@@ -40,14 +21,11 @@ local function snd_dbg(msg)
 	end
 end
 
--- Always-on: a clip that fails to load is the actionable symptom users report.
--- Bounded to a handful of lines at boot (feedback_keep_rare_event_logs).
 local function snd_err(msg)
 	log("[CSR][snd] " .. tostring(msg))
 end
 
--- Save ModPath at file-load time. Other mods can overwrite the global ModPath
--- later — by retry time it would point at the wrong mod and loads would fail.
+-- Snapshot ModPath at load — other mods can overwrite the global later.
 local SAVED_MOD_PATH = ModPath
 
 -- name -> single buffer, or { buf1, buf2, ... } for numbered variants.
@@ -62,13 +40,6 @@ local function master_volume()
 	return v
 end
 
--- ============================================================================
--- LOADER
--- ============================================================================
-
--- Resolve a mod-relative path to one XAudio.Buffer can open: absolute first
--- (base_path + ModPath + rel), else the mod-relative path. Returns whichever
--- io.open succeeds on, or nil.
 local function resolve_path(rel)
 	local base_path = (Application and Application:base_path()) or ""
 	if base_path ~= "" and base_path:sub(-1) ~= "/" and base_path:sub(-1) ~= "\\" then
@@ -97,9 +68,8 @@ local function load_buffer_raw(rel_path, sound_id)
 		return nil
 	end
 
-	-- BeardLib first: AddBuffer creates the XAudio.Buffer and owns its lifecycle.
-	-- It returns that XAudio.Buffer, so playback below treats it exactly like a
-	-- raw one (feedback_beardlib_first_superblt_backup).
+	-- BeardLib AddBuffer manages the XAudio.Buffer lifecycle; returns the buffer
+	-- so playback treats it identically to a raw one.
 	if BeardLib and BeardLib.Managers and BeardLib.Managers.Sound and BeardLib.Managers.Sound.AddBuffer then
 		local ok, beard_buf = pcall(function()
 			return BeardLib.Managers.Sound:AddBuffer({
@@ -114,7 +84,6 @@ local function load_buffer_raw(rel_path, sound_id)
 		snd_dbg("BeardLib AddBuffer returned nil for " .. tostring(rel_path) .. ", falling back to SuperBLT")
 	end
 
-	-- SuperBLT fallback.
 	local ok, buf = pcall(function()
 		return XAudio.Buffer:new(resolved)
 	end)
@@ -125,8 +94,8 @@ local function load_buffer_raw(rel_path, sound_id)
 	return buf
 end
 
--- Load one registration into loaded_buffers[name]. Exposed so a post-load
--- register_sound (addon loaded after the retry finished) loads on the spot.
+-- Public: exposed so a late register_sound (addon loaded after the retry loop)
+-- loads on the spot.
 function _G.CSR._load_sound(name, def)
 	if not def then
 		return
@@ -161,19 +130,14 @@ local function load_all_registered()
 	end
 end
 
--- ============================================================================
--- PLAY — _G.CSR._play_sound(name, opts) (public via _G.CSR.play_sound)
--- ============================================================================
---
--- name = a registered sound name. opts = {
+-- _G.CSR._play_sound(name, opts). opts = {
 --   unit         = unit ref  -> XAudio.UnitSource (3D, follows the unit)
 --   position     = Vector3   -> XAudio.Source + set_position (3D static)
 --   (neither)                -> XAudio.Source + set_relative(true) (2D)
---   volume       = number 0..1  (multiplied by the master sfx_volume setting)
---   min_distance / max_distance = numbers -> spatial falloff range (engine API)
+--   volume       = 0..1  (multiplied by the master sfx_volume setting)
+--   min_distance / max_distance = spatial falloff range
 -- }
--- The source is single-sound: it auto-plays and auto-closes, so the caller does
--- not track or stop it. Returns the source (or nil if not loaded / failed).
+-- The source is single-sound: auto-plays, auto-closes. Caller doesn't stop it.
 function _G.CSR._play_sound(name, opts)
 	opts = opts or {}
 	local entry = loaded_buffers[name]
@@ -182,7 +146,6 @@ function _G.CSR._play_sound(name, opts)
 		return nil
 	end
 
-	-- Single buffer or random pick from the variants array.
 	local buf
 	if type(entry) == "table" and entry[1] then
 		buf = entry[math.random(#entry)]
@@ -212,8 +175,8 @@ function _G.CSR._play_sound(name, opts)
 		if opts.max_distance and src.set_max_distance then
 			src:set_max_distance(opts.max_distance)
 		end
-		-- Set the gain before the first update; XAudio pushes it and THEN
-		-- auto-plays (single-sound), so the clip starts at the right volume.
+		-- Set gain BEFORE the first XAudio update; single-sound sources push gain
+		-- then auto-play, so the clip starts at the correct volume.
 		src:set_volume(vol)
 	end)
 
@@ -225,19 +188,12 @@ function _G.CSR._play_sound(name, opts)
 	return src
 end
 
--- ============================================================================
--- RETRY LOOP — runs once SuperBLT's XAudio wrappers exist.
--- ============================================================================
-
+-- Inter-mod load order is non-deterministic; poll for XAudio wrappers, then load.
 local retry_count = 0
 local function try_load()
 	if _G.CSR._sound_loader_ready then
 		return
 	end
-	-- req/xaudio/XAudio.lua defines _G.XAudio.Buffer/.Source (the classes we call)
-	-- and initialises the native blt.xaudio side as it loads, so their presence
-	-- is the readiness signal. (There is no blt.xaudio.setup() — that was a
-	-- phantom call in the pre-refactor code; XAudio self-initialises on require.)
 	if not (_G.XAudio and XAudio.Buffer and XAudio.Source) then
 		retry_count = retry_count + 1
 		if retry_count >= 12 then
@@ -256,17 +212,10 @@ end
 
 DelayedCalls:Add("LoadSounds_Initial", 0.5, try_load)
 
--- ============================================================================
--- BUILT-IN CSR SOUNDS — registered here, loaded by the retry loop above.
--- Paths are the on-disk filenames under assets/sounds (the source of truth).
--- Add an entry when an item's sound is wired. (gup / turron / printer clips
--- exist on disk but are registered when their items port.)
--- ============================================================================
+-- Built-in CSR sound registry. Paths are mod-relative under assets/sounds.
 _G.CSR.register_sound("bonnie_chip", { pattern = "assets/sounds/chip/chip_activate_$.ogg", n = 17 })
 _G.CSR.register_sound("the_edge_activate", { path = "assets/sounds/the_edge_activate.ogg" })
 _G.CSR.register_sound("plush_shark_activate", { pattern = "assets/sounds/shark/plush_shark_activate_$.ogg", n = 5 })
--- Printer (in-world copy machine): startup cue + main whir, played 3D-anchored
--- to the unit by copier_spawner.lua's use cycle.
 _G.CSR.register_sound("printer_starting", { path = "assets/sounds/printer/printer_starting.ogg" })
 _G.CSR.register_sound("printer_working", { path = "assets/sounds/printer/printer_working.ogg" })
 

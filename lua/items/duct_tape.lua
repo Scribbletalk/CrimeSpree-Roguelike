@@ -1,6 +1,4 @@
--- Duct Tape (common) -- +10% interaction speed per copy owned.
---
--- Per-item-file model (see cup_of_joe.lua). Text fields are localization keys.
+-- Duct Tape (common) — +10%/stack interaction speed. Skips "revive" and "free".
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -17,11 +15,6 @@ _G.CSR.register_item({
 	icon_scale = 1.0,
 
 	hooks = {
-		-- Divide BaseInteractionExt:_get_timer by (1 + 0.10*owned) -- linear CSR
-		-- stacking, multiplicative with vanilla upgrade multipliers. "revive" and
-		-- "free" interactions are excluded (mirrored from 6.x). Return-value method
-		-- -> raw chain wrap; _G guard stops a double-wrap. Mirrors the 6.2 constant
-		-- duct_tape_speed_bonus (0.10).
 		["lib/units/interactions/interactionext"] = function()
 			if _G._CSR_DUCT_TAPE_HOOKED then
 				return

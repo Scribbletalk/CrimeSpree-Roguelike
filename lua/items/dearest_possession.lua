@@ -1,28 +1,6 @@
--- Dearest Possession (rare) -- healing received at full HP becomes a temporary shield.
---
--- Per-item-file model (see cup_of_joe.lua). Text fields are localization keys.
--- Ported from 6.2 (modifiers/dearestpossession.lua). Four PlayerDamage hooks:
---   * set_health (raw chain-wrap -- Rule #1 return/value exception): when a heal
---     would push HP past the real max (and base armor is full), the excess is
---     capped off and banked into a temporary shield (self._csr_dp_armor) instead.
---   * _calc_armor_damage (PreHook): incoming damage drains the shield BEFORE the
---     white armor bar -- every damage variant funnels through here.
---   * update (PostHook): the shield decays in discrete 5s ticks and is pushed to
---     vanilla's absorb HUD chunk (guarded so set_absorb_active isn't 60Hz spam).
---   * init (PostHook): reset the shield on each player spawn (per-mission fresh).
---
--- Shield cap = base MaxArmor * cap_pct * stacks; per-tick decay = base MaxArmor *
--- decay_rate * 5s (8.33%/tick at the 6.2 constants -> 1-stack cap drains in ~30s).
--- "Full HP" = self:_max_health() * _max_health_reduction (vanilla's real cap; this
--- naturally accounts for Dog Tags' multiplier and any max-health reduction). 6.2's
--- captured-base-max globals (CSR_Original_*) aren't needed -- no ported item raises
--- MaxArmor, so current _max_armor() IS the base for the cap.
---
--- Deferred: the 6.2 HUDTeammate:_animate_update_absorb speed-up (faster chunk
--- catch-up). The shield still shows via the vanilla absorb chunk; it just animates
--- at vanilla's slower rate. Polish, like half_a_glass's package contour.
---
--- Values mirror the 6.2 constants (cap 0.5 / decay 0.01666 / interval 5).
+-- Dearest Possession (rare) — overheal at full HP becomes a temporary shield.
+-- Shield cap = base MaxArmor * 0.5 * stacks; decays in 5s ticks at 8.33% (1 stack drains ~30s).
+-- Drains BEFORE base armor on incoming damage; displays in vanilla's absorb HUD chunk.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -49,9 +27,7 @@ _G.CSR.register_item({
 			end
 			_G._CSR_DEAREST_HOOKED = true
 
-			-- DETECTION: raw-wrap set_health to catch overheal at full HP and bank
-			-- the excess as shield. orig = whatever set_health was at install time
-			-- (so we chain other mods, not clobber them).
+			-- Detect: catch overheal at full HP and bank the excess.
 			local orig_set_health = PlayerDamage.set_health
 			function PlayerDamage:set_health(health)
 				if self._csr_dp_in_set_health then
@@ -63,11 +39,11 @@ _G.CSR.register_item({
 					if stacks > 0 then
 						local eff_max_hp = self:_max_health() * (self._max_health_reduction or 1)
 						if eff_max_hp and health > eff_max_hp then
-							-- Catch-up heal (HP not actually full): normal heal, no shield.
+							-- Catch-up heal (not actually full HP yet) — normal heal.
 							if self:get_real_health() < eff_max_hp - 0.01 then
 								return orig_set_health(self, health)
 							end
-							-- Base armor must be full before banking shield (fix armor first).
+							-- Base armor must be full first.
 							local max_armor = self:_max_armor()
 							if self:get_real_armor() < max_armor - 0.01 then
 								self._csr_dp_in_set_health = true
@@ -75,13 +51,12 @@ _G.CSR.register_item({
 								self._csr_dp_in_set_health = false
 								return
 							end
-							-- Bank the excess into the shield (capped).
+							-- Bank excess into shield (capped).
 							local cap = max_armor * CAP_PCT * stacks
 							local cur = self._csr_dp_armor or 0
 							local new_bonus = math.min(cap, cur + (health - eff_max_hp))
 							if new_bonus > cur then
-								-- Reset the drain metronome on the 0 -> N edge so a small
-								-- overheal gets a full tick of visibility before decay.
+								-- Reset the drain metronome on the 0 → N edge.
 								if cur <= 0 then
 									self._csr_dp_drain_timer = 0
 								end
@@ -97,8 +72,7 @@ _G.CSR.register_item({
 				return orig_set_health(self, health)
 			end
 
-			-- ABSORPTION: shield drains before base armor (all damage variants
-			-- funnel through _calc_armor_damage).
+			-- Absorb: shield drains before base armor (all damage variants funnel here).
 			Hooks:PreHook(PlayerDamage, "_calc_armor_damage", "CSR_Dearest_Absorb", function(self, attack_data)
 				local bonus = self._csr_dp_armor or 0
 				if bonus <= 0 or not attack_data or not attack_data.damage or attack_data.damage <= 0 then
@@ -109,12 +83,11 @@ _G.CSR.register_item({
 				attack_data.damage = attack_data.damage - absorbed
 			end)
 
-			-- DECAY + HUD: tick-based decay and push the amount to vanilla's absorb
-			-- chunk. Self-gated on _csr_dp_armor > 0 (only set while owned/active).
+			-- Decay + HUD push. Self-gated on _csr_dp_armor > 0.
 			Hooks:PostHook(PlayerDamage, "update", "CSR_Dearest_Decay", function(self, unit, t, dt)
 				local bonus = self._csr_dp_armor
 				if not bonus or bonus <= 0 then
-					-- Hand the absorb chunk back to vanilla (Maniac / Hostage Taker) once.
+					-- Hand absorb chunk back to vanilla (Maniac / Hostage Taker).
 					if
 						self._csr_dp_last_absorb
 						and self._csr_dp_last_absorb > 0
@@ -153,7 +126,7 @@ _G.CSR.register_item({
 				end
 			end)
 
-			-- Reset the shield on each player spawn.
+			-- Reset per spawn.
 			Hooks:PostHook(PlayerDamage, "init", "CSR_Dearest_Init", function(self)
 				self._csr_dp_armor = 0
 				self._csr_dp_drain_timer = 0

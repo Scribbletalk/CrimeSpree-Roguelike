@@ -1,20 +1,6 @@
--- Equalizer (contraband) -- turn the volume up on specials, down on the rabble.
---
--- Per-item-file model (see cup_of_joe.lua). Text fields are localization keys.
--- Ported 1:1 from 6.2 (modifiers/equalizer.lua -- self-contained there too).
---
--- Target-side scaling, so it hooks CopDamage (the victim) rather than the weapon:
--- a single PreHook entry on copdamage installs the same scaler on every damage
--- variant (bullet / melee / dot / explosion). Per local-player hit:
---   * special enemy -> damage x (1 + BONUS*stacks)        (linear up)
---   * regular enemy -> damage x (1 - PENALTY)^stacks, >=1 (multiplicative down)
--- Specials are matched by substring on the unit's _tweak_table name.
---
--- Composes with the weapon-side damage items (Glass Pistol, Evidence Rounds): they
--- scale base damage in attack_data; this re-scales the same attack_data by target.
---
--- Values mirror the 6.2 constants (equalizer_bonus 0.5 / equalizer_penalty 0.5).
--- Keep the localization fallback in sync (logbook display).
+-- Equalizer (contraband) — boost damage on specials, reduce on regular cops.
+-- Target-side scaling on CopDamage (one PreHook per damage variant).
+-- See csr_damage_amplification_pattern.md.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -23,8 +9,6 @@ end
 local BONUS = 0.5
 local PENALTY = 0.5
 
--- Substring match on the victim's tweak_table name. "tank" covers every dozer
--- variant; "phalanx" covers Winters' shields.
 local SPECIAL_KEYWORDS = { "taser", "cloaker", "tank", "medic", "captain", "phalanx", "sniper", "shield", "marshal" }
 
 local function is_special(cop_damage)
@@ -64,7 +48,7 @@ local function apply_equalizer(self, attack_data)
 	if is_special(self) then
 		attack_data.damage = attack_data.damage * (1 + BONUS * stacks)
 	else
-		-- Multiplicative down so it never zeroes out (2 stacks @ 50% -> x0.25, not 0).
+		-- Multiplicative so 2 stacks @ 50% = x0.25, not 0.
 		attack_data.damage = math.max(1, attack_data.damage * (1 - PENALTY) ^ stacks)
 	end
 end

@@ -1,6 +1,5 @@
--- Extended Assault (loud modifier) -- police assaults last much longer.
--- Data taken verbatim from vanilla crimespreetweakdata so the keys match
--- ModifierAssaultExtender (hostages/converts shorten it, capped at max_hostages).
+-- Extended Assault (loud) — police assaults last much longer.
+-- Data keys match ModifierAssaultExtender (hostages/converts shorten, capped at max_hostages).
 if not (_G.CSR and _G.CSR.register_modifier) then
 	return
 end

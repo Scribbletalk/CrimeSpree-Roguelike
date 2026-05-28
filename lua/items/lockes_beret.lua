@@ -1,16 +1,6 @@
--- Locke's Beret (rare) -- every 30s, heals the whole heister team.
---
--- Per-item-file model (see cup_of_joe.lua). Text fields are localization keys.
--- Ported from 6.2 (modifiers/lockesberet.lua). Every INTERVAL seconds heals the
--- local player + (host only) bots, jokers (converted cops) and player-deployed
--- turrets by a hyperbolic %-of-max-HP -- same curve as Worn Band-Aid: first_pct
--- at 1 stack, asymptoting to max_pct. Values mirror the 6.2 constants
--- (first 0.10 / max 0.50 / interval 30).
---
--- MP: the 6.2 cross-peer broadcast (heal every player when any beret owner ticks)
--- is NOT ported -- that's the parked MP-sync slice. Here each owning peer heals
--- its OWN player on its OWN timer; the host heals the shared NPCs (vanilla never
--- syncs NPC heals back). SP = host, so the local player + bots both get healed.
+-- Locke's Beret (rare) — every 30s, heal the whole heister team a %-of-max-HP.
+-- Hyperbolic: 10% @ 1 stack, asymptotes to 50%.
+-- Host heals shared NPCs (bots, jokers, deployed turrets); each peer heals its own player.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -25,8 +15,7 @@ local function heal_pct(stacks)
 	return MAX_PCT * stacks / (stacks + K)
 end
 
--- Clamp-heal a CopDamage / TeamAIDamage / SentryGunDamage by %-of-max-HP. They
--- share the _HEALTH_INIT / _health / _health_ratio shape.
+-- CopDamage / TeamAIDamage / SentryGunDamage share the _HEALTH_INIT / _health shape.
 local function heal_npc(cd, pct)
 	if not cd or cd._dead or cd._fatal then
 		return
@@ -45,7 +34,7 @@ local function apply_team_heal(stacks)
 		return
 	end
 
-	-- 1) Local player (restore_health takes internal HP; is_static = true).
+	-- Local player.
 	local pu = managers.player and managers.player:player_unit()
 	if pu and alive(pu) then
 		local pd = pu:character_damage()
@@ -57,9 +46,7 @@ local function apply_team_heal(stacks)
 		end
 	end
 
-	-- 2) Host only: the shared NPC team. Bots come through all_criminals with
-	-- record.ai; jokers live in _converted_police; player turrets carry _owner_id
-	-- (enemy/hacked turrets don't, so they're skipped).
+	-- Host only: shared NPCs (bots, jokers, player turrets).
 	if not (Network and Network:is_server()) then
 		return
 	end
@@ -95,9 +82,6 @@ _G.CSR.register_item({
 	icon_scale = 1.0,
 
 	hooks = {
-		-- Local INTERVAL-second timer on PlayerManager:update; every owning peer
-		-- runs its own. Per-frame cost is just a couple of guards + a dt add; the
-		-- heal loop only runs once per interval.
 		["lib/managers/playermanager"] = function()
 			if _G._CSR_LOCKES_BERET_HOOKED then
 				return

@@ -1,28 +1,7 @@
--- Viklund's Vinyl (rare) -- a hit has a chance to chain damage to nearby enemies.
---
--- Per-item-file model (see cup_of_joe.lua). Text fields are localization keys.
--- Ported from 6.2 (modifiers/viklundvinyl.lua). On a local-player hit that dealt
--- real damage, PROC_CHANCE (fixed, doesn't scale) to chain: find the CHAIN_COUNT
--- nearest living enemies within radius (radius grows per stack) and deal
--- chain_dmg_pct of the original damage to each (specials take an extra cut). The
--- chain damage is routed through vanilla CopDamage:damage_bullet with the local
--- player as attacker, so it goes over the vanilla net like a normal bullet
--- (MP-safe, same pattern as Bonnie/Rebar) -- never :die() directly.
---
--- The fake col_ray MUST carry a REAL Body (unit:body(0)); vanilla damage_bullet
--- calls native body:name()/position()/key() and a plain Lua table crashes.
---
--- Visual: each chained enemy gets the vanilla electric "taser_hittarget" spark
--- (parented to its Spine1 bone) for 0.6s. It's a LOOPING particle, so it must be
--- fade_kill'd or it sticks forever -- each spawn schedules its OWN DelayedCalls
--- fade_kill (no per-frame flush, unlike 6.2). The spark is purely local/cosmetic
--- (World:effect_manager() does not replicate), so only the item owner who procs the
--- chain sees it; the chain DAMAGE still replicates to all peers via damage_bullet.
--- MAX_CONCURRENT_FX caps live sparks so sustained fire can't flood particles.
---
--- Values mirror the 6.2 constants except chain damage, rebalanced down to 0.20
--- (was 0.25) for U1 (proc 0.80 / chain 0.20 / count 2 / radius 500cm +200/stack /
--- special cut 0.25). Keep the localization fallback in sync (logbook display).
+-- Viklund's Vinyl (rare) — chance to chain damage to nearby enemies on hit.
+-- Chain damage routes through new damage_bullet calls; see csr_damage_amplification_pattern.md.
+-- The electric spark uses World:effect_manager() which doesn't replicate — only the
+-- owner sees particles. Chain DAMAGE still syncs via vanilla networking.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -36,26 +15,18 @@ local RADIUS_BASE = 500
 local RADIUS_STEP = 200
 local DIRECT_HIT_WINDOW = 0.15
 
--- Electric spark on chained enemies (cosmetic, local-only -- see header). The
--- vanilla taser particle + a spine bone to parent it to; both Idstring'd once at
--- load (Idstring is a core engine global available from the first script).
 local ELECTRIC_EFFECT_IDS = Idstring("effects/payday2/particles/character/taser_hittarget")
 local ELECTRIC_SPINE_IDS = Idstring("Spine1")
 local ELECTRIC_EFFECT_DURATION = 0.6
 local MAX_CONCURRENT_FX = 16
 
--- File-locals (the item file is dofile'd once, so these are shared by the hook
--- closures): anti-recursion guard + the just-directly-hit set (excluded from
--- chains so multi-hit melee can't chain back into its own targets) + the live
--- spark count and a monotonic id source for the per-spark DelayedCalls fade_kill.
+-- File-locals shared by all hook closures.
 local chaining = false
 local direct_hits = {}
 local direct_expiry = 0
 local active_fx = 0
 local fx_counter = 0
 
--- Specials (armored / high-resist) take a reduced cut of the chain damage.
--- Bulldozers use the "tank" tweak_table prefix.
 local SPECIAL_SUBSTRINGS = { "taser", "cloaker", "tank", "captain", "sniper", "shield", "marshal" }
 
 local function is_special_enemy(unit)
@@ -72,9 +43,8 @@ local function is_special_enemy(unit)
 	return false
 end
 
--- A col_ray carrying a REAL body from the unit (native methods are called on it).
--- Position is COPIED (m_pos returns a reference into engine memory that dangles if
--- the unit dies mid-chain).
+-- col_ray MUST carry a real Body (native methods called on it). Position is COPIED
+-- because m_pos() returns engine memory that dangles if the unit dies mid-chain.
 local function make_fake_col_ray(unit)
 	local pos = Vector3(0, 0, 0)
 	if unit:movement() and unit:movement().m_pos then
@@ -97,11 +67,7 @@ local function pos_dist_sq(a, b)
 	return dx * dx + dy * dy + dz * dz
 end
 
--- Spawn the local-only electric spark on a chained enemy and schedule its fade_kill.
--- The particle loops, so it must be killed; each spark gets a unique DelayedCalls id
--- (duplicate ids replace) and the callback decrements the live count. Whole body is
--- pcall-guarded: get_object / effect_manager spawn touch native code that can fail on
--- a unit dying mid-frame. MAX_CONCURRENT_FX bounds sustained-fire particle spam.
+-- Local-only cosmetic spark on chained enemies; looping particle needs fade_kill.
 local function spawn_electric_effect(unit)
 	if active_fx >= MAX_CONCURRENT_FX or not alive(unit) or not unit:movement() then
 		return
@@ -127,8 +93,7 @@ local function spawn_electric_effect(unit)
 end
 
 local function run_chain(original_damage, attacker_unit, weapon_unit, initial_target, stacks)
-	-- Vanilla damage_bullet dereferences weapon_unit:base() unguarded; validate or
-	-- fall back to the attacker's equipped weapon, else bail.
+	-- Validate weapon_unit; vanilla damage_bullet dereferences weapon_unit:base().
 	local weapon_ok = false
 	if weapon_unit then
 		pcall(function()
@@ -144,7 +109,7 @@ local function run_chain(original_damage, attacker_unit, weapon_unit, initial_ta
 		return
 	end
 
-	-- damage_bullet feeds attack_data.origin to a C++ distance call; nil crashes.
+	-- attack_data.origin feeds a C++ distance call; nil crashes.
 	local attacker_pos = Vector3(0, 0, 0)
 	if alive(attacker_unit) then
 		pcall(function()
@@ -190,8 +155,6 @@ local function run_chain(original_damage, attacker_unit, weapon_unit, initial_ta
 					origin = attacker_pos,
 				})
 			end)
-			-- Cosmetic spark on the chained enemy (re-check alive: the hit above may
-			-- have killed it). Spawns on the item owner's client only.
 			if alive(unit) then
 				spawn_electric_effect(unit)
 			end
@@ -207,8 +170,7 @@ local function on_damage(self, attack_data)
 	if not (mgr and mgr.is_run_active and mgr:is_run_active()) then
 		return
 	end
-	-- Vanilla damage_*'s early-returns (corpse / invulnerable / friendly fire /
-	-- immune) leave attack_data.result nil => no real damage => no chain.
+	-- result == nil → vanilla's early-returns rejected the hit; no real damage = no chain.
 	if not attack_data or not attack_data.result or not attack_data.damage or attack_data.damage <= 0 then
 		return
 	end
@@ -219,7 +181,7 @@ local function on_damage(self, attack_data)
 	if mgr:owned("viklund_vinyl") <= 0 then
 		return
 	end
-	-- No chaining in stealth: it would alert undetected enemies.
+	-- No chaining in stealth: it would alert.
 	if managers.groupai and managers.groupai:state() and managers.groupai:state():whisper_mode() then
 		return
 	end

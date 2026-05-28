@@ -1,21 +1,8 @@
 -- CSR contract callbacks — fork of vanilla menumanagercrimespreecallbacks.lua.
---
--- Origin: pd2_source_code/lib/managers/menu/menumanagercrimespreecallbacks.lua (691 lines)
--- Strategy: byte-for-byte copy with every callback name renamed `crime_spree`
--- -> `csr`. All `managers.crime_spree.*`, `tweak_data.crime_spree.*` and
--- `Global.crime_spree.*` body references intentionally left intact for this
--- slice — backend swap to managers.csr happens in a later slice.
---
--- Why rename every callback (even ones not referencing crime_spree directly):
--- vanilla menu items in start_menu.menu reference these by string. If we kept
--- the same names, our copies would REPLACE vanilla's via redefinition, which
--- means vanilla CS would invoke OUR forks. Renaming everything keeps a clean
--- separation: vanilla CS menu items still call vanilla callbacks; our forked
--- menu nodes (Slice 4) will call our renamed callbacks.
---
--- Strings kept as-is: vanilla node names ("crime_spree_lobby",
--- "crime_spree_claim_rewards", "crime_spree_select_modifiers"), dialog IDs
--- ("stop_crime_spree", "continue_crime_spree", etc.), TelemetryConst keys.
+-- Every callback renamed `crime_spree` → `csr` so vanilla menu items still invoke
+-- vanilla callbacks; our forked menu nodes call ours. Backend swap to managers.csr
+-- happens per-callback. Vanilla node names, dialog ids, telemetry keys kept as-is.
+-- See csr_vanilla_intercepts.md.
 
 require("lib/utils/accelbyte/TelemetryConst")
 
@@ -75,35 +62,22 @@ function MenuCallbackHandler:not_show_csr_claim_rewards()
 end
 
 function MenuCallbackHandler:return_to_csr_lobby_visible()
-	-- Gate the pause-menu "Return to Lobby" button to CSR sessions only -- a
-	-- non-CSR vanilla game must never see this option (no-leak, mirrors the
-	-- gating convention used by the CSR-fork UI files).
+	-- Pause-menu "Return to Lobby" — CSR sessions only, host/SP only.
 	if not (managers.csr and managers.csr.is_run_active and managers.csr:is_run_active()) then
 		return false
 	end
-
-	-- Hidden for a connected CLIENT (guest): a guest doesn't drive return-to-lobby
-	-- (it leaves via the host's flow), mirroring the lobby action buttons hidden for
-	-- clients in missions_menu.lua:_refresh_action_buttons.
 	if Network and Network.is_client and Network:is_client() then
 		return false
 	end
 
 	local state = game_state_machine:current_state_name()
 
-	-- Endscreen states: clear post-heist signal. Always show.
 	if state == "victoryscreen" or state == "gameoverscreen" then
 		return true
 	end
 
-	-- Briefing screen: vanilla puts the lobby AND the pre-heist briefing both
-	-- in `ingame_waiting_for_players` state, so the state alone can't tell
-	-- them apart. The MissionBriefingGui instance on MenuComponentManager is
-	-- the deterministic signal -- it is created when the briefing node is
-	-- entered (menucomponentmanager.lua: _create_mission_briefing_gui) and
-	-- destroyed when it exits. While it lives, we're on the briefing screen;
-	-- while it's nil and state == ingame_waiting_for_players, we're in the
-	-- lobby (where "Return to Lobby" would be a no-op and shouldn't show).
+	-- Briefing AND lobby share ingame_waiting_for_players state. _mission_briefing_gui
+	-- distinguishes them: lives only while the briefing node is up.
 	if
 		state == "ingame_waiting_for_players"
 		and managers.menu_component
@@ -116,14 +90,8 @@ function MenuCallbackHandler:return_to_csr_lobby_visible()
 end
 
 function MenuCallbackHandler:change_csr_contract_difficulty(item)
-	-- Bound to the difficulty MenuItemMultiChoice injected into the CS contract
-	-- node (contract_difficulty.lua). item:value() is a tweak_data.difficulties
-	-- index; store the resolved difficulty id string on managers.csr (which also
-	-- remembers it for next time) and repaint the popup's risk-icon read-out.
-
-	-- Difficulty is locked once a run is active (chosen at run start, fixed after).
-	-- The node item is also disabled in this case, but guard here too so a stray
-	-- invocation can't mutate the active run's difficulty.
+	-- Difficulty is locked once a run is active. Guard here in case the menu item
+	-- isn't disabled.
 	if managers.csr and managers.csr:is_active() then
 		return
 	end
@@ -135,9 +103,6 @@ function MenuCallbackHandler:change_csr_contract_difficulty(item)
 		managers.csr:set_difficulty(difficulty)
 	end
 
-	-- The contract popup lives on MenuComponentManager (csr_contract_wiring's
-	-- create PostHook stores it). It may not exist yet on the node's initial
-	-- value set, so guard before refreshing.
 	local mcm = managers.menu_component
 	local comp = mcm and mcm._csr_contract_menu_comp
 
@@ -158,22 +123,10 @@ function MenuCallbackHandler:accept_csr_contract(item, node)
 end
 
 function MenuCallbackHandler:_accept_csr_contract_sp(item, node)
-	-- Slice 6 full-replace: vanilla start_crime_spree + enable_crime_spree_gamemode
-	-- removed. managers.csr:start_run() is now the sole run-state activator.
-	--
-	-- STOPGAP (2026-05-18): only start_run() when NO run is active. start_run()
-	-- unconditionally resets rank + missions_completed to 0; re-accepting the
-	-- CrimeNet CSR contract is currently the ONLY way back into the lobby
-	-- because the CS end-screen "continue" loop is an unported slice, so an
-	-- unconditional start_run() wiped the player's run progress every time they
-	-- returned from a completed heist (progress IS saved to disk; it was just
-	-- discarded here on re-entry). Guarding on is_active() makes re-entry
-	-- CONTINUE the in-flight run; a fresh run still starts when none is active.
-	-- The proper fix (end-screen fork with a real Continue/Return + end_run on
-	-- cash-out/return) is planned -- see project_endscreen_fork_plan.md. Known
-	-- stopgap edge: a stale is_active=true from an abandoned/never-ended run
-	-- continues instead of starting fresh; not balance-wrecking under the
-	-- locked flat-1-rank rebalance, and there is no reset UI in alpha anyway.
+	-- STOPGAP: start_run only when no run is active. Re-accepting the CrimeNet CSR
+	-- contract is currently the only way back into the lobby (end-screen "continue"
+	-- loop unported), so an unconditional start_run wiped progress on re-entry.
+	-- Proper fix tracked in project_endscreen_fork_plan.md.
 	if not managers.csr:is_active() then
 		managers.csr:start_run()
 	end
@@ -182,32 +135,13 @@ function MenuCallbackHandler:_accept_csr_contract_sp(item, node)
 end
 
 function MenuCallbackHandler:_accept_csr_contract_mp(item, node)
-	-- Slice 6 full-replace: vanilla start_crime_spree + enable_crime_spree_gamemode
-	-- removed. Matchmaking + chat-line + save_progress paths kept — they don't
-	-- depend on vanilla CS state directly. Note: get_matchmake_attributes via
-	-- apply_matchmake_attributes will now write lobby_attributes.crime_spree = -1
-	-- because vanilla CS isn't in_progress; lobby will look like a normal one
-	-- to other clients until MP carve-out lands.
-	--
-	-- STOPGAP (2026-05-18): see _accept_csr_contract_sp — only start_run() when
-	-- no run is active so re-entering the lobby CONTINUES the in-flight run
-	-- instead of resetting rank/missions to 0. Proper fix tracked in
-	-- project_endscreen_fork_plan.md.
+	-- Same stopgap as SP — see above.
 	if not managers.csr:is_active() then
 		managers.csr:start_run()
 	end
 
-	-- Route the upcoming lobby entry to the CSR lobby node. Hosting online creates
-	-- the lobby ASYNCHRONOUSLY (Steam matchmaking), and the menu then enters via
-	-- MenuManager:on_enter_lobby -- which, with the CS gamemode disabled (Slice 6),
-	-- selects the EMPTY normal "lobby" node. The SP path selects "crime_spree_lobby"
-	-- directly, but MP can't (the lobby isn't entered yet), so it reuses the same
-	-- one-shot routing flag the in-game Return-to-Lobby path uses:
-	-- lobby_routing.lua consumes it in its on_enter_lobby PostHook and re-selects
-	-- "crime_spree_lobby". Without this the host lands in an empty non-CSR lobby
-	-- (user report 2026-05-25). (Other players seeing the lobby AS CSR is a separate
-	-- matchmaking-attribute carve-out -- see the note below -- and lands with the MP
-	-- sync slice.)
+	-- MP lobby is created async (Steam matchmaking) → can't select_node directly.
+	-- One-shot routing flag consumed by lobby_routing.lua's on_enter_lobby PostHook.
 	Global.CSR_RETURN_TO_LOBBY = true
 
 	local matchmake_attributes = self:get_matchmake_attributes()
@@ -302,11 +236,8 @@ function MenuCallbackHandler:end_csr(item, node)
 		title = managers.localization:text("dialog_warning_title"),
 	}
 
-	-- CSR has no continental-coin entry fee, so the vanilla CS refund branch
-	-- (can_refund_entry_fee / get_start_cost) is dropped — plain confirm only.
-	-- CSR-owned key (contract_wiring.lua), NOT the vanilla
-	-- dialog_are_you_sure_you_want_stop_cs: End Spree ends the run AND grants
-	-- rewards, and overriding the vanilla key would leak into vanilla CS.
+	-- CSR has no entry fee → no refund branch. CSR-owned dialog key (NOT vanilla's
+	-- dialog_are_you_sure_you_want_stop_cs) so overriding it can't leak into vanilla CS.
 	dialog_data.text = managers.localization:text("csr_dialog_end_spree")
 
 	dialog_data.id = "stop_crime_spree"
@@ -328,25 +259,10 @@ function MenuCallbackHandler:end_csr(item, node)
 end
 
 function MenuCallbackHandler:_dialog_end_csr_yes()
-	-- End Spree: grant the run's accrued rewards (scaled from the rank reached),
-	-- then end the CSR run (THE persisted-is_active leak-class dissolver — see
-	-- project_endscreen_fork_plan) and leave the lobby back to the main menu. No
-	-- refund branch (CSR has no entry fee).
-	--
-	-- Rewards: compute BEFORE end_run and stash on managers.csr; the vanilla
-	-- crime_spree_claim_rewards screen (driven by end_spree_rewards.lua) then
-	-- displays + grants them via the standard CS reward animation. The award is
-	-- player-local, so each player who ends the spree gets their own payout. A run that
-	-- earned nothing (own rank 0 AND no banked guest earnings) skips the screen.
-	-- _dialog_leave_lobby_yes is the verified vanilla leave-lobby path
-	-- (menumanager.lua:3574 -> managers.menu:on_leave_lobby; its
-	-- crime_spree:disable_crime_spree_gamemode is a harmless no-op for CSR).
+	-- End Spree: pay bucket A (own run) + bucket B (guest earnings banked at host
+	-- difficulty), end the run, leave the lobby. Pure-client whose own rank is 0 but
+	-- who banked B still cashes out.
 	local mgr = managers.csr
-	-- Pay bucket A (own run: own rank + own difficulty) PLUS bucket B (guest earnings
-	-- banked while playing in hosts' lobbies, at host difficulty -- accrue_mp_earnings).
-	-- Show the rewards screen when EITHER is non-empty, so a pure-client whose own rank
-	-- is 0 but who banked B still cashes out (project_csr_mp_reward_model). Uses OWN
-	-- rank() for bucket A, NOT host_rank() (a guest's own-run payout is its own progress).
 	local own_rank = (mgr and mgr.rank and mgr:rank()) or 0
 	local has_b = mgr and mgr.has_mp_earnings and mgr:has_mp_earnings()
 	local show_rewards = own_rank > 0 or has_b
@@ -362,8 +278,7 @@ function MenuCallbackHandler:_dialog_end_csr_yes()
 		}
 	end
 
-	-- Bucket B is now captured in the pending table (or was empty); zero it so a later
-	-- End Spree can't pay the same banked earnings twice. No-op when already empty.
+	-- Zero bucket B so a later End Spree can't pay it twice.
 	if mgr.reset_mp_earnings then
 		mgr:reset_mp_earnings()
 	end
@@ -371,8 +286,6 @@ function MenuCallbackHandler:_dialog_end_csr_yes()
 	mgr:end_run()
 	self:_dialog_leave_lobby_yes()
 
-	-- Mirrors _dialog_csr_claim_rewards_yes (leave lobby, then open the rewards
-	-- node); the component's _setup grants the stashed table on creation.
 	if show_rewards then
 		managers.menu:open_node("crime_spree_claim_rewards", {})
 	end
@@ -395,19 +308,8 @@ function MenuCallbackHandler:return_to_csr_lobby()
 		text = managers.localization:text("dialog_yes"),
 		callback_func = function()
 			if game_state_machine:current_state_name() ~= "disconnected" then
-				-- One-shot routing intent: vanilla MenuManager:on_enter_lobby
-				-- (menumanagerpd2.lua:31) only selects the "crime_spree_lobby"
-				-- node when the CS gamemode is enabled, which CSR never does
-				-- (Slice 6 runs a temp "crime_spree" job under the vanilla
-				-- gamemode). Without this flag the player lands in the empty
-				-- normal "lobby" node. lobby_routing.lua consumes the flag
-				-- in an on_enter_lobby PostHook and re-selects the CSR node.
-				-- Transient (cleared on consume), NOT the persisted
-				-- managers.csr:is_active() — avoids the vanilla-leak class.
-				-- MUST be Global.* not _G.*: load_start_menu_lobby from the
-				-- victoryscreen state triggers a full Lua-environment reinit
-				-- (game-state _G ≠ menu-state _G). Global survives it; _G does
-				-- not. Mirrors vanilla Global.load_start_menu_lobby.
+				-- MUST be Global.* — load_start_menu_lobby triggers a Lua-state reinit
+				-- and _G dies across it. lobby_routing.lua consumes the flag.
 				Global.CSR_RETURN_TO_LOBBY = true
 				csr_log("[CSR] return_to_csr_lobby: flag set, calling load_start_menu_lobby")
 				self:load_start_menu_lobby()
@@ -584,14 +486,8 @@ function MenuCallbackHandler:csr_continue()
 end
 
 function MenuCallbackHandler:_dialog_csr_continue_yes()
-	-- Paid Continue: spend the continental-coin cost, clear the failed flag
-	-- (the run continues), then rebuild the CSR missions panel so its
-	-- failed-lock re-evaluates and Start / Reroll / mission-select unlock.
-	-- The vanilla-CS mission-end / details gui plumbing is dropped — those
-	-- components are not part of the CSR fork. deduct_coins is the verified
-	-- vanilla spend (crimespreemanager.lua:751 uses the identical call +
-	-- telemetry origin). csr_continue already guarded coins >= cost before
-	-- showing the yes button.
+	-- Paid Continue: spend coins, clear failed flag, rebuild missions panel so the
+	-- failed-lock re-evaluates and Start/Reroll/select unlock.
 	local cost = managers.csr:get_continue_cost()
 
 	managers.custom_safehouse:deduct_coins(cost, TelemetryConst.economy_origin.continue_crime_spree)
@@ -676,8 +572,7 @@ function MenuCallbackHandler:show_peer_kicked_csr_dialog(params)
 end
 
 function MenuCallbackHandler:csr_reroll()
-	-- Slice 8: free reroll (no continental-coin cost). Vanilla's escalating-cost
-	-- reroll economy is intentionally dropped for the alpha mission-select slice.
+	-- Free reroll. Vanilla's escalating-cost reroll economy is dropped.
 	local mission_gui = managers.menu_component:crime_spree_missions_gui()
 
 	if mission_gui and mission_gui:is_randomizing() then
@@ -704,7 +599,6 @@ function MenuCallbackHandler:csr_select_modifier()
 end
 
 function MenuCallbackHandler:csr_start_game()
-	-- Slice 8: mission state lives in managers.csr now, not vanilla CS.
 	if not managers.csr or managers.csr:current_mission() == nil then
 		managers.menu:post_event("menu_error")
 	else
@@ -830,13 +724,10 @@ end
 
 function MenuCallbackHandler:_dialog_clear_csr_record_no() end
 
--- Slice 5 wiring: redirect vanilla's accept_crime_spree_contract -> our forked
--- accept_csr_contract. This MUST live in this file (not contract_wiring.lua)
--- because vanilla MenuManagerCrimeSpreeCallbacks is required at menumanager.lua:35
--- and overwrites accept_crime_spree_contract. Our wrap has to install AFTER that
--- happens. The lib/managers/menumanager hook fires after menumanager.lua finishes
--- loading (including its requires), so our wrap captures the FINAL vanilla
--- definition and stays installed.
+-- Slice 5/8 wraps: redirect vanilla menu-item callbacks to our forks. Must install
+-- AFTER lib/managers/menumanager finishes loading (vanilla MenuManagerCrimeSpreeCallbacks
+-- is required at menumanager.lua:35 and overwrites these), so our hook on
+-- lib/managers/menumanager captures the FINAL vanilla definition.
 
 if MenuCallbackHandler and not _G._CSR_ACCEPT_CONTRACT_WRAPPED then
 	_G._CSR_ACCEPT_CONTRACT_WRAPPED = true
@@ -854,13 +745,6 @@ if MenuCallbackHandler and not _G._CSR_ACCEPT_CONTRACT_WRAPPED then
 		end
 	end
 end
-
--- Slice 8 wiring: redirect vanilla's lobby start + reroll callbacks (invoked by
--- the vanilla crime_spree_lobby node's menu items by string name) to our forked
--- csr_* versions, which run against managers.csr. Same rationale and install
--- timing as the accept wrap above (vanilla MenuManagerCrimeSpreeCallbacks is
--- required at menumanager.lua:35, so a raw wrap here captures the final vanilla
--- definition).
 
 if MenuCallbackHandler and not _G._CSR_START_GAME_WRAPPED then
 	_G._CSR_START_GAME_WRAPPED = true
@@ -890,19 +774,13 @@ if MenuCallbackHandler and not _G._CSR_REROLL_WRAPPED then
 	end
 end
 
--- Drop the chosen mission when the player GENUINELY leaves the CSR lobby.
--- _dialog_leave_lobby_yes (vanilla, menumanager.lua:3574) is the single
--- executor for every real lobby exit (leave_csr_lobby -> CrimeNet/main,
--- End Spree, Claim Rewards) and is NOT in the path for Inventory/Options
--- sub-screen round-trips or the Start->briefing heist launch -- so the pick
--- correctly survives those and only resets on a true exit (user 2026-05-19).
--- managers.csr:select_mission(false) only nils current_mission (CSR-owned
--- transient state); no vanilla surface is touched, so this is safe to stack
--- on the vanilla callback even on non-CSR lobby leaves (harmless no-op there).
+-- Drop the chosen mission on a GENUINE lobby exit. _dialog_leave_lobby_yes is the
+-- single vanilla executor for every real exit; NOT in path for Inventory/Options
+-- sub-screen round-trips or Start→briefing launch, so picks survive those correctly.
 Hooks:PostHook(MenuCallbackHandler, "_dialog_leave_lobby_yes", "CSR_ClearMissionOnLeaveLobby", function(self)
 	if managers and managers.csr and managers.csr.select_mission then
 		managers.csr:select_mission(false)
 	end
 end)
 
-csr_log("[CSR] contract_callbacks.lua loaded (Slice 3 fork + Slice 5 accept wrap + Slice 8 start/reroll wrap)")
+csr_log("[CSR] contract_callbacks.lua loaded")

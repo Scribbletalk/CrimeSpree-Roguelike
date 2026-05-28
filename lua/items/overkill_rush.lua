@@ -1,15 +1,5 @@
--- Overkill Rush (uncommon) -- kills build a temporary fire-rate/reload streak.
---
--- Per-item-file model (see cup_of_joe.lua). Text fields are localization keys.
--- Two hook targets in one file: CopDamage (kill -> bump the streak) and
--- NewRaycastWeaponBase (consume the streak). The streak state is a file-local
--- upvalue shared by both hook closures -- the item file is dofile'd ONCE, so its
--- chunk locals are shared across every hook it installs (cleaner than the old
--- manager-stashed state). Local-player-scoped, so MP-symmetric.
---
--- Active bonus = kill_stacks * (item_stacks + 1) * bonus_per_kill, applied
--- EQUALLY to fire rate and reload. Values mirror the 6.2 register line
--- (bonus_per_kill 0.01 / max_kill_stacks 4 / duration 4.0).
+-- Overkill Rush (uncommon) — kills build a temporary fire-rate + reload streak.
+-- bonus = kill_stacks * (item_stacks + 1) * 0.01, applied to fire rate and reload.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -19,7 +9,7 @@ local BONUS_PER_KILL = 0.01
 local MAX_KILL_STACKS = 4
 local DURATION = 4.0
 
--- Single-item streak state, shared by the kill-bump and consumer hooks below.
+-- File-local shared by kill-bump and consumer closures.
 local streak = { kill_stacks = 0, last_kill_time = -999 }
 
 local function game_time()
@@ -27,7 +17,6 @@ local function game_time()
 	return game and game:time() or nil
 end
 
--- A confirmed local-player kill bumps the streak (capped, resets if expired).
 local function bump_streak(mgr)
 	local now = game_time()
 	if not now then
@@ -43,7 +32,6 @@ local function bump_streak(mgr)
 	end
 end
 
--- Active fire-rate/reload bonus (0 when none live/owned/in a run).
 local function active_bonus()
 	local mgr = managers and managers.csr
 	if not mgr or not mgr.is_run_active or not mgr:is_run_active() then
@@ -57,7 +45,7 @@ local function active_bonus()
 		return 0
 	end
 	if now - streak.last_kill_time >= DURATION then
-		streak.kill_stacks = 0 -- lazily expire
+		streak.kill_stacks = 0
 		return 0
 	end
 	local stacks = mgr:owned("overkill_rush")
@@ -67,10 +55,7 @@ local function active_bonus()
 	return streak.kill_stacks * (stacks + 1) * BONUS_PER_KILL
 end
 
--- Fires on CopDamage:die (once per death, any cause, carrying the killing blow's
--- attacker). Gating on die rather than the four damage_* paths avoids bumping the
--- streak when the local player's later hit/DOT touches a corpse a bot killed (the
--- damage_* PostHook still runs on an already-dead cop). See pink_slip.lua.
+-- Hook CopDamage:die (not damage_*) so a later hit/DOT on a corpse can't bump the streak.
 local function on_enemy_die(_cop, attack_data)
 	local mgr = managers and managers.csr
 	if not mgr or not mgr.is_run_active or not mgr:is_run_active() then
@@ -97,7 +82,6 @@ _G.CSR.register_item({
 	icon_scale = 0.9,
 
 	hooks = {
-		-- Kill detection: bump the streak on a confirmed local-player kill.
 		["lib/units/enemies/cop/copdamage"] = function()
 			if _G._CSR_OVERKILL_KILL_HOOKED then
 				return
@@ -106,8 +90,6 @@ _G.CSR.register_item({
 			Hooks:PostHook(CopDamage, "die", "CSR_Overkill_Kill", on_enemy_die)
 		end,
 
-		-- Consumer: scale fire rate + reload by (1 + active bonus). Return-value
-		-- methods -> raw chain wrap (CSR convention); _G guard stops a double-wrap.
 		["lib/units/weapons/newraycastweaponbase"] = function()
 			if _G._CSR_OVERKILL_WEAPON_HOOKED then
 				return
@@ -120,7 +102,7 @@ _G.CSR.register_item({
 					local result = orig_fire_rate(self, ...)
 					local bonus = active_bonus()
 					if bonus > 0 and type(result) == "number" then
-						result = result * (1 + bonus) -- higher = faster fire rate
+						result = result * (1 + bonus)
 					end
 					return result
 				end
@@ -132,7 +114,7 @@ _G.CSR.register_item({
 					local result = orig_reload_speed(self, ...)
 					local bonus = active_bonus()
 					if bonus > 0 and type(result) == "number" then
-						result = result * (1 + bonus) -- higher = faster reload
+						result = result * (1 + bonus)
 					end
 					return result
 				end

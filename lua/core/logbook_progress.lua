@@ -1,5 +1,4 @@
--- Crime Spree Roguelike - Logbook Progress System
--- Tracks and saves item discovery progress
+-- Item-discovery progress for the Logbook UI. JSON-persisted at SavePath.
 
 if not RequiredScript then
 	return
@@ -21,7 +20,14 @@ function CSR_LogbookProgress:init()
 	self:load()
 end
 
--- Load progress from disk
+-- Older saves used pre-rename keys (health/damage/car_keys). Migrate to current
+-- ids so players don't lose unlock progress.
+local LOGBOOK_TYPE_REMAP = {
+	health = "dog_tags",
+	damage = "evidence_rounds",
+	car_keys = "falcogini_keys",
+}
+
 function CSR_LogbookProgress:load()
 	local file = io.open(self._save_path, "r")
 	if file then
@@ -33,16 +39,6 @@ function CSR_LogbookProgress:load()
 			self._unlocked_items = data.unlocked_items or {}
 			self._new_items = data.new_items or {}
 			self._seen_this_run = data.seen_this_run or {}
-			-- Save migration: several registry types were renamed to match the
-			-- player-facing names ("health"→"dog_tags", "damage"→
-			-- "evidence_rounds", "car_keys"→"falcogini_keys"). Older logbook
-			-- files keyed the entries under the old names; promote those keys
-			-- onto the new ones so the player keeps their unlock progress.
-			local LOGBOOK_TYPE_REMAP = {
-				health = "dog_tags",
-				damage = "evidence_rounds",
-				car_keys = "falcogini_keys",
-			}
 			for _, tbl in ipairs({ self._unlocked_items, self._new_items, self._seen_this_run }) do
 				for old_key, new_key in pairs(LOGBOOK_TYPE_REMAP) do
 					if tbl[old_key] and not tbl[new_key] then
@@ -72,7 +68,6 @@ function CSR_LogbookProgress:load()
 	end
 end
 
--- Save progress to disk
 function CSR_LogbookProgress:save()
 	local data = {
 		unlocked_items = self._unlocked_items,
@@ -92,12 +87,10 @@ function CSR_LogbookProgress:save()
 	end
 end
 
--- Check whether an item is unlocked
 function CSR_LogbookProgress:is_unlocked(item_id)
 	return self._unlocked_items[item_id] == true
 end
 
--- Mark an item as seen during the current run
 function CSR_LogbookProgress:mark_seen(item_id)
 	if not self._seen_this_run[item_id] then
 		self._seen_this_run[item_id] = true
@@ -106,7 +99,7 @@ function CSR_LogbookProgress:mark_seen(item_id)
 	end
 end
 
--- Unlock all items seen this run (called when a new run starts)
+-- Called at the start of a new run: promote anything seen last run to unlocked.
 function CSR_LogbookProgress:unlock_seen()
 	local had_seen = next(self._seen_this_run) ~= nil
 	for item_id, _ in pairs(self._seen_this_run) do
@@ -117,18 +110,15 @@ function CSR_LogbookProgress:unlock_seen()
 		end
 	end
 	self._seen_this_run = {}
-	-- Save if there were any seen items (needed to clear seen_this_run)
 	if had_seen then
 		self:save()
 	end
 end
 
--- Check whether there are any newly unlocked items not yet viewed in the logbook
 function CSR_LogbookProgress:has_new()
 	return next(self._new_items) ~= nil
 end
 
--- Clear the new-items flag (called when the logbook is opened)
 function CSR_LogbookProgress:clear_new()
 	if next(self._new_items) ~= nil then
 		self._new_items = {}
@@ -136,23 +126,21 @@ function CSR_LogbookProgress:clear_new()
 	end
 end
 
--- Unlock an item directly (legacy method, kept for backwards compatibility)
+-- Legacy direct unlock — kept for back-compat with old callers.
 function CSR_LogbookProgress:unlock_item(item_id)
 	if not self:is_unlocked(item_id) then
 		self._unlocked_items[item_id] = true
 		self:save()
 		CSR_log("[CSR Logbook] Item unlocked (legacy): " .. tostring(item_id))
-		return true -- first unlock
+		return true
 	end
-	return false -- already unlocked
+	return false
 end
 
--- Get the full list of unlocked items
 function CSR_LogbookProgress:get_unlocked_items()
 	return self._unlocked_items
 end
 
--- Reset all progress (debug only)
 function CSR_LogbookProgress:reset()
 	self._unlocked_items = {}
 	self._new_items = {}
@@ -161,11 +149,9 @@ function CSR_LogbookProgress:reset()
 	CSR_log("[CSR Logbook] Progress reset")
 end
 
--- Initialize the global singleton instance
 if not _G.CSR_Logbook then
 	_G.CSR_Logbook = CSR_LogbookProgress:new()
 	CSR_log("[CSR Logbook] System initialized")
 end
 
--- Diagnostic load trace (kept per debug policy).
-csr_log("[CSR Logbook] logbook_progress.lua loaded; _G.CSR_Logbook=" .. tostring(_G.CSR_Logbook ~= nil))
+csr_log("[CSR Logbook] logbook_progress.lua loaded")

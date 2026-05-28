@@ -1,27 +1,5 @@
--- Glass Pistol (contraband) -- the classic glass-cannon trade: huge damage, but
--- a fraction of the survivability.
---
--- Per-item-file model (see cup_of_joe.lua). Text fields are localization keys.
--- Ported from 6.2 (modifiers/glasscannon.lua was a thin passport stub; the real
--- mechanic lived spread across playermanager/raycastweapon/player_passives).
---
--- Four independent chain-wraps, all MULTIPLICATIVE (per stack):
---   * ranged damage  x DMG_PER_STACK^stacks  (RaycastWeaponBase:_get_current_damage)
---   * melee  damage  x DMG_PER_STACK^stacks  (BlackMarketManager:equipped_melee_weapon_damage_info)
---   * max health     x (1/DIV_PER_STACK)^stacks (PlayerManager:health_skill_multiplier)
---   * max armor      x (1/DIV_PER_STACK)^stacks (PlayerDamage:_max_armor)
---
--- 6.2's _max_armor anti-recursion guard is gone: it only mattered for the old
--- centralized stat-sync loop (set_armor -> _max_armor re-entry). The per-item
--- chain-wrap calls the captured orig (-> vanilla _raw_max_armor) directly, so
--- there is no self-recursion. Vanilla recomputes the reduced max on spawn.
---
--- Rule #13 ("applied last") no longer applies: in the per-item model every stat
--- item is its own wrap and stacks multiplicatively by nature; there is no single
--- additive accumulator to be the last term of.
---
--- Values mirror the 6.2 constants (glass_pistol_dmg_per_stack 1.75 /
--- glass_pistol_div_per_stack 2). Keep the localization fallback in sync (logbook).
+-- Glass Pistol (contraband) — glass cannon: huge damage, fraction of survivability.
+-- All four wraps multiply per stack (DMG_PER_STACK^stacks, (1/DIV)^stacks).
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -30,7 +8,6 @@ end
 local DMG_PER_STACK = 1.75
 local DIV_PER_STACK = 2
 
--- managers.csr only while a run is active, else nil (shared bail helper).
 local function run_mgr()
 	local mgr = managers and managers.csr
 	if mgr and mgr.is_run_active and mgr:is_run_active() then
@@ -50,7 +27,7 @@ _G.CSR.register_item({
 	icon_scale = 1.0,
 
 	hooks = {
-		-- Ranged: multiply RaycastWeaponBase:_get_current_damage by DMG_PER_STACK^stacks.
+		-- Ranged damage.
 		["lib/units/weapons/raycastweaponbase"] = function()
 			if _G._CSR_GLASS_PISTOL_RANGED_HOOKED then
 				return
@@ -77,9 +54,7 @@ _G.CSR.register_item({
 			end
 		end,
 
-		-- Melee: multiply BlackMarketManager:equipped_melee_weapon_damage_info by the
-		-- same factor (dmg + dmg_effect). Only the local player calls this; networks
-		-- via attack_data like every other melee item (Evidence Rounds, Jiro).
+		-- Melee damage.
 		["lib/managers/blackmarketmanager"] = function()
 			if _G._CSR_GLASS_PISTOL_MELEE_HOOKED then
 				return
@@ -107,7 +82,7 @@ _G.CSR.register_item({
 			end
 		end,
 
-		-- Max health: multiply PlayerManager:health_skill_multiplier by (1/DIV)^stacks.
+		-- Max health.
 		["lib/managers/playermanager"] = function()
 			if _G._CSR_GLASS_PISTOL_HP_HOOKED then
 				return
@@ -131,7 +106,7 @@ _G.CSR.register_item({
 			end
 		end,
 
-		-- Max armor: multiply PlayerDamage:_max_armor by (1/DIV)^stacks.
+		-- Max armor.
 		["lib/units/beings/player/playerdamage"] = function()
 			if _G._CSR_GLASS_PISTOL_ARMOR_HOOKED then
 				return

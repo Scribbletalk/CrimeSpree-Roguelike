@@ -1,21 +1,6 @@
--- Wolf's Toolbox (uncommon) -- killing enemies cuts active drill/saw timers.
---
--- Per-item-file model (see cup_of_joe.lua). Text fields are localization keys.
--- Two hook targets in one file: CopDamage (kill -> cut timer) and TimerGui
--- (track active devices). The tracked-device set is a file-local upvalue shared
--- by both hook closures (the file is dofile'd once).
---
--- Always triggers (no RNG); a special enemy (priority_shout) cuts more. Two timer
--- surfaces, two authority models:
---   * TimerGui drill/saw DEVICES are HOST-authoritative. The host reduces
---     directly; a CLIENT kill RPCs the host the reduction it computed from its
---     OWN stacks, and the host applies it.
---   * Saw INTERACTIONS (player personally sawing) are local PlayerStandard
---     timers -- every peer reduces its own directly.
--- Kill detection uses CopDamage:die (fires once per death from ANY cause, so a
--- fire/tase kill still cuts the drill; no per-corpse dedup flag needed).
--- Values mirror the 6.2 register line (normal_base 0.2 / _normal_extra 0.1 /
--- special_base 1.0 / _special_extra 0.5).
+-- Wolf's Toolbox (uncommon) — kills cut drill/saw timers.
+-- Two timer surfaces: TimerGui devices (HOST authoritative; client kills RPC the host)
+-- and saw INTERACTIONS (local PlayerStandard; each peer reduces its own).
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -27,7 +12,7 @@ local SPECIAL_BASE = 1.0
 local SPECIAL_EXTRA = 0.5
 local WOLF_KILL_RPC = "CSR_WolfKill"
 
--- Saw-based timed INTERACTIONS (InteractionExt timers, not TimerGui devices).
+-- Saw INTERACTIONS (InteractionExt timers, not TimerGui devices).
 local SAW_INTERACTIONS = {
 	hospital_saw = true,
 	hospital_saw_jammed = true,
@@ -41,12 +26,9 @@ local SAW_INTERACTIONS = {
 	gen_int_saw_jammed = true,
 }
 
--- Alive, non-jammed TimerGui drill/saw devices the local session has seen start.
--- Tracked on every peer (devices are synced): the host uses it to reduce, a
--- client to decide whether a kill is worth RPCing.
+-- TimerGui devices the session has seen start. Tracked on every peer (synced).
 local tracked_drills = {}
 
--- Run active AND the local player owns >= 1 Wolf's Toolbox.
 local function wolfs_active(mgr)
 	if not mgr or not mgr.is_run_active or not mgr:is_run_active() then
 		return false
@@ -54,7 +36,6 @@ local function wolfs_active(mgr)
 	return mgr:owned("wolfs_toolbox") > 0
 end
 
--- Seconds to cut for one kill, given owned stacks and whether the kill was special.
 local function wolfs_reduction(stacks, is_special)
 	if is_special then
 		return SPECIAL_BASE + (stacks - 1) * SPECIAL_EXTRA
@@ -62,8 +43,6 @@ local function wolfs_reduction(stacks, is_special)
 	return NORMAL_BASE + (stacks - 1) * NORMAL_EXTRA
 end
 
--- The local player's current saw-interaction state, or nil. Locally owned, so
--- valid on every peer.
 local function local_saw_state()
 	local player = managers.player and managers.player:player_unit()
 	if not alive(player) then
@@ -81,7 +60,6 @@ local function local_saw_state()
 	return state
 end
 
--- True if any tracked TimerGui drill/saw device is alive and not jammed.
 local function has_active_drill()
 	for unit in pairs(tracked_drills) do
 		if alive(unit) then
@@ -94,8 +72,6 @@ local function has_active_drill()
 	return false
 end
 
--- Reduce every alive, non-jammed tracked drill/saw timer by `seconds`. Prunes
--- dead units in passing. Host / SP only (drill timers are host-authoritative).
 local function apply_drill_reduction(seconds)
 	if seconds <= 0 then
 		return
@@ -119,7 +95,7 @@ _G.CSR.register_item({
 	desc = "csr_item_wolfs_toolbox_desc",
 	full_desc = "csr_logbook_wolfs_toolbox_effect",
 	notes = "csr_logbook_wolfs_toolbox_notes",
-	-- Icon id is "toolbox" in hudicons.lua (legacy name), not csr_wolfs_toolbox.
+	-- Icon id is "toolbox" in hudicons.lua (legacy name).
 	icon = "csr_toolbox",
 	icon_scale = 1.0,
 
@@ -146,7 +122,7 @@ _G.CSR.register_item({
 					return
 				end
 
-				-- Saw interactions are locally owned -- reduce directly on every peer.
+				-- Saw interactions — local, reduce directly.
 				local saw_state = local_saw_state()
 				if saw_state then
 					saw_state._interact_expire_t = math.max(0, saw_state._interact_expire_t - reduction)
@@ -161,7 +137,7 @@ _G.CSR.register_item({
 					end
 				end
 
-				-- TimerGui drills are host-authoritative.
+				-- TimerGui drills — host-authoritative.
 				if not has_active_drill() then
 					return
 				end
@@ -180,8 +156,6 @@ _G.CSR.register_item({
 				end
 			end)
 
-			-- Host applies a client's kill reduction to its authoritative timers.
-			-- Routed through the shared MP router (mp_sync.lua); it dispatches by id.
 			if _G.CSR_MP and _G.CSR_MP.register_handler then
 				_G.CSR_MP.register_handler(WOLF_KILL_RPC, function(sender, data)
 					if not Network:is_server() then
@@ -198,9 +172,6 @@ _G.CSR.register_item({
 			end
 			_G._CSR_WOLFS_TIMER_HOOKED = true
 
-			-- Register a drill/saw device as active. Gated only on a live run, so
-			-- picking the item after a drill has started still tracks it on the next
-			-- _start call.
 			Hooks:PostHook(TimerGui, "_start", "CSR_WolfsToolbox_TimerStart", function(self)
 				local mgr = managers and managers.csr
 				if not mgr or not mgr.is_run_active or not mgr:is_run_active() then
@@ -214,9 +185,8 @@ _G.CSR.register_item({
 				if not base then
 					return
 				end
-				-- Drills and saws only (is_drill / is_saw are boolean fields). Exclude
-				-- hacking devices. Fallback: a non-hacking unit that still has a
-				-- timer_gui counts (catches overdrill / special drills missing the flag).
+				-- Drills + saws only; hacking devices excluded. Fallback catches
+				-- overdrill / special drills missing the boolean flag.
 				local is_valid = base.is_drill or base.is_saw or (not base.is_hacking_device and unit:timer_gui())
 				if not is_valid then
 					return

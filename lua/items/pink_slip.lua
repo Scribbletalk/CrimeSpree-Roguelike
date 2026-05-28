@@ -1,19 +1,6 @@
--- Pink Slip (uncommon) -- killing an enemy restores health.
---
--- Per-item-file model (see cup_of_joe.lua). Text fields are localization keys.
--- Local-player-scoped (each peer heals its own player on its own kills), so
--- MP-symmetric.
---
--- Kill detection: PostHook on CopDamage:die -- it fires exactly once per death,
--- from ANY cause (bullet/melee/fire/tase/...), carrying the killing blow's
--- attacker. Gated on that attacker being the local player. Using die (not the
--- four damage_* paths) is what makes this correct: damage_bullet early-returns
--- on a dead cop but its PostHook still runs, so the old approach healed when the
--- local player's later hit/DOT touched a corpse SOMEONE ELSE (a bot) killed.
---
--- Heal per kill = max_hp*base_pct + (base_flat + (stacks-1)*extra_flat) display
--- HP, the flat part /display-scale to internal units. Values mirror the 6.2
--- register line (base_pct 0.01 / base_flat 4 / extra_flat 6).
+-- Pink Slip (uncommon) — kills heal you.
+-- Hook on CopDamage:die (one-shot per death, any cause) so a corpse-touching DOT
+-- can't proc the heal — the old damage_* approach did.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -34,6 +21,7 @@ local function apply_kill_heal(mgr, stacks)
 	end
 	local scale = (tweak_data.gui and tweak_data.gui.stats_present_multiplier) or 10
 	local max_hp = dmg:_max_health()
+	-- Flat HP is authored in display units; /scale → internal.
 	local heal = max_hp * BASE_PCT + (BASE_FLAT + (stacks - 1) * EXTRA_FLAT) / scale
 	if heal > 0 then
 		dmg:set_health(dmg:get_real_health() + heal)

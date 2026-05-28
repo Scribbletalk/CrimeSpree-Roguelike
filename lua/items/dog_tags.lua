@@ -1,7 +1,4 @@
--- Dog Tags (common) -- +10% max health per copy owned.
---
--- Per-item-file model (see cup_of_joe.lua for the full pattern notes). Text
--- fields are localization keys; loc/<lang>.json holds the strings.
+-- Dog Tags (common) — +10% max health per copy owned.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -18,9 +15,6 @@ _G.CSR.register_item({
 	icon_scale = 1.0,
 
 	hooks = {
-		-- +10% to PlayerManager:health_skill_multiplier per copy owned. Return-value
-		-- method -> raw chain wrap (CSR convention); _G guard stops a double-wrap.
-		-- Mirrors the 6.2 constant dog_tags_hp_bonus (0.10).
 		["lib/managers/playermanager"] = function()
 			if _G._CSR_DOG_TAGS_HOOKED then
 				return

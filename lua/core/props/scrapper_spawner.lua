@@ -1,16 +1,13 @@
--- Crime Spree Roguelike - Debug prop spawner.
--- Originally just for the evidence shredder ("scrapper"); now a generic
--- registry of debug-spawn props (currently shredder + printer) shared by both
--- the auto-spawn-at-cover flow and the manual debug keybinds.
+-- In-world evidence shredder ("scrapper") spawner. Arch + MP notes in
+-- csr_in_world_props_architecture.md.
 --
--- Three SuperBLT keybinds drive this:
---   crosshair key → _G.CSR_SpawnDebugPropAtCrosshair() — spawns CURRENT prop at crosshair
---   cover key     → _G.CSR_SpawnDebugPropAtCover()      — spawns CURRENT prop at the nearest cop cover
---   cycle key     → _G.CSR_CycleDebugProp()             — advance to next prop in registry
---
--- For props with a dispatch_<mode> field (the printer), the keybind delegates
--- to the named global in copier_spawner.lua so the prop's full registration
--- flow (CSR_Copiers entry, offer, billboard, MP broadcast) is preserved.
+-- Generic debug-prop registry shared with the printer:
+--   crosshair key → CSR_SpawnDebugPropAtCrosshair() — current prop at crosshair
+--   cover key     → CSR_SpawnDebugPropAtCover()     — current prop at nearest cop cover
+--   cycle key     → CSR_CycleDebugProp()            — advance to next prop
+-- A prop with dispatch_<mode> delegates to that named global (so the printer
+-- reuses its full spawn flow in copier_spawner.lua).
+
 if not RequiredScript then
 	return
 end
@@ -19,16 +16,7 @@ local PKG_NAME = (DynamicResourceManager and DynamicResourceManager.DYN_RESOURCE
 local UNIT_EXT = Idstring("unit")
 local SPAWN_AUTO_DELAY = 0.5
 
--- Per-prop config:
---   anim_seq: sequence to fire after spawn so the prop's visible animation
---     plays for the user; nil = no animation (spawn-only).
---   dispatch_crosshair / dispatch_cover: optional names of GLOBAL functions to
---     delegate to instead of using the generic spawn path in this file. This
---     lets a prop opt into another subsystem's full registration flow (e.g.
---     the printer needs CSR_Copiers + offer + billboard setup that lives in
---     copier_spawner.lua — calling its existing crosshair/cover globals
---     reuses that logic instead of duplicating it here).
--- Order in this list = cycle order.
+-- Order = cycle order.
 local DEBUG_PROPS = {
 	{
 		key = "shredder",
@@ -45,7 +33,6 @@ local DEBUG_PROPS = {
 	},
 }
 
--- Pre-cache the Idstring per entry so we don't reconstruct it on every press.
 for _, def in ipairs(DEBUG_PROPS) do
 	def.unit_idstring = Idstring(def.dbpath)
 end
@@ -89,11 +76,9 @@ local function trigger_anim(unit, seq_name)
 	end
 end
 
--- Host -> all: mirror a just-spawned scrapper so every client spawns a local
--- copy. Same self-gated pattern as the copier (broadcast_copier_spawn): the host
--- unit key is the dedup token, pos/rot round-trip through Rotation(yaw,pitch,roll).
--- Only the shredder syncs here -- the printer routes through copier_spawner's own
--- spawn flow and never reaches spawn_at, so this guards on def.key for safety.
+-- Host → all: mirror a just-spawned scrapper. Only the shredder syncs here —
+-- the printer routes through copier_spawner's own spawn flow and never reaches
+-- spawn_at, so this guards on def.key for safety.
 local function broadcast_scrapper_spawn(unit, pos, rot, def)
 	if not (def and def.key == "shredder") then
 		return
@@ -117,9 +102,7 @@ local function broadcast_scrapper_spawn(unit, pos, rot, def)
 	_G.CSR_MP.broadcast_prop(_G.CSR_MP.MSG.SCRAPPER_SPAWN, payload)
 end
 
--- Shared spawn core. Caller supplies pos+rot+def. Returns the spawned unit or
--- nil on failure. Used by both the crosshair-debug path and the auto-spawn
--- flow at the bottom of this file.
+-- Shared spawn core. Triple-disables collision (see deep-dive doc).
 local function spawn_at(pos, rot, def)
 	local ok, unit = pcall(World.spawn_unit, World, def.unit_idstring, pos, rot)
 	if not ok or not alive(unit) then
@@ -127,15 +110,6 @@ local function spawn_at(pos, rot, def)
 		return nil
 	end
 
-	-- Make the prop non-solid to the player mover. The shredder ships on slot 1
-	-- (dynamics, player-blocking); same triple-disable the copier uses (see
-	-- copier_spawner.lua for the why):
-	--   1. set_enabled(false) drops every body out of the physics sim
-	--   2. set_collisions_enabled(false) belt-and-braces for body types where
-	--      set_enabled isn't honored
-	--   3. Move unit to slot 11 (statics) so it's out of slot 1's collision path
-	-- Interaction handled by CrimeSpreeScrapperInteractionExt (native PD2 path),
-	-- so disabling bodies doesn't affect the hover prompt or hold-to-use.
 	pcall(function()
 		local nr = unit:num_bodies()
 		for i = 0, nr - 1 do
@@ -152,7 +126,6 @@ local function spawn_at(pos, rot, def)
 
 	table.insert(_G.CSR_DebugSpawnedUnits, unit)
 
-	-- MP: mirror to clients (host-only; self-gated inside broadcast_scrapper_spawn).
 	broadcast_scrapper_spawn(unit, pos, rot, def)
 
 	return unit
@@ -183,7 +156,6 @@ local function spawn_at_crosshair(def)
 		pos = from + dir * 200
 	end
 
-	-- Yaw-only rotation; props expect upright placement.
 	local rot = Rotation(cam:rotation():yaw(), 0, 0)
 	local unit = spawn_at(pos, rot, def)
 	if not unit then
@@ -193,11 +165,8 @@ local function spawn_at_crosshair(def)
 	hint(def.label .. " spawned", 3)
 end
 
--- Cover-spawn helper for props that don't delegate (i.e. the scrapper). Reuses
--- CSR_PickCoverSpawns from copier_spawner.lua (same helper the auto-spawn loop
--- uses) so manual cover-spawn placements honor MIN_COPIER_SEPARATION and avoid
--- landing on top of an existing printer or scrapper. Picks ONE cover and
--- spawns there. Returns nothing — `hint()` reports outcome to the player.
+-- Reuses CSR_PickCoverSpawns (printer-owned), so manual cover-spawn placements
+-- honor MIN_COPIER_SEPARATION and avoid landing on existing printers/scrappers.
 local function spawn_at_one_cover(def)
 	local pick = _G.CSR_PickCoverSpawns
 	if not pick then
@@ -218,12 +187,8 @@ local function spawn_at_one_cover(def)
 	hint(def.label .. " spawned at cover", 3)
 end
 
--- Generic spawn dispatcher used by both the crosshair keybind and the cover
--- keybind. `at_cover` selects between crosshair and cover mode. When the
--- current def has a dispatch_<mode> entry, the corresponding global is invoked
--- instead of the generic path — that's how the printer reuses copier_spawner's
--- own spawn flow (which registers the unit with CSR_Copiers, attaches an
--- offer, etc.).
+-- Routes a keybind press to either the prop's dispatch_<mode> global (printer
+-- delegates to copier_spawner) or the generic spawn path.
 local function dispatch_spawn(at_cover)
 	local def = current_def()
 	local dispatch_name = at_cover and def.dispatch_cover or def.dispatch_crosshair
@@ -242,10 +207,8 @@ local function dispatch_spawn(at_cover)
 		hint(def.label .. " unit not in DB (asset path wrong?)", 6)
 		return
 	end
-	-- Trust DB:has over is_ready: if the unit is in DB it was injected via
-	-- supermod.xml and auto-mounted into packages/dyn_resources at SuperBLT
-	-- init; is_ready can lie and report false even when the asset is live.
-	-- Same workaround the printer uses. Spawn directly.
+	-- Trust DB:has over is_ready: supermod.xml-mounted units are live even when
+	-- is_ready reports false. Same workaround the printer uses.
 	if at_cover then
 		spawn_at_one_cover(def)
 	else
@@ -261,9 +224,7 @@ _G.CSR_SpawnDebugPropAtCover = function()
 	dispatch_spawn(true)
 end
 
--- Backwards-compat alias kept so the existing keybind file doesn't need
--- changes if SuperBLT had cached its callback global. Both names route through
--- the same dispatcher.
+-- Back-compat alias in case a cached keybind callback references the old name.
 _G.CSR_SpawnScrapperAtCrosshair = _G.CSR_SpawnDebugPropAtCrosshair
 
 _G.CSR_CycleDebugProp = function()
@@ -272,22 +233,13 @@ _G.CSR_CycleDebugProp = function()
 	hint(string.format("Debug prop selected: %s [%d/%d]", def.label, _G.CSR_DebugCurrentPropIdx, #DEBUG_PROPS), 3)
 end
 
--- Units die with the world; clear our weak reference list each heist and re-arm
--- the auto-spawn latch so the next heist rolls a fresh count.
 Hooks:Add("BaseNetworkSessionOnLoadComplete", "CSR_ScrapperSpawner_SessionReset", function()
 	_G.CSR_DebugSpawnedUnits = {}
-	-- Drop the client-side spawn dedup set so next heist's mirrored scrappers spawn.
 	_G.CSR_SeenScrapperSpawns = {}
 	_G.CSR_AutoScrapperSpawned = false
 end)
 
--- SP/host-only port: the MP client spawn-sync layer (pending-payload queue,
--- the CSR_ScrapperSpawn RPC, late-join replay) is deferred with the rest of the
--- MP slice. Shredders spawn host-locally.
-
--- CSR-heist gate shared with copier_spawner.lua / combat_modifiers.lua: temp
--- "crime_spree" job WITH vanilla Crime Spree NOT active -- the no-leak CSR-heist
--- signal (feedback_csr_only_no_vanilla_leak).
+-- CSR-heist gate (no-leak signal): temp "crime_spree" job AND vanilla CS NOT active.
 local function csr_heist_active()
 	if not managers or not managers.job then
 		return false
@@ -301,21 +253,12 @@ local function csr_heist_active()
 	return true
 end
 
--- Per-heist auto-spawn count rolled in [SCRAPPER_AUTO_MIN, SCRAPPER_AUTO_MAX]
--- inclusive. MIN=0 is intentional -- the scrapper has a valid "zero this heist"
--- outcome.
+-- Per-heist count in [MIN, MAX] inclusive. MIN=0 → "zero this heist" is valid.
 local SCRAPPER_AUTO_MIN = 0
 local SCRAPPER_AUTO_MAX = 2
--- Same gate as the printer (copier_spawner.lua FIRST_ITEM_RANK): scrappers, like
--- printers, only appear once the host has earned at least one item pick.
 local FIRST_ITEM_RANK = 1
 
--- Host-only. Picks 0-2 cover-anchored placements (via the printer's exposed
--- pick_cover_spawns helper, so scrapper placements honor MIN_COPIER_SEPARATION
--- and avoid landing on top of any printer that auto-spawned earlier this heist)
--- and spawns a shredder at each.
 local function do_auto_spawn_scrapper()
-	-- Shredder is the first entry in DEBUG_PROPS.
 	local def = DEBUG_PROPS[1]
 	if not def then
 		return
@@ -324,7 +267,6 @@ local function do_auto_spawn_scrapper()
 		return
 	end
 
-	-- Same first-item rank gate as the printer: nothing until rank >= 1.
 	local mgr = managers.csr
 	local rank = (mgr and mgr.host_rank and mgr:host_rank()) or 0
 	if rank < FIRST_ITEM_RANK then
@@ -355,13 +297,6 @@ end
 
 _G.CSR_AutoScrapperSpawned = _G.CSR_AutoScrapperSpawned or false
 
--- One-shot host-authoritative scrapper auto-spawn under the SAME condition as
--- the printer: Network:is_server + CSR heist + nav ready, then rank >= 1 inside
--- do_auto_spawn_scrapper. NOT gated on the printer having spawned. Cover
--- separation from printers is still guaranteed by the shared pick_cover_spawns /
--- too_close_to_existing check (mutual -- it inspects both CSR_Copiers and
--- CSR_DebugSpawnedUnits; the printer's hook also runs first each frame), so no
--- explicit ordering dependency is needed.
 Hooks:Add("GameSetupUpdate", "CSR_ScrapperAutoSpawn", function(_t, _dt)
 	if _G.CSR_AutoScrapperSpawned then
 		return
@@ -375,43 +310,24 @@ Hooks:Add("GameSetupUpdate", "CSR_ScrapperAutoSpawn", function(_t, _dt)
 	if not (managers.navigation and managers.navigation:is_data_ready()) then
 		return
 	end
-	_G.CSR_AutoScrapperSpawned = true -- latch BEFORE spawn so any failure doesn't re-fire
+	_G.CSR_AutoScrapperSpawned = true -- latch BEFORE spawn so failures don't re-fire
 	do_auto_spawn_scrapper()
 end)
 
--- Proximity-gated yellow contour. The csr_yellow_interactable palette is
--- registered in lua/tweakdata/scrapper_interaction.lua; this hook drives
--- visibility per-frame via set_contour. Per-unit cache prevents the per-frame
--- call from redundantly poking materials when nothing changed.
--- Hand-tuned by feel because vanilla's "can-press-F" gate uses a raycast from
--- the player camera (~165 cm above the feet) against the prop body, while
--- this hook measures feet-to-pivot distance. Auto-deriving from
--- csr_scrapper.interact_distance (250) was tried and didn't visually align —
--- the camera-height offset plus the prop body extent shift the practical
--- threshold below 250 in feet-distance terms. Bump this number until the
--- contour pops on at the same moment the "Hold F" prompt becomes pressable.
-local PROX_RANGE = 240 -- centimeters; manual. Slightly over the practical interact threshold so the contour acts as a "you're getting close" cue before F becomes pressable — intentional.
+-- Manual: vanilla's "can-press-F" gate doesn't visually align with the contour;
+-- bump until the contour pops on at the same moment "Hold F" becomes pressable.
+local PROX_RANGE = 240
 local PROX_RANGE_SQ = PROX_RANGE * PROX_RANGE
--- Exposed globally so CrimeSpreeScrapperInteractionExt:set_contour (in
--- scrapper_interaction_ext.lua) can read the per-unit range state and force
--- opacity=0 when out-of-range, regardless of which code path calls set_contour
--- (our prox hook, vanilla's selected/unselect, Clientsided Uppers wrappers,
--- etc.). Mirrors the pattern in copier_spawner.lua.
 _G.CSR_ScrapperProxState = _G.CSR_ScrapperProxState or setmetatable({}, { __mode = "k" })
 
--- === M3: client-side mirror of host-spawned scrappers ===
--- The host broadcasts each shredder spawn (broadcast_scrapper_spawn); a client
--- spawns its own local copy and registers it in CSR_DebugSpawnedUnits, so the
--- existing interaction (_is_csr_owned scans that list) lights up and the scrapper
--- menu operates on this peer's own (guest-session) inventory.
+-- Client-side mirror of host-broadcast scrapper spawns.
 _G.CSR_SeenScrapperSpawns = _G.CSR_SeenScrapperSpawns or {}
 
 local function on_scrapper_spawn(payload)
-	-- Mirror only on a real client; SP/host spawn natively and never receive this.
 	if not (_G.CSR_MP and _G.CSR_MP.is_client and _G.CSR_MP.is_client()) then
 		return
 	end
-	local def = DEBUG_PROPS[1] -- shredder is the first (and only spawn_at) entry
+	local def = DEBUG_PROPS[1]
 	if not def then
 		return
 	end
@@ -433,9 +349,7 @@ local function on_scrapper_spawn(payload)
 	local pos = Vector3(tonumber(x), tonumber(y), tonumber(z))
 	local rot = Rotation(tonumber(yaw), tonumber(pitch), tonumber(roll))
 
-	-- Native-AV guard before the direct spawn. The host's own scrapper path trusts
-	-- DB:has and spawns directly (is_ready lies for this supermod.xml-mounted unit),
-	-- so we mirror that and add PackageManager:has as the only catchable safety net.
+	-- Native-AV guard before the direct spawn (pcall can't catch a native AV).
 	if PackageManager and PackageManager.has and not PackageManager:has(UNIT_EXT, def.unit_idstring) then
 		log("[CSR DebugProp] on_scrapper_spawn: package not mounted, skipping (native-AV guard)")
 		return

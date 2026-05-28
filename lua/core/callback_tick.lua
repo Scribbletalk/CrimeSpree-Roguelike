@@ -1,18 +1,5 @@
--- CSR callback escape-hatch -- on_tick driver.
---
--- Part of the public extension API (CSR.register_item's on_apply/on_remove/
--- on_tick callbacks). on_apply/on_remove are fired by the manager's lifecycle
--- reconcile (CSRGameManager:reconcile_callback_items, wired in init). This file
--- supplies the throttled on_tick pulse: a PostHook on PlayerDamage:update
--- accumulates dt and calls tick_callback_items every TICK_INTERVAL seconds. So
--- on_tick is in-game only and never per-frame. Until an addon registers a
--- callback item, tick_callback_items loops an empty list -- the per-frame cost is
--- one add + one compare.
---
--- Lives in lua/core (a permanent mod.txt-hooked file), NOT lua/items: that folder
--- is dofile'd item-by-item by the auto-loader and this is API infrastructure, not
--- an item. Single hook target -> one chunk load, so the accumulator is a safe
--- file-local.
+-- Throttled on_tick pulse for items with an on_tick callback.
+-- PostHook on PlayerDamage:update accumulates dt and fires every TICK_INTERVAL.
 
 if not RequiredScript then
 	return

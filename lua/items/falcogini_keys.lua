@@ -1,6 +1,5 @@
--- Falcogini Keys (uncommon) -- chance to dodge, diminishing returns (hyperbolic).
---
--- Per-item-file model (see cup_of_joe.lua). Text fields are localization keys.
+-- Falcogini Keys (uncommon) — hyperbolic dodge chance, combined probabilistically.
+-- bonus = 1 - 1/(1 + (1/32)*stacks). final = 1 - (1-base)*(1-bonus).
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -17,13 +16,6 @@ _G.CSR.register_item({
 	icon_scale = 0.9,
 
 	hooks = {
-		-- Combine the item's dodge chance with vanilla dodge probabilistically
-		-- (final = 1 - (1-base)*(1-bonus)) so the result rises toward but never
-		-- reaches 100% and never lowers base dodge. bonus = cap*(1 - 1/(1 +
-		-- (k_num/k_den)*stacks)); cap/k_den mirror the 6.2 constant car_keys_k_den
-		-- (32). Vanilla skill_dodge_chance takes (running, crouching, on_zipline,
-		-- override_armor, detection_risk) -- forward all args via ... Return-value
-		-- method -> raw chain wrap; _G guard stops a double-wrap.
 		["lib/managers/playermanager"] = function()
 			if _G._CSR_FALCOGINI_KEYS_HOOKED then
 				return

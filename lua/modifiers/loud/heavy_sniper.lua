@@ -1,7 +1,7 @@
--- Marshal Reinforcements (loud modifier) -- additional US Marshal Marksmen per squad.
--- Repurposes vanilla ModifierHeavySniper: disables the ZEAL Heavy Sniper unit swap
--- and instead bumps marshal_squad group size by `amount` and caps shields at 1 per
--- group so every extra slot spawns a marksman. Amount is additive across stacks.
+-- Marshal Reinforcements (loud) — additional US Marshal Marksmen per squad.
+-- Repurposes vanilla ModifierHeavySniper: skips the ZEAL Heavy Sniper unit swap and
+-- instead bumps marshal_squad amount and caps shields at 1 per group so every extra
+-- slot spawns a marksman. See csr_modifier_file_pattern.md (heavy_sniper repurpose).
 if not (_G.CSR and _G.CSR.register_modifier) then
 	return
 end
@@ -21,14 +21,13 @@ _G.CSR.register_modifier({
 			end
 			_G._CSR_HEAVY_SNIPER_HOOKED = true
 
-			-- Tell the engine to accumulate `amount` instead of vanilla `spawn_chance`.
+			-- Accumulate `amount` instead of vanilla `spawn_chance`.
 			ModifierHeavySniper.default_value = "amount"
 
-			-- No-op: skip the vanilla ZEAL-sniper unit swap entirely.
+			-- Skip the vanilla ZEAL-sniper unit swap.
 			local function no_modify_value(_self, _id, value)
 				return value
 			end
-
 			ModifierHeavySniper.modify_value = no_modify_value
 
 			local function _get_marshal_squad()
@@ -56,9 +55,8 @@ _G.CSR.register_modifier({
 						squad.amount[2] = self._csr_orig_amount_max + amount
 					end
 				end
-				-- Cap shield slots at 1: _spawn_in_group's random-fill pass decrements
-				-- amount_max and removes the entry when it hits 0, so every extra slot
-				-- goes to marksmen. Vanilla entry has no amount_max (nil), so restoring
+				-- Cap shields at 1; _spawn_in_group decrements amount_max to remove the
+				-- entry, so extra slots go to marksmen. Vanilla amount_max is nil — restoring
 				-- to nil correctly removes the field.
 				if squad.spawn then
 					for _, entry in ipairs(squad.spawn) do

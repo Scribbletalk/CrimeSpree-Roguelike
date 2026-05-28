@@ -1,22 +1,13 @@
--- Crime Spree Roguelike - Multiplayer sync backbone (the wire layer).
+-- CSR MP wire layer. Message ids, chunked codec, single NetworkReceivedData router,
+-- peer-role helpers, item-counts sync, prop sync, lobby-join routing, mission-set sync.
+-- All persistent state lives on managers.csr; this layer never stores run/peer data.
+-- See csr_mp_architecture.md for the full protocol.
 --
--- Ports the pre-refactor `CSR_MP` networking core to the U1 tree. Owns the
--- transport details ONLY: message ids, chunking, peer-role helpers, the item
--- codec, and the single NetworkReceivedData router. All persistent state lives
--- on managers.csr; this layer never stores run/peer data of its own.
---
--- SuperBLT transport note: LuaNetworking rides messages over chat
--- (ChatManagerOnReceiveMessageByPeer), so each payload is capped near ~237
--- bytes -- hence MAX_PAYLOAD + the chunked item protocol below.
---
--- Per-milestone handlers register via CSR_MP.register_handler(id, fn); the
--- router dispatches by id. The combat items (bonnie_chip, wolfs_toolbox,
--- shocking_surprise) register their receivers here too (M4) -- there is now a
--- single NetworkReceivedData hook in the whole mod.
+-- SuperBLT transport: LuaNetworking rides chat, ~237-byte payload cap → MAX_PAYLOAD
+-- + chunking. Multiple item RPCs (bonnie_chip / wolfs_toolbox / shocking_surprise)
+-- register handlers here too — one router for the whole mod.
 
--- Load-once guard: hooked on lib/entry, which can re-enter. Registering the
--- router twice is harmless (same Hooks id overwrites), but the guard keeps the
--- module idempotent and matches the reference.
+-- Load-once guard (lib/entry can re-enter).
 local key = ModPath .. "\t" .. tostring(RequiredScript or "csr_mp_sync")
 if _G[key] then
 	return
@@ -27,38 +18,32 @@ end
 _G.CSR_MP = _G.CSR_MP or {}
 local CSR_MP = _G.CSR_MP
 
--- Message ids (per-player protocol). The full set is declared up front so it
--- doesn't churn each milestone; handlers are wired in as milestones land.
 CSR_MP.MSG = {
-	HANDSHAKE = "CSR_Handshake", -- client -> host: {version} on join
-	HANDSHAKE_OK = "CSR_HandshakeOK", -- host -> client: {version, host_rank, host_difficulty, run_seed}
+	HANDSHAKE = "CSR_Handshake", -- client -> host: pull request
+	HANDSHAKE_OK = "CSR_HandshakeOK", -- host -> client: full host state (json)
 	PLAYER_ITEMS = "CSR_PlayerItems", -- any peer -> all: own item counts (chunked)
 	REQUEST_ALL = "CSR_RequestAll", -- client -> host: send me everyone's items
-	ALL_PLAYERS = "CSR_AllPlayers", -- host -> joining client: every peer's items (chunked, "DONE" terminator)
+	ALL_PLAYERS = "CSR_AllPlayers", -- host -> joining client: full roster ("DONE" terminator)
 	RANK_UP = "CSR_RankUp", -- host -> all: host rank advanced
-	COPIER_SPAWN = "CSR_CopierSpawn", -- host -> all: spawn a printer (key~pos~rot~offer_type)
-	SCRAPPER_SPAWN = "CSR_ScrapperSpawn", -- host -> all: spawn a scrapper (key~pos~rot)
-	REQUEST_PROPS = "CSR_RequestProps", -- client -> host: replay every spawned prop (late-join)
-	LOBBY_PING = "CSR_LobbyPing", -- client -> host: are you a CSR lobby? (join-time routing)
-	LOBBY_CSR = "CSR_LobbyIsCSR", -- host -> client: yes -> reroute to crime_spree_lobby
-	MISSION_SET = "CSR_MissionSet", -- host -> all: the lobby mission-card ids (comma-joined)
+	COPIER_SPAWN = "CSR_CopierSpawn", -- host -> all: spawn printer (key~pos~rot~offer)
+	SCRAPPER_SPAWN = "CSR_ScrapperSpawn", -- host -> all: spawn scrapper (key~pos~rot)
+	REQUEST_PROPS = "CSR_RequestProps", -- client -> host: replay every prop (late-join)
+	LOBBY_PING = "CSR_LobbyPing", -- client -> host: is this a CSR lobby?
+	LOBBY_CSR = "CSR_LobbyIsCSR", -- host -> client: yes; reroute
+	MISSION_SET = "CSR_MissionSet", -- host -> all: lobby mission card ids (comma-joined)
 }
 
--- Combat-item RPCs route through the SAME router (they pass the "CSR_" id filter
--- below). The codec/payloads are owned by each item file; only the ids live here
--- for a single source of truth. Handlers register from the item files via
--- register_handler (they close over item-local helpers we don't see here).
+-- Combat-item RPC ids — handlers registered from each item file via register_handler.
 CSR_MP.ITEM_MSG = {
-	CHIP_KILL = "CSR_ChipKill", -- bonnie_chip: proc-kill position (play sound at peers)
-	WOLF_KILL = "CSR_WolfKill", -- wolfs_toolbox: client kill -> host drill-timer reduction
-	SHOCK = "CSR_ShockingSurprise", -- shocking_surprise: host -> in-range peer slows locally
+	CHIP_KILL = "CSR_ChipKill",
+	WOLF_KILL = "CSR_WolfKill",
+	SHOCK = "CSR_ShockingSurprise",
 }
 
--- Conservative per-payload byte budget (SuperBLT's chat transport caps ~237).
 local MAX_PAYLOAD = 200
 
 -- =====================================================
--- Debug log (routes through managers.csr's debug gate)
+-- Debug log
 -- =====================================================
 local function mp_log(msg)
 	local mgr = managers and managers.csr
@@ -72,25 +57,19 @@ CSR_MP.log = mp_log
 -- Peer-role helpers
 -- =====================================================
 
--- True when in any networked session. managers.network:session() is the
--- canonical check; SP and host-without-clients both report false here, which
--- is exactly what is_host() wants below.
 function CSR_MP.is_multiplayer()
 	return (managers and managers.network and managers.network:session()) and true or false
 end
 
--- Host OR solo. Server-authoritative work gates on this so SP runs the same
--- path as the host.
+-- Host or solo (server-authoritative work gates on this).
 function CSR_MP.is_host()
 	return not CSR_MP.is_multiplayer() or Network:is_server()
 end
 
--- A guest in someone else's lobby (never true in SP or as host).
 function CSR_MP.is_client()
 	return CSR_MP.is_multiplayer() and Network:is_client()
 end
 
--- Local peer id (delegates to the manager's own resolver; 1 when standalone).
 function CSR_MP.local_peer_id()
 	local mgr = managers and managers.csr
 	if mgr and mgr.local_peer_id then
@@ -99,7 +78,6 @@ function CSR_MP.local_peer_id()
 	return 1
 end
 
--- Local convenience chat line (visible only to this client).
 function CSR_MP.chat_message(text)
 	if managers and managers.chat then
 		managers.chat:_receive_message(1, "[CSR]", tostring(text), Color(1, 0.2, 0.8, 1))
@@ -107,16 +85,13 @@ function CSR_MP.chat_message(text)
 end
 
 -- =====================================================
--- Chunking (protocol-agnostic; ported 1-to-1 from the reference)
+-- Chunking
 -- =====================================================
 
--- Split an encoded payload body into chunks that each fit MAX_PAYLOAD after the
--- header + "IDX/TOTAL~" framing. `header` is the per-message prefix (e.g.
--- "PEER~NAME~"); `encoded` is "|"-delimited entries. Returns a list of ready
--- payload strings. An empty body still yields one "1/1~" chunk so the receiver
--- learns the peer has zero items.
+-- Split a "|"-delimited body into chunks that fit MAX_PAYLOAD after header + "IDX/TOTAL~".
+-- Empty body still yields one "1/1~" chunk so the receiver learns the peer has zero items.
 function CSR_MP.build_chunked_payloads(header, encoded)
-	local available = MAX_PAYLOAD - #header - 10 -- room for "IDX/TOTAL~"
+	local available = MAX_PAYLOAD - #header - 10
 
 	if encoded == "" then
 		return { header .. "1/1~" }
@@ -147,14 +122,9 @@ function CSR_MP.build_chunked_payloads(header, encoded)
 end
 
 -- =====================================================
--- Item codec (U1 shape: { [type] = count })
+-- Item codec — "type:count|type:count|..." in acquisition order
 -- =====================================================
 
--- Encode a peer's owned counts as "type:count|type:count|...". The "|"-sequence
--- is emitted in ACQUISITION ORDER (player_items_order), so the order survives the
--- wire for free and the receiver can render the remote peer's items in the same
--- order the owner sees them. Falls back to a plain count scan if the ordered
--- getter is unavailable. Zero/absent counts are skipped.
 function CSR_MP.encode_items(peer_id)
 	local mgr = managers and managers.csr
 	local counts = (mgr and mgr.player_items and mgr:player_items(peer_id)) or {}
@@ -177,9 +147,6 @@ function CSR_MP.encode_items(peer_id)
 	return table.concat(parts, "|")
 end
 
--- Parse "type:count|..." back into a { [type] = count } map PLUS the order array
--- (the sequence as parsed = the sender's acquisition order). Unknown/malformed
--- entries are skipped (the consumer still validates types against the registry).
 -- Two returns; legacy callers reading only the first still work.
 function CSR_MP.decode_items(encoded)
 	local counts = {}
@@ -200,8 +167,7 @@ end
 
 CSR_MP._handlers = CSR_MP._handlers or {}
 
--- Register a handler for one message id. fn(sender, data, sender_num, is_from_host).
--- Last registration wins (idempotent re-register on reload).
+-- Handler signature: fn(sender, data, sender_num, is_from_host).
 function CSR_MP.register_handler(id, fn)
 	CSR_MP._handlers[id] = fn
 end
@@ -222,13 +188,6 @@ end)
 -- =====================================================
 -- M2: per-peer item visibility sync
 -- =====================================================
---
--- Each peer broadcasts its own item counts; the host relays them so everyone
--- converges (a client's SendToPeers only reaches the host -- PD2's chat transport
--- gives a client GetPeers() == { host }). Received counts land in
--- managers.csr:set_remote_peer_items (runtime, never saved); the items panel reads
--- them back through player_items(). Own items are NEVER stored as remote -- we are
--- authoritative for ourselves (_state) and a stored echo would shadow it.
 
 CSR_MP._items_buf = CSR_MP._items_buf or {} -- chunk reassembly, keyed "items_<pid>"
 
@@ -243,25 +202,20 @@ local function local_peer_name()
 	return (peer and peer.name and peer:name()) or "Player"
 end
 
--- Repaint whichever CSR items surface is currently up after a sync. No-op when
--- neither is built (e.g. outside the CSR lobby/briefing).
+-- Repaint whichever CSR items surface is currently up (lobby or briefing).
 function CSR_MP.refresh_items_panel()
 	local mcm = managers and managers.menu_component
-	-- Lobby missions component.
 	local comp = mcm and mcm._crime_spree_missions
 	if comp and comp.refresh_for_rank_change then
 		comp:refresh_for_rank_change()
 	end
-	-- Briefing component: the guest's items panel lives here (borrowed
-	-- _populate_items_panel), NOT on _crime_spree_missions. _populate_items_panel
-	-- self-guards on an unbuilt panel, so this is a safe no-op off the briefing.
+	-- Briefing items panel lives on _mission_briefing_gui, not _crime_spree_missions.
 	local brief = mcm and mcm._mission_briefing_gui
 	if brief and brief._populate_items_panel then
 		brief:_populate_items_panel()
 	end
 end
 
--- Any peer -> all: broadcast own item counts (chunked "pid~name~idx/total~items").
 function CSR_MP.broadcast_own_items()
 	if not CSR_MP.is_multiplayer() then
 		return
@@ -275,7 +229,6 @@ function CSR_MP.broadcast_own_items()
 	mp_log("broadcast_own_items pid=" .. tostring(pid) .. " '" .. encoded .. "'")
 end
 
--- Client -> host: ask for every peer's items (on lobby open / join).
 function CSR_MP.request_all_items()
 	if not CSR_MP.is_client() then
 		return
@@ -284,8 +237,6 @@ function CSR_MP.request_all_items()
 	mp_log("request_all_items")
 end
 
--- Host -> one peer: every peer's items, then a "DONE" terminator. encode_items is
--- remote-aware (managers.csr:player_items), so it serialises remotes too.
 function CSR_MP.send_all_players(target_pid)
 	if not CSR_MP.is_host() or not target_pid then
 		return
@@ -313,10 +264,7 @@ function CSR_MP.send_all_players(target_pid)
 	mp_log("send_all_players -> " .. tostring(target_pid) .. " (" .. #pids .. " peers)")
 end
 
--- Reassemble a chunked items payload and apply it to the remote-peer store. The
--- REMOVED payload (peer disconnect) is auth-gated: only the host or the peer
--- removing itself may erase a record, so a forged "<victim>~~1/1~REMOVED" from a
--- malicious client is rejected.
+-- Reassemble chunks + apply. REMOVED rejected unless from host or from the victim.
 local function handle_items_payload(sender, data, sender_num, is_from_host)
 	local peer_str, name, idx_total, items_encoded = string.match(data, "^(%d+)~([^~]*)~(%d+/%d+)~(.*)$")
 	if not peer_str then
@@ -325,7 +273,7 @@ local function handle_items_payload(sender, data, sender_num, is_from_host)
 	end
 	local peer_id = tonumber(peer_str)
 
-	-- Never store/remove our OWN items via the remote path -- _state is authoritative.
+	-- Never store/remove our OWN items via remote path; _state is authoritative.
 	if peer_id == CSR_MP.local_peer_id() then
 		return
 	end
@@ -390,8 +338,7 @@ local function handle_items_payload(sender, data, sender_num, is_from_host)
 	CSR_MP.refresh_items_panel()
 end
 
--- Any peer's items. Host relays to the OTHER peers (clients can't reach each
--- other directly), refusing to relay a forged REMOVED.
+-- Host relays to OTHER peers (clients can't reach each other). Forged REMOVED filtered.
 CSR_MP.register_handler(CSR_MP.MSG.PLAYER_ITEMS, function(sender, data, sender_num, is_from_host)
 	handle_items_payload(sender, data, sender_num, is_from_host)
 	if not CSR_MP.is_host() then
@@ -416,7 +363,6 @@ CSR_MP.register_handler(CSR_MP.MSG.PLAYER_ITEMS, function(sender, data, sender_n
 	end
 end)
 
--- Host's full roster to a joining client (DONE = end of stream).
 CSR_MP.register_handler(CSR_MP.MSG.ALL_PLAYERS, function(sender, data, sender_num, is_from_host)
 	if not (CSR_MP.is_client() and is_from_host) then
 		return
@@ -428,7 +374,6 @@ CSR_MP.register_handler(CSR_MP.MSG.ALL_PLAYERS, function(sender, data, sender_nu
 	handle_items_payload(sender, data, sender_num, is_from_host)
 end)
 
--- Client asked the host for everyone's items.
 CSR_MP.register_handler(CSR_MP.MSG.REQUEST_ALL, function(sender, data, sender_num, is_from_host)
 	if not CSR_MP.is_host() then
 		return
@@ -436,9 +381,7 @@ CSR_MP.register_handler(CSR_MP.MSG.REQUEST_ALL, function(sender, data, sender_nu
 	CSR_MP.send_all_players(sender_num or tonumber(sender))
 end)
 
--- Peer-removed cleanup. BaseNetworkSession is not loaded at lib/entry, so defer
--- the PostHook registration until it exists (checked each MenuUpdate, then the
--- deferral removes itself). Once installed the hook fires in menu AND in game.
+-- BaseNetworkSession is unloaded at lib/entry; defer the PostHook registration.
 local function register_peer_removed_hook()
 	if CSR_MP._peer_removed_hooked then
 		return
@@ -456,7 +399,6 @@ local function register_peer_removed_hook()
 			mgr:remove_remote_peer(peer_id)
 		end
 		CSR_MP._items_buf["items_" .. tostring(peer_id)] = nil
-		-- Host: tell the remaining peers to drop this one too.
 		if CSR_MP.is_host() then
 			LuaNetworking:SendToPeers(CSR_MP.MSG.PLAYER_ITEMS, tostring(peer_id) .. "~~1/1~REMOVED")
 		end
@@ -464,13 +406,9 @@ local function register_peer_removed_hook()
 		mp_log("peer removed: " .. tostring(peer_id))
 	end)
 
-	-- Host -> a peer that just entered OUR lobby: tell it this is a CSR lobby (so it
-	-- reroutes to crime_spree_lobby) and push host rank/difficulty/seed so its lobby
-	-- shows the HOST's values + is_guesting() turns true. HOST-DRIVEN, so it fires no
-	-- matter HOW the guest arrived -- join-straight-into-lobby AND return-to-lobby
-	-- between heists -- unlike the client-side on_enter_lobby ping, which a guest
-	-- joining mid-heist (JOINED_GAME path) never triggers. _crime_spree_missions is
-	-- the no-leak "we're in the CSR lobby" signal (absent in a vanilla lobby).
+	-- Host -> new peer: this is a CSR lobby + push host state. Fires for all entry
+	-- paths (join-straight-into-lobby AND return-to-lobby between heists), unlike the
+	-- client-side on_enter_lobby ping which a mid-heist joiner never triggers.
 	Hooks:PostHook(BaseNetworkSession, "on_peer_entered_lobby", "CSR_MP_OnPeerEnteredLobby", function(self, peer)
 		if not CSR_MP.is_host() then
 			return
@@ -502,25 +440,13 @@ end)
 -- =====================================================
 -- M3: in-world prop spawn sync (printer / scrapper)
 -- =====================================================
---
--- The host spawns props with World:spawn_unit, which is LOCAL (it does not
--- replicate), so each prop is mirrored to clients: the host broadcasts the
--- spawn, and every client spawns its OWN local copy at the synced pos/rot/offer
--- and registers it in its own globals. The interaction then runs locally against
--- that peer's own (guest-session) inventory -- a personal-roguelike exchange, no
--- host authority needed for the swap itself.
---
--- _prop_log is HOST-only: an ordered list of { msg_id, payload } replayed
--- verbatim to a late-joining client, so this layer stays agnostic of the
--- copier-vs-scrapper payload format (the spawner files own encode/decode +
--- the COPIER_SPAWN / SCRAPPER_SPAWN handlers + dedup).
+-- World:spawn_unit is LOCAL — host broadcasts, each client spawns its own copy
+-- and registers it locally. _prop_log is host-only for late-join replay.
 
 CSR_MP._prop_log = CSR_MP._prop_log or {}
 
--- Host: broadcast a prop spawn to all peers AND log it for late-join replay.
--- Self-gates to host-in-a-session, so a client calling its own spawn path (which
--- ends in the SAME _spawn helper) never echoes. Logged even with zero clients
--- connected so a peer joining later still receives the full set.
+-- Host: broadcast + log for late-join replay. Self-gates to host; logged even with
+-- zero clients so a later joiner gets the full set.
 function CSR_MP.broadcast_prop(msg_id, payload)
 	if not (CSR_MP.is_multiplayer() and CSR_MP.is_host()) then
 		return
@@ -530,7 +456,6 @@ function CSR_MP.broadcast_prop(msg_id, payload)
 	mp_log("broadcast_prop " .. tostring(msg_id) .. " '" .. tostring(payload) .. "'")
 end
 
--- Client: ask the host to replay every prop spawned this heist (late-join catch-up).
 function CSR_MP.request_props()
 	if not CSR_MP.is_client() then
 		return
@@ -539,9 +464,7 @@ function CSR_MP.request_props()
 	mp_log("request_props")
 end
 
--- Host: a client asked for the prop set -> replay the log to that peer only.
--- Dedup on the client side (host unit key in the payload) means a peer that
--- already got the real-time broadcast safely ignores the replayed duplicate.
+-- Replay; client dedups on host unit key.
 CSR_MP.register_handler(CSR_MP.MSG.REQUEST_PROPS, function(sender, data, sender_num, is_from_host)
 	if not CSR_MP.is_host() then
 		return
@@ -556,10 +479,7 @@ CSR_MP.register_handler(CSR_MP.MSG.REQUEST_PROPS, function(sender, data, sender_
 	mp_log("replay props -> " .. tostring(target) .. " (" .. #CSR_MP._prop_log .. ")")
 end)
 
--- Per-heist reset: host clears its log at load; client requests the host's set.
--- BaseNetworkSessionOnLoadComplete fires on every heist load for host AND client.
--- The host clears BEFORE its auto-spawn (which only fires later once nav is
--- ready), so the log only ever holds the current heist's props.
+-- Per-heist reset: host clears log; client requests host's set.
 Hooks:Add("BaseNetworkSessionOnLoadComplete", "CSR_MP_PropSyncReset", function()
 	if CSR_MP.is_host() then
 		CSR_MP._prop_log = {}
@@ -570,22 +490,12 @@ Hooks:Add("BaseNetworkSessionOnLoadComplete", "CSR_MP_PropSyncReset", function()
 end)
 
 -- =====================================================
--- Lobby join routing: client -> crime_spree_lobby
+-- Lobby-join routing + host-state pull + mission-set sync
 -- =====================================================
---
--- A CSR run does NOT enable the vanilla Crime Spree gamemode, so vanilla's
--- on_enter_lobby (which routes by gamemode) never sends a JOINING CLIENT to the
--- crime_spree_lobby node -- the client lands in the plain "lobby" node with no
--- CSR UI (the lobby component is built only on crime_spree_lobby). The host
--- reroutes itself via Global.CSR_RETURN_TO_LOBBY; the client has no such trigger.
--- Fix: on lobby entry the client pings the host; if the host is actually sitting
--- in a CSR lobby it replies, and the client reroutes. Chat transport is already
--- live in the lobby (item sync uses it), so no menu-attribute plumbing is needed.
--- (The briefing screen is unaffected -- briefing_sidebar.lua hooks MissionBriefingGui
--- directly, bypassing node routing, which is why the client's briefing already works.)
+-- Vanilla on_enter_lobby routes by gamemode; CSR never enables CS gamemode, so a
+-- joining client lands in the empty "lobby" node with no CSR UI. Client pings host
+-- on lobby entry; host replies LOBBY_CSR if in CSR lobby.
 
--- Client -> host: ask whether this is a CSR lobby. Called from on_enter_lobby
--- (lobby_routing.lua); self-gates so the host/SP calling it is a no-op.
 function CSR_MP.lobby_ping_host()
 	if not CSR_MP.is_client() then
 		return
@@ -594,11 +504,8 @@ function CSR_MP.lobby_ping_host()
 	mp_log("lobby_ping_host")
 end
 
--- Client -> host: PULL the current host-state (rank/difficulty/seed/tokens). Used
--- on heist at_enter so the guest re-acquires host-state reliably via request-reply
--- instead of relying on the host's timed push landing in the load window. The host
--- replies HANDSHAKE_OK (mp_session.lua handler). A non-CSR host has no router and
--- ignores it, so the guest's host-state correctly stays cleared there (no leak).
+-- Client PULL of current host-state — makes in-heist re-acquire reliable instead of
+-- depending on the host's timed push landing in the load window.
 function CSR_MP.request_host_state()
 	if not CSR_MP.is_client() then
 		return
@@ -607,10 +514,7 @@ function CSR_MP.request_host_state()
 	mp_log("request_host_state")
 end
 
--- Host -> all: the lobby mission-card ids (comma-joined) so guests show the SAME 3
--- missions. Sent on every host-state broadcast (lobby join / HANDSHAKE reply) and
--- on host reroll (generate_mission_set). Self-gates to the host. Ids are short
--- alphanumeric keys, so a single unchunked message stays well under the transport cap.
+-- Host -> all: lobby mission ids (comma-joined; short, no chunking needed).
 function CSR_MP.broadcast_mission_set()
 	if not (CSR_MP.is_host() and CSR_MP.is_multiplayer()) then
 		return
@@ -624,9 +528,7 @@ function CSR_MP.broadcast_mission_set()
 	mp_log("broadcast_mission_set: " .. joined)
 end
 
--- Client: store the host's mission-card ids and repaint the lobby cards in place
--- (CSRMissionsMenuComponent:update_mission -> btn:update_mission, the direct setter,
--- no reroll spin). is_from_host blocks forgery. No-op off the CSR lobby (no component).
+-- Client: in-place repaint of mission cards (no reroll spin). is_from_host blocks forgery.
 CSR_MP.register_handler(CSR_MP.MSG.MISSION_SET, function(sender, data, sender_num, is_from_host)
 	if not (CSR_MP.is_client() and is_from_host) then
 		return
@@ -647,9 +549,8 @@ CSR_MP.register_handler(CSR_MP.MSG.MISSION_SET, function(sender, data, sender_nu
 	mp_log("applied host mission set: " .. tostring(data))
 end)
 
--- Host: a joining client asked -> reply ONLY if we're actually in the CSR lobby.
--- _crime_spree_missions exists solely on the crime_spree_lobby node, so it's a
--- no-leak signal (a vanilla lobby never has it, regardless of a stale is_active).
+-- Host: reply only if actually in the CSR lobby. _crime_spree_missions is the
+-- no-leak signal (absent in a vanilla lobby).
 CSR_MP.register_handler(CSR_MP.MSG.LOBBY_PING, function(sender, data, sender_num, is_from_host)
 	if not CSR_MP.is_host() then
 		return
@@ -662,19 +563,14 @@ CSR_MP.register_handler(CSR_MP.MSG.LOBBY_PING, function(sender, data, sender_num
 	if target then
 		LuaNetworking:SendToPeer(target, CSR_MP.MSG.LOBBY_CSR, "")
 		mp_log("lobby ping -> CSR, reply to " .. tostring(target))
-		-- Also push host rank/difficulty/seed NOW so the joining guest's lobby shows
-		-- the HOST's rank + item quota (not its own) and is_guesting() turns true in
-		-- the lobby. Without this the host only announces at heist start, leaving the
-		-- guest lobby on its own rank. broadcast_host_state is assigned by mp_session.lua.
+		-- Also push host state NOW so the guest's lobby shows host rank + is_guesting() turns true.
 		if CSR_MP.broadcast_host_state then
 			CSR_MP.broadcast_host_state()
 		end
 	end
 end)
 
--- Client: the host confirmed a CSR lobby -> reroute to the crime_spree_lobby node
--- so the CSR lobby UI (sidebar + panels) builds. The actual select_node lives in
--- lobby_routing.lua (which owns node routing).
+-- Client: host confirmed CSR -> reroute. The actual select_node lives in lobby_routing.lua.
 CSR_MP.register_handler(CSR_MP.MSG.LOBBY_CSR, function(sender, data, sender_num, is_from_host)
 	if not (CSR_MP.is_client() and is_from_host) then
 		return

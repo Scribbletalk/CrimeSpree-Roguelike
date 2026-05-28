@@ -1,22 +1,9 @@
--- Crooked Badge (contraband) -- trade a shorter bleedout for downs back between
--- assaults.
---
--- Per-item-file model (see cup_of_joe.lua). Text fields are localization keys.
--- Ported from 6.2 (modifiers/crookedbadge.lua), two hooks:
---   * PlayerDamage:down_time (chain-wrap, Rule #1 return-value exception): shorten
---     the bleedout timer by a hyperbolic penalty, floored at 5s.
---   * GroupAIStateBesiege:_begin_regroup_task (PostHook, HOST-ONLY): when an
---     assault ends, roll a hyperbolic revive chance and add downs back. Chance can
---     exceed 100% (guaranteed downs + a fractional roll).
---
--- Hyperbolic curves (K = 0.05, from 6.2 crooked_badge_k):
---   revive chance %   = 400 - 370/(1 + K*(stacks-1))   -> 30% @ 1 stack
---   bleedout penalty  = 25  - 15 /(1 + K*(stacks-1))   -> 10s @ 1 stack
---
--- MP DEFERRED: 6.2 also broadcast MSG.ASSAULT_END so each client rolled its own
--- revive (the vanilla assault state machine is host-authoritative -- clients never
--- run _begin_regroup_task). That RPC is part of the parked MP-sync slice; here only
--- the host's local player gets the revive. No per-mission state, so no reset hook.
+-- Crooked Badge (contraband) — shorter bleedout in exchange for downs back between assaults.
+-- Hyperbolic curves (K = 0.05):
+--   revive chance %  = 400 - 370/(1 + K*(stacks-1))     → 30% @ 1 stack
+--   bleedout penalty = 25  - 15 /(1 + K*(stacks-1))     → 10s @ 1 stack
+-- MP DEFERRED: 6.2 broadcast ASSAULT_END so each client rolled its own revive.
+-- Here only the host's player gets the revive.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -32,8 +19,7 @@ local function bleedout_penalty(stacks)
 	return 25 - 15 / (1 + K * (stacks - 1))
 end
 
--- Add one down if below the max, mirroring vanilla's revive accounting. Vanilla
--- has no add_revive(), so write _revives directly (digest-encoded) and sync.
+-- Vanilla has no add_revive(); write _revives directly (digest-encoded) and sync.
 local function try_add_revive(pd)
 	local ok, current = pcall(function()
 		return Application:digest_value(pd._revives, false)
@@ -90,8 +76,7 @@ _G.CSR.register_item({
 	icon_scale = 1.0,
 
 	hooks = {
-		-- Bleedout penalty: shorten down_time(), floored at 5s. Return-value method
-		-- -> raw chain-wrap; _G guard stops a double-wrap.
+		-- Bleedout penalty, floored at 5s.
 		["lib/units/beings/player/playerdamage"] = function()
 			if _G._CSR_CROOKED_BADGE_HOOKED then
 				return
@@ -115,7 +100,7 @@ _G.CSR.register_item({
 			end
 		end,
 
-		-- Revive after assault (host-authoritative state machine -> host only).
+		-- Revive after assault — host-authoritative state machine.
 		["lib/managers/group_ai_states/groupaistatebesiege"] = function()
 			if _G._CSR_CROOKED_BADGE_REGROUP_HOOKED then
 				return

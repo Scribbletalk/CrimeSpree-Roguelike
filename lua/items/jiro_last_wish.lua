@@ -1,17 +1,9 @@
--- Jiro's Last Wish (rare) -- +50% melee damage per copy owned, AND sprint while
--- charging a melee attack.
---
--- Two-part item: the melee-damage half hooks BlackMarketManager (return-value
--- raw wrap); the sprint-while-charging half is bespoke PlayerStandard behavior
--- (Hooks:Pre/PostHook, no return value), copied 1:1 from the proven 6.2 mechanic
--- (modifiers/jirolastwish.lua) with the ownership gate swapped to the registry.
--- Per-item-file model (see cup_of_joe.lua). Text fields are localization keys.
+-- Jiro's Last Wish (rare) — +50%/stack melee damage, and sprint while charging melee.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
 end
 
--- True only when a run is active AND the local player owns Jiro.
 local function csr_owns_jiro()
 	local mgr = managers and managers.csr
 	if not mgr or not mgr.is_run_active or not mgr:is_run_active() then
@@ -31,10 +23,7 @@ _G.CSR.register_item({
 	icon_scale = 1.0,
 
 	hooks = {
-		-- (1) Melee damage: scale equipped_melee_weapon_damage_info's dmg and
-		-- dmg_effect by (1 + 0.5*owned). Mirrors the 6.2 constant jiro_melee_bonus
-		-- (0.5). Stacks multiplicatively with Evidence Rounds' melee bonus (each
-		-- item wraps independently). Return-value method -> raw chain wrap.
+		-- Melee damage: +50%/stack (multiplies dmg and dmg_effect).
 		["lib/managers/blackmarketmanager"] = function()
 			if _G._CSR_JIRO_MELEE_HOOKED then
 				return
@@ -62,16 +51,14 @@ _G.CSR.register_item({
 			end
 		end,
 
-		-- (2) Sprint while charging a melee attack. Pattern from Hinaomi's
-		-- Rebalance: don't force _running = true, call _start_action_running()
-		-- normally so stamina is consumed. Three cooperating hooks.
+		-- Sprint while charging melee. Pattern from Hinaomi's Rebalance — don't force
+		-- _running = true; call _start_action_running so stamina drains normally.
 		["lib/units/beings/player/states/playerstandard"] = function()
 			if _G._CSR_JIRO_SPRINT_HOOKED then
 				return
 			end
 			_G._CSR_JIRO_SPRINT_HOOKED = true
 
-			-- Before melee starts, remember if the player was already running.
 			Hooks:PreHook(PlayerStandard, "_start_action_melee", "CSR_JiroLastWish_RememberRunning", function(self)
 				if not csr_owns_jiro() then
 					return
@@ -81,7 +68,6 @@ _G.CSR.register_item({
 				end
 			end)
 
-			-- After melee starts, resume running via the normal mechanism.
 			Hooks:PostHook(PlayerStandard, "_start_action_melee", "CSR_JiroLastWish_ResumeRunning", function(self, t)
 				if not csr_owns_jiro() then
 					return
@@ -92,8 +78,6 @@ _G.CSR.register_item({
 				end
 			end)
 
-			-- When _start_action_running is called (Shift OR the resume above),
-			-- allow running during melee charge with all vanilla checks.
 			Hooks:PostHook(PlayerStandard, "_start_action_running", "CSR_JiroLastWish_RunDuringMelee", function(self, t)
 				if not csr_owns_jiro() then
 					return
@@ -102,18 +86,15 @@ _G.CSR.register_item({
 					return
 				end
 
-				-- No movement direction -- queue the intent but don't sprint.
 				if not self._move_dir then
 					self._running_wanted = true
 					return
 				end
 
-				-- Can't sprint on ladder or zipline.
 				if self:on_ladder() or self:_on_zipline() then
 					return
 				end
 
-				-- Can't sprint in air or while crouching (unless can stand).
 				if self._state_data.in_air or (self._state_data.ducking and not self:_can_stand()) then
 					self._running_wanted = true
 					return
@@ -125,7 +106,6 @@ _G.CSR.register_item({
 
 				self._running_wanted = false
 
-				-- Respect no_run rule and stamina threshold (stamina drains normally).
 				if
 					managers.player:get_player_rule("no_run")
 					or not self._unit:movement():is_above_stamina_threshold()
@@ -133,7 +113,6 @@ _G.CSR.register_item({
 					return
 				end
 
-				-- Play start-running camera shake if headbob is enabled.
 				if
 					(
 						not self._state_data.shake_player_start_running

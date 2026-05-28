@@ -1,12 +1,11 @@
--- Crime Spree Roguelike - in-world copy-machine (printer) spawner + exchange flow.
---   F6 = debug spawn at nav cover closest to player (iterate placement math).
---   F7 = debug spawn at crosshair (rolls a random item for that copier).
---   Auto-spawn = 1..3 copiers per CS heist at cop cover points (host-authoritative).
---   Use = PD2-native interaction via CrimeSpreeCopierInteractionExt; this file
---         exposes use_copier as _G.CSR_UseCopier for the subclass to call.
--- Unit + assets are injected via supermod.xml (see assets/ in mod root).
--- Lid animation uses anim_play_to with a SIGNED speed (1 forward, -1 reverse) —
--- matches the vanilla WeaponUnderbarrel pattern. No custom sequence_manager needed.
+-- In-world copy-machine ("printer") spawner + exchange flow.
+-- Architecture / MP sync / placement math: csr_in_world_props_architecture.md.
+--   F6 debug = spawn at nearest cop cover (placement math)
+--   F7 debug = spawn at crosshair (rolls a random offer)
+--   Auto    = 1–3 printers per CSR heist at cop covers (host-authoritative)
+-- Use      = native PD2 interaction via CrimeSpreeCopierInteractionExt.
+-- Asset injected via supermod.xml.
+
 if not RequiredScript then
 	return
 end
@@ -16,37 +15,19 @@ local UNIT_EXT = Idstring("unit")
 local UNIT_NAME = Idstring(COPIER_DBPATH)
 local PKG_NAME = (DynamicResourceManager and DynamicResourceManager.DYN_RESOURCES_PACKAGE) or "packages/dyn_resources"
 
--- === BILLBOARD ICON (Doom-style 3D quad) ===
--- Vanilla pattern: coremissionelement.lua:93-97 (mission-element editor icons).
--- Fixing the drift we saw earlier requires TWO things the previous attempts
--- got wrong:
---   1. The quad's CENTER must sit on desired_center, not its top-left. Do this
---      by subtracting half of each basis from pos:
---        pos = desired_center - x_basis*0.5 - y_basis*0.5
---      BILLBOARD_BOTH then rotates the quad around its center to face camera,
---      keeping the icon visibly at desired_center from every angle.
---   2. Snapshot the anchor AFTER the lid-open animation settles. During the
---      open cycle, unit:oobb() and the animated sub-objects' bounds drift —
---      any pos taken mid-animation is a transient value. A 2s DelayedCall
---      pushes creation past the open cycle (open at t+0.05, length ~0.4s).
-local BILLBOARD_WORLD_SIZE = 64 -- cm side length of the billboard quad (frame spans this)
-local BILLBOARD_PANEL_PX = 128 -- matches csr_* icon texture_rect {0,0,128,128}
--- Match the ITEMS tab's frame:icon ratio (items_page.lua:398-402 ships with
--- DEFAULT_FRAME=74, icon_size=38). Derived symbolically so any future tweak
--- on the ITEMS tab ratio can be mirrored by updating those two constants.
+-- Billboard icon constants.
+local BILLBOARD_WORLD_SIZE = 64
+local BILLBOARD_PANEL_PX = 128
+-- Mirrors the Items-tab frame:icon ratio so the in-world icon matches the menu look.
 local ITEMS_TAB_FRAME_PX = 74
 local ITEMS_TAB_ICON_PX = 38
 local BILLBOARD_ICON_PX = math.floor(BILLBOARD_PANEL_PX * ITEMS_TAB_ICON_PX / ITEMS_TAB_FRAME_PX)
-local BILLBOARD_Z_ABOVE_CENTER = 100 -- cm above base oobb center
--- Side offset (cm) along the copier's LOCAL -X axis. The copier is spawned
--- with yaw = camera yaw, so its back faces the player → local -X is the
--- player's left when looking at it. Positive value shifts icon left; flip
--- sign if it ends up on the right instead.
-local BILLBOARD_SIDE_OFFSET = 50
-local BILLBOARD_SPAWN_DELAY = 2.0 -- seconds after unit spawn before creating
+local BILLBOARD_Z_ABOVE_CENTER = 100
+local BILLBOARD_SIDE_OFFSET = 50 -- cm along copier's local -X (player's left)
+-- Defer past the lid-open animation so anchor positions have settled.
+local BILLBOARD_SPAWN_DELAY = 2.0
 
--- Single csr_frame texture tinted per rarity (only csr_frame.dds exists on
--- disk; rarity is carried by the Color tint). 4-arg Color = (alpha, r, g, b).
+-- Single csr_frame texture tinted per rarity (4-arg Color = a, r, g, b).
 local RARITY_FRAMES = {
 	common = { frame = "csr_frame", color = Color.white },
 	uncommon = { frame = "csr_frame", color = Color(1, 0, 0.95, 0) },
@@ -55,25 +36,12 @@ local RARITY_FRAMES = {
 	wildcard = { frame = "csr_frame", color = Color(1, 1, 0.3, 0.8) },
 }
 
--- Named sub-objects from off_prop_copy_machine_smuggle.object:
---   g_printer_base — static base mesh, never animates (billboard anchor)
---   rp_copy_machine_smuggle — orientation_object (same transform as unit pivot)
---   a_lid / g_printer_lid — animated top cover, avoid anchoring to this
 local BASE_OBJ_NAME = Idstring("g_printer_base")
-
 local LID_ANIM = Idstring("open_lid")
 
 _G.CSR_Copiers = _G.CSR_Copiers or {}
 
--- SP/host-only port: the MP client spawn-sync layer (pending-payload queue,
--- session-loaded latch, late-join replay, the CSR_CopierSpawn RPC) is deferred
--- with the rest of the MP slice. Copiers spawn host-locally; clients seeing
--- them lands when MP sync ports.
-
--- Gate shared with combat_modifiers.lua / mission_lifecycle.lua: a CSR heist is
--- the temp "crime_spree" job WITH vanilla Crime Spree NOT active. Does NOT leak
--- into vanilla heists the way the persisted managers.csr:is_active() flag does
--- (feedback_csr_only_no_vanilla_leak).
+-- CSR-heist gate (no-leak signal). Shared with scrapper_spawner / combat_modifiers.
 local function csr_heist_active()
 	if not managers or not managers.job then
 		return false
@@ -87,9 +55,6 @@ local function csr_heist_active()
 	return true
 end
 
--- === PRINTER SOUND ===
--- Clips registered in lua/core/sound.lua; played 3D-anchored to the unit via
--- _G.CSR.play_sound (single-sound source, auto-plays + auto-closes).
 local function play_printer_sound(unit)
 	if not (_G.CSR and _G.CSR.play_sound and alive(unit)) then
 		return
@@ -115,9 +80,6 @@ local function is_ready()
 	return managers and managers.dyn_resource and managers.dyn_resource:is_resource_ready(UNIT_EXT, UNIT_NAME, PKG_NAME)
 end
 
--- Verbose log gated on the debug_mode setting. Used by the placement probes
--- which can emit 50+ lines per spawn -- useful while iterating on placement
--- math but noise in normal play. Toggled in the mod options debug submenu.
 local function debug_log(msg)
 	local mgr = managers and managers.csr
 	if mgr and mgr.debug_enabled and mgr:debug_enabled() then
@@ -125,9 +87,7 @@ local function debug_log(msg)
 	end
 end
 
--- Printer offer roll: weighted by RARITY (mirrors the U1 selection roller's
--- rarity-then-uniform model in game_manager), never wildcard, never scrap,
--- never contraband. Contraband is exclusively a Black Market shop offering.
+-- Weighted rarity (never wildcard / scrap / contraband — contraband is BM-only).
 local PRINTER_RARITY_WEIGHTS = {
 	common = 80,
 	uncommon = 40,
@@ -139,7 +99,6 @@ local function roll_offer()
 	if not (mgr and mgr.registered_items) then
 		return nil
 	end
-	-- Bucket eligible registry items by rarity (skip wildcard + scrap).
 	local buckets = {}
 	for _, def in ipairs(mgr:registered_items()) do
 		local r = def.rarity
@@ -148,7 +107,6 @@ local function roll_offer()
 			table.insert(buckets[r], def)
 		end
 	end
-	-- Live weights over rarities that actually have items this session.
 	local weights, total = {}, 0
 	for r, w in pairs(PRINTER_RARITY_WEIGHTS) do
 		if buckets[r] and #buckets[r] > 0 then
@@ -169,14 +127,12 @@ local function roll_offer()
 		end
 	end
 	if not chosen then
-		-- Float-tail fallback: take any rarity that has items.
 		chosen = next(weights)
 	end
 	local bucket = buckets[chosen]
 	return bucket[math.random(#bucket)]
 end
 
--- Display name of an item: first line of its localized name, falling back to type.
 local function offer_display_name(offer_def)
 	if not offer_def then
 		return "(unknown)"
@@ -199,13 +155,12 @@ local RARITY_COLORS = {
 	wildcard = Color(1, 1, 0.3, 0.8),
 }
 
--- Local player's owned registry defs of a given rarity tier (count > 0).
 local function owned_defs_of_tier(tier)
 	local mgr = managers.csr
 	if not (mgr and mgr.registered_items) then
 		return {}
 	end
-	local owned = mgr:player_items(mgr:local_peer_id()) -- { [type] = count }
+	local owned = mgr:player_items(mgr:local_peer_id())
 	local list = {}
 	for _, def in ipairs(mgr:registered_items()) do
 		if def.rarity == tier and (owned[def.type] or 0) > 0 then
@@ -215,12 +170,7 @@ local function owned_defs_of_tier(tier)
 	return list
 end
 
--- Pick an owned item of `tier` to sacrifice. Priority:
---   1. Scrap of the tier (is_scrap) -- it exists precisely to be eaten here.
---   2. A real item whose type differs from the offer (getting back the same
---      item you gave feels worse than any swap).
---   3. A real item matching the offer (last resort).
--- Returns the chosen registry def, or nil if the player owns nothing of `tier`.
+-- Sacrifice priority: scrap → different type → same type (last resort).
 local function pick_sacrifice(tier, offer_type)
 	local list = owned_defs_of_tier(tier)
 	if #list == 0 then
@@ -245,17 +195,10 @@ local function pick_sacrifice(tier, offer_type)
 	return same[math.random(#same)]
 end
 
--- anim_play_to(name, target_time, speed). Speed is signed:
---   speed>0 + target=length -> play forward to end (lid opens)
---   speed<0 + target=0      -> play backward to start (lid closes)
--- Vanilla pattern from WeaponUnderbarrel:play_anim.
+-- Signed-speed anim_play_to (WeaponUnderbarrel pattern). +5 forward, -5 reverse.
 local OPEN_SPEED = 5
 local CLOSE_SPEED = -5
--- Print cycle timing (tuned by ear, not ogg duration — the working.ogg file
--- has trailing silence that makes the stream longer than the audible tail).
---   t=0.0 -> lid closes + printer_starting.ogg
---   t=1.0 -> printer_working.ogg
---   t=2.6 -> lid reopens
+-- Tuned by ear (printer_working.ogg has trailing silence — stream is longer than the audible tail).
 local WORKING_SOUND_DELAY = 0.5
 local REOPEN_DELAY = 2.0
 
@@ -302,45 +245,23 @@ local function create_billboard(unit, icon_name, tier)
 		return nil
 	end
 
-	-- Steady-state anchor (called after 2s, lid fully open). base:oobb():center
-	-- is the static mesh center in world space; orient:rotation():z() is the
-	-- copier's local +Z so the offset stays "above" even on tilted surfaces.
-	-- Side offset: -orient:rotation():x() = copier's local -X, which is the
-	-- player's left when the copier is spawned with its back toward the player.
+	-- Anchor: static base mesh center + local-up offset + local-left side offset.
 	local base_center = base:oobb():center()
 	local local_up = orient:rotation():z()
 	local local_right = orient:rotation():x()
 	local desired_center = base_center + local_up * BILLBOARD_Z_ABOVE_CENTER - local_right * BILLBOARD_SIDE_OFFSET
 
-	-- Panel basis vectors. Initial orientation is flat in world XZ (vertical
-	-- plane); BILLBOARD_BOTH rotates the whole quad around its center to face
-	-- camera, so the choice of initial orientation is cosmetic.
 	local x_basis = Vector3(BILLBOARD_WORLD_SIZE, 0, 0)
 	local y_basis = Vector3(0, 0, -BILLBOARD_WORLD_SIZE)
-	-- Centering: subtract half of each basis from pos so the workspace's
-	-- mid-point (not its top-left corner) lands on desired_center. This is
-	-- the `unit:position() - Vector3(iconsize/2, iconsize/2, 0)` form from
-	-- coremissionelement.lua:94, adapted for a vertical basis.
+	-- Subtract half each basis so desired_center lands on the quad CENTER, not its corner.
 	local pos = desired_center - x_basis * 0.5 - y_basis * 0.5
-
-	csr_log(
-		string.format(
-			"[CSR Copier] billboard anchors: pivot=%s base_pos=%s base_center=%s desired_center=%s ws_pos=%s",
-			tostring(unit:position()),
-			tostring(base:position()),
-			tostring(base_center),
-			tostring(desired_center),
-			tostring(pos)
-		)
-	)
 
 	local gui = World:newgui()
 	local ws
 	local ok, err = pcall(function()
 		ws = gui:create_linked_workspace(BILLBOARD_PANEL_PX, BILLBOARD_PANEL_PX, base, pos, x_basis, y_basis)
 		ws:set_billboard(Workspace.BILLBOARD_BOTH)
-		-- Transparent layout anchor (vanilla mission editor uses a core gui,
-		-- but bare bitmaps need a panel to attach to — this rect provides it).
+		-- Transparent layout anchor — bitmaps need a panel parent.
 		ws:panel():rect({
 			name = "csr_copier_bg",
 			color = Color(0, 0, 0, 0),
@@ -360,8 +281,6 @@ local function create_billboard(unit, icon_name, tier)
 			})
 		end
 		if fd then
-			-- Centered within the panel: (panel - icon)/2 on each axis so the
-			-- rarity frame remains visible around all four sides of the icon.
 			local icon_offset = (BILLBOARD_PANEL_PX - BILLBOARD_ICON_PX) * 0.5
 			ws:panel():bitmap({
 				name = "csr_copier_icon",
@@ -394,13 +313,14 @@ local function destroy_billboard(bb)
 	end)
 end
 
+-- Exchange: lid closes + sacrifice removed (immediate), then 2.6s later lid
+-- reopens + offer awarded.
 local function use_copier(c)
 	if not c.offer_type or not c.tier then
 		hint("Copier has no offer", 2)
 		return
 	end
 	if c.cycling then
-		-- Silent no-op during close→reopen cycle; don't spam the user with hints.
 		return
 	end
 
@@ -410,17 +330,12 @@ local function use_copier(c)
 		return
 	end
 
-	-- Pick the sacrifice up front so we can bail before animating if there's
-	-- nothing eligible to give up.
 	local sacrifice = pick_sacrifice(c.tier, c.offer_type)
 	if not sacrifice then
 		hint("No " .. tostring(c.tier) .. " items in your inventory to sacrifice", 4)
 		return
 	end
 
-	-- Kick off the close animation IMMEDIATELY. Sacrifice removal + its chat line
-	-- fire NOW (player gave the item up, printer is processing it). The offer +
-	-- "printed!" line wait for the lid to reopen (prize dispensed).
 	c.cycling = true
 	play_close(c.unit)
 	play_printer_starting(c.unit)
@@ -429,19 +344,16 @@ local function use_copier(c)
 	local pid = mgr:local_peer_id()
 	local sacrifice_name = offer_display_name(sacrifice)
 
-	-- Main whir queued to start when the starting cue ends.
 	DelayedCalls:Add("CSR_CopierMainSound_" .. tostring(unit_ref:key()), WORKING_SOUND_DELAY, function()
 		if alive(unit_ref) then
 			play_printer_sound(unit_ref)
 		end
 	end)
 
-	-- === Sacrifice: immediate on interact. (add/remove auto-reconcile owned
-	-- item effects via the on_item_added/removed callbacks in game_manager.) ===
+	-- Sacrifice removed immediately on interact.
 	local removed = mgr:remove_item(pid, sacrifice.type)
 	if not removed then
 		hint("Failed to remove sacrifice item " .. tostring(sacrifice.type), 5)
-		-- Still reopen the lid so the printer doesn't stay stuck closed.
 		DelayedCalls:Add("CSR_CopierReopen_" .. tostring(unit_ref:key()), REOPEN_DELAY, function()
 			c.cycling = false
 			if alive(unit_ref) then
@@ -455,13 +367,12 @@ local function use_copier(c)
 		managers.chat:_receive_message(1, tostring(sacrifice_name), "sacrificed!", color)
 	end
 
-	-- === Offer: awarded when the lid reopens (animation complete). ===
+	-- Offer awarded when the lid finishes reopening.
 	DelayedCalls:Add("CSR_CopierReopen_" .. tostring(unit_ref:key()), REOPEN_DELAY, function()
 		c.cycling = false
 		if alive(unit_ref) then
 			play_open(unit_ref)
-			-- Cycling ended: if the player is still looking at this copier, refresh
-			-- the hover prompt directly (text_dirty is unreliable across frames).
+			-- Force prompt refresh — text_dirty alone is unreliable across frames.
 			local int_ext = unit_ref:interaction()
 			if int_ext and managers.interaction and managers.interaction:active_unit() == unit_ref then
 				local local_player = managers.player and managers.player:player_unit()
@@ -474,8 +385,6 @@ local function use_copier(c)
 		mgr:add_item(pid, c.offer_type)
 		csr_log("[CSR Copier] Exchange: " .. tostring(sacrifice.type) .. " -> " .. tostring(c.offer_type))
 
-		-- MP: our counts changed (sacrifice removed, offer added) -- tell the other
-		-- peers so their items panel converges. Self-gates on multiplayer (SP no-op).
 		if _G.CSR_MP and _G.CSR_MP.broadcast_own_items then
 			_G.CSR_MP.broadcast_own_items()
 		end
@@ -486,12 +395,7 @@ local function use_copier(c)
 	end)
 end
 
--- Host -> all: mirror a just-spawned copier so every client spawns a local copy
--- showing the SAME offer. The host unit key doubles as a dedup token (real-time
--- broadcast vs late-join replay); pos/rot are serialised in full (the placement
--- rotation is Rotation(-normal_flat, math.UP), not just a yaw) and round-trip
--- exactly through Rotation(yaw, pitch, roll). Self-gates to host-in-MP inside
--- CSR_MP.broadcast_prop, so the client's own _spawn_copier never re-broadcasts.
+-- Host → all: mirror a just-spawned copier. Self-gates inside broadcast_prop.
 local function broadcast_copier_spawn(unit, pos, rot, offer_type)
 	if not (_G.CSR_MP and _G.CSR_MP.broadcast_prop and _G.CSR_MP.MSG) then
 		return
@@ -513,33 +417,14 @@ local function broadcast_copier_spawn(unit, pos, rot, offer_type)
 	_G.CSR_MP.broadcast_prop(_G.CSR_MP.MSG.COPIER_SPAWN, payload)
 end
 
--- Shared spawn core. Caller supplies position + rotation + offer_def. Returns
--- the copier entry (with unit ref + offer metadata) or nil on failure.
+-- Shared spawn core. Triple-disables collision (see deep-dive doc).
 local function _spawn_copier(pos, rot, offer_def)
-	-- The unit's package is mounted at mod init (supermod.xml dyn_package), so by
-	-- heist time DB:has + is_ready are true (callers gate on DB:has). pcall guards
-	-- the rare spawn failure; a native AV here can't be caught regardless.
 	local ok, unit = pcall(World.spawn_unit, World, UNIT_NAME, pos, rot)
 	if not ok or not alive(unit) then
 		log("[CSR Copier] Spawn failed: " .. tostring(unit))
 		return nil
 	end
 
-	-- Make the copier non-solid to the player mover. The unit ships on slot 1
-	-- (dynamics, player-blocking); zipline's set_collisions_enabled alone isn't
-	-- enough for this slot, so we stack three disables:
-	--   1. set_enabled(false) removes each body from physics simulation entirely
-	--      (same call enemymanager.lua:1475 uses on cop corpse mover_blocker bodies)
-	--   2. set_collisions_enabled(false) as belt-and-braces in case set_enabled
-	--      isn't honored on all body types in this prop
-	--   3. Move the whole unit to slot 11 (statics) with bodies already disabled
-	--      — matches enemymanager.lua:1614 on dropped magazines to get them out
-	--      of slot 1's dynamic-collision path.
-	-- Interaction is handled by CrimeSpreeCopierInteractionExt (native PD2 extend),
-	-- so body disables don't break the interact flow.
-	-- SIDE EFFECT: cops and the player walk straight through the printer because
-	-- no collision + not in the pre-baked nav mesh. Accepted as cosmetic for now.
-	-- See bugs_todo.md "💡 Suggestions (backlog)" for the nav-obstacle follow-up.
 	pcall(function()
 		local nr = unit:num_bodies()
 		csr_log("[CSR Copier] disabling collision: num_bodies=" .. tostring(nr))
@@ -567,14 +452,12 @@ local function _spawn_copier(pos, rot, offer_def)
 	}
 	table.insert(_G.CSR_Copiers, copier_entry)
 
-	-- "Ready" pose (lid open). Short delay lets the unit settle before anim ops.
 	DelayedCalls:Add("CSR_CopierSpawnOpen_" .. tostring(unit:key()), 0.05, function()
 		if alive(unit) then
 			play_open(unit)
 		end
 	end)
 
-	-- Billboard deferred past the open animation (see BILLBOARD_SPAWN_DELAY doc).
 	local offer_icon = offer_def and offer_def.icon
 	DelayedCalls:Add("CSR_CopierBillboard_" .. tostring(unit:key()), BILLBOARD_SPAWN_DELAY, function()
 		if not alive(unit) then
@@ -583,8 +466,6 @@ local function _spawn_copier(pos, rot, offer_def)
 		copier_entry.billboard_ws = create_billboard(unit, offer_icon, tier)
 	end)
 
-	-- MP: mirror to clients (host-only; self-gated, so a client's own spawn from
-	-- a received CSR_CopierSpawn does not echo back out).
 	broadcast_copier_spawn(unit, pos, rot, offer_def and offer_def.type)
 
 	return copier_entry
@@ -623,28 +504,13 @@ local function spawn_at_crosshair()
 	end
 end
 
--- Forward declaration: cover_to_placement is defined further down (alongside
--- pick_cover_spawns, where it naturally lives), but spawn_at_closest_cover
--- below needs to call it. Declaring the local name here lets both spawners
--- close over the same upvalue; the assignment fills it in at file-load time
--- well before any F6 keypress can fire.
+-- Forward decl so spawn_at_closest_cover can close over it; assigned further down.
 local cover_to_placement
 
--- Minimum spacing between copiers (cm). The prop itself is ~120cm wide, so
--- anything under ~180cm means visible overlap. 250cm leaves a clear gap and
--- still allows two copiers in the same medium-sized room.
 local MIN_COPIER_SEPARATION = 250
 
--- True if pos is within MIN_COPIER_SEPARATION of any already-alive copier.
--- Shared by F6 debug and auto-spawn so both paths honor the same spacing rule.
--- extra_positions lets auto-spawn also check against placements accepted
--- earlier in the SAME batch (those copiers haven't spawned yet, so they're
--- not in _G.CSR_Copiers when we're still picking the set).
--- Declared HERE (above spawn_at_closest_cover) rather than alongside the other
--- placement helpers below: Lua resolves identifiers at compile time, so if this
--- sat further down the file, spawn_at_closest_cover would resolve the name to a
--- global (nil at runtime → crash on F6). Any helper called from an earlier
--- function must be declared before that earlier function.
+-- Lua resolves identifiers at compile time, so this MUST live above
+-- spawn_at_closest_cover (which calls it) — not with the other placement helpers below.
 local function too_close_to_existing(pos, extra_positions)
 	local min_sq = MIN_COPIER_SEPARATION * MIN_COPIER_SEPARATION
 	for _, c in ipairs(_G.CSR_Copiers or {}) do
@@ -654,12 +520,7 @@ local function too_close_to_existing(pos, extra_positions)
 			end
 		end
 	end
-	-- Also reject placements within MIN_COPIER_SEPARATION of any already-
-	-- spawned scrapper (CSR_DebugSpawnedUnits is populated in
-	-- scrapper_spawner.lua). Keeps the printer auto-spawn from landing on top
-	-- of a scrapper that auto-spawned earlier this heist, and (since the
-	-- scrapper auto-spawn calls the same pick_cover_spawns helper that uses
-	-- this function) the scrapper auto-spawn naturally avoids printers too.
+	-- Also separate from any scrapper (mutual separation via CSR_DebugSpawnedUnits).
 	for _, u in ipairs(_G.CSR_DebugSpawnedUnits or {}) do
 		if alive(u) then
 			if mvector3.distance_sq(u:position(), pos) < min_sq then
@@ -677,23 +538,10 @@ local function too_close_to_existing(pos, extra_positions)
 	return false
 end
 
--- Player-reachability check. Cop covers are placed for cops, so some sit in
--- AI-only zones (behind one-way bars, on roof shelves, in fenced patrol pens)
--- that the player can never walk to. PD2's nav system tracks per-segment
--- access bitmasks; players share the "teamAI*" access slot family with bot
--- teammates, so a coarse path under "teamAI4" is the closest proxy for "could
--- a player walk from here to there." This is the same check GroupAI uses to
--- decide whether to assign a cop to chase a player vs idle.
---
--- search_coarse is synchronous when called without a results_clbk (returns
--- the path directly), so we can call it inline at heist-start spawn time
--- without setting up a callback dance. Cost: one BFS over nav segments per
--- candidate. Heist start happens once per mission, with players already
--- waiting on a fade-in, so a few ms here is invisible.
+-- Player reachability uses the teamAI4 access slot family (player shares it with
+-- bot teammates). search_coarse is synchronous without a results_clbk.
 local PLAYER_NAV_ACCESS = "teamAI4"
 
--- Returns the nav segment id the host's local player is standing on, or nil
--- if nav data isn't ready or the player isn't spawned yet.
 local function get_player_nav_seg()
 	if not (managers.navigation and managers.navigation:is_data_ready()) then
 		return nil
@@ -711,19 +559,9 @@ local function get_player_nav_seg()
 	return nil
 end
 
--- True if a coarse nav path exists from player_seg to target_seg under player
--- access. Caches per target_seg in `cache` so a batch of N candidates only
--- pays the search cost for unique target segments.
---
--- "player_ground_check" slot mask = world_geometry (slots 1, 11) PLUS slot 15
--- (player-only blockers added by mission script — the "invisible walls"
--- players hit on Transport: Downtown and similar maps) PLUS slot 39 (vehicles).
--- world_geometry alone misses these, which is why a navmesh path can exist
--- through geometry the player physically can't traverse: the navmesh is baked
--- against AI-graph obstacles and runtime-added slot-15 blockers don't always
--- invalidate baked paths. Raycasting with this mask + ray_type "walk" is the
--- canonical "could player movement get from A to B" test (it's what
--- huskplayermovement uses for its own ground-check casts).
+-- player_ground_check mask = world_geometry + slot 15 (mission-script player
+-- blockers, e.g. Transport: Downtown's invisible walls) + slot 39 (vehicles).
+-- The navmesh doesn't always reflect runtime slot-15 blockers.
 local _slotmask_player_walk_cache = nil
 local function get_player_walk_mask()
 	if not _slotmask_player_walk_cache then
@@ -732,14 +570,8 @@ local function get_player_walk_mask()
 	return _slotmask_player_walk_cache
 end
 
--- Walks the coarse path (output of search_coarse) and raycasts each consecutive
--- pair under the player-walk mask. Hops are lifted 60cm so the cast travels at
--- chest height — clears floor seams and small ramps that would graze the ground
--- without missing wall-tall blockers (player blockers extend full height).
--- Tradeoff: distant nav-seg-center pairs that connect through a curved corridor
--- may be wrongly flagged blocked because the straight line crosses a real wall.
--- We accept some false negatives in exchange for catching the user-reported
--- "navmesh says yes, player can't reach" case (blocker between segments).
+-- Walk a coarse path and raycast each consecutive pair at chest height (+60cm)
+-- under player_ground_check. Catches blockers between navmesh-adjacent segments.
 local function walk_path_player_clear(path, target_seg_for_log)
 	if not path or #path < 2 then
 		return true
@@ -752,7 +584,6 @@ local function walk_path_player_clear(path, target_seg_for_log)
 		local seg_id = node[1]
 		local pos = node[2] -- 2-tuple entries (post-start) carry an explicit pos
 		if not pos then
-			-- Start node is just {seg_id}; use the seg's own center.
 			local seg = nav_segs and nav_segs[seg_id]
 			pos = seg and seg.pos
 		end
@@ -766,9 +597,7 @@ local function walk_path_player_clear(path, target_seg_for_log)
 				return World:raycast("ray", from, to, "slot_mask", mask, "ray_type", "walk")
 			end)
 			if ok and hit then
-				-- Diesel body objects expose no :slot() method — that's a Unit
-				-- method. Pull the unit through the body to read slot, and pcall
-				-- the whole formatter so a malformed hit table can't crash spawn.
+				-- Body objects have no :slot(); pull through the unit.
 				local hit_slot = "?"
 				pcall(function()
 					if hit.unit then
@@ -801,7 +630,7 @@ end
 
 local function is_seg_player_reachable(player_seg, target_seg, cache)
 	if not (player_seg and target_seg) then
-		return true -- nav not ready -> don't gate, fall back to old behavior
+		return true
 	end
 	if player_seg == target_seg then
 		return true
@@ -834,10 +663,8 @@ local function is_seg_player_reachable(player_seg, target_seg, cache)
 	return reachable
 end
 
--- F6 debug: find the nav cover nearest to the local player and spawn a copier
--- there using the same raycast-based placement logic auto-spawn uses. Lets us
--- iterate on cover placement without having to search the map for an auto-
--- spawned copier each run.
+-- F6 debug: walk covers outward from the player, picking the first that yields a
+-- valid placement and isn't blocked by an already-spawned copier.
 local function spawn_at_closest_cover()
 	if not (managers.navigation and managers.navigation:is_data_ready()) then
 		hint("Navigation not ready", 3)
@@ -855,12 +682,6 @@ local function spawn_at_closest_cover()
 	end
 	local player_pos = player:position()
 
-	-- Build a distance-sorted list of covers so we can walk outward until we
-	-- find one that (a) produces a valid wall placement and (b) doesn't overlap
-	-- an already-spawned copier. Previously we only picked the single closest,
-	-- which meant F6-twice-without-moving always stacked two copiers on the
-	-- exact same cover. PD2's Vector3 has no :length_sq() instance method so we
-	-- use mvector3.distance_sq for the sort key and compare magnitudes directly.
 	local sorted = {}
 	for _, cover in ipairs(covers) do
 		if cover[1] then
@@ -880,9 +701,7 @@ local function spawn_at_closest_cover()
 	local chosen_placement, chosen_dist = nil, nil
 	local skipped_occupied, skipped_unreachable, skipped_blocked = 0, 0, 0
 	for _, entry in ipairs(sorted) do
-		-- cover[3] is a nav_tracker (NOT a seg id directly). Call :nav_segment()
-		-- to get the int seg id for search_coarse. pcall guards against engine
-		-- edge cases where the tracker has been freed.
+		-- cover[3] is a nav_tracker, not a seg id; call :nav_segment() for the int.
 		local cover_seg = nil
 		if entry.cover[3] then
 			local ok, seg = pcall(function()
@@ -954,101 +773,35 @@ local function spawn_at_closest_cover()
 	end
 end
 
--- === AUTO-SPAWN ON HEIST START (host-authoritative) ===
--- Picks up to N random cover points across the loaded nav segments. Covers
--- are validated placement targets: cops use them, so they're guaranteed
--- walkable and adjacent to playable space. cover[1] = field_position (floor),
--- cover[2] = forward direction (the open side cops face toward).
--- One cover per nav segment so the N copiers aren't clustered in one room.
--- Per-heist count is rolled in [AUTO_SPAWN_COUNT_MIN, AUTO_SPAWN_COUNT_MAX]
--- inclusive. MIN=1 guarantees at least one copier whenever the party is
--- eligible (someone holds an item to sacrifice); MAX=3 caps clustering.
+-- Per-heist count, rolled in [MIN, MAX]. MIN=1 guarantees one when eligible.
 local AUTO_SPAWN_COUNT_MIN = 1
 local AUTO_SPAWN_COUNT_MAX = 3
 
--- Printers are only useful once the party has begun receiving items, so gate
--- auto-spawn on the host having reached the first-item rank. In U1 every
--- completed heist grants a rank (one item pick), so rank >= 1 means "items are
--- in play". host_rank() is the run's authoritative rank.
+-- Don't spawn props until the host has earned at least one item pick.
 local FIRST_ITEM_RANK = 1
 local function host_reached_item_threshold()
 	local mgr = managers.csr
 	local level = (mgr and mgr.host_rank and mgr:host_rank()) or 0
 	return level >= FIRST_ITEM_RANK, FIRST_ITEM_RANK, level
 end
--- Cops stand close to cover surfaces, so a full-sized prop pivoted at its base
--- center half-clips into the wall if spawned at cover[1] directly. We raycast
--- outward from the cover position to find the actual wall surface, then push
--- the prop away from that surface along the hit normal — avoids the ambiguity
--- of cover[2] direction (which varies per map) and gives us a real wall normal
--- to align rotation against.
-local COVER_AWAY_OFFSET = 100 -- cm, push prop away from the hit surface along its normal
-local COVER_RAY_REACH = 200 -- cm, how far we look for a wall from cover[1]
--- After we find a candidate hit, probe past the surface to check for a SECOND
--- surface behind it. A second hit within this range means the first was a
--- crate/locker/container sitting against a real wall — placing against the
--- crate would bury the copier in the wall behind it. Rejecting the cover and
--- letting the caller try another is cleaner than eyeballing a bigger offset.
--- 150cm covers props as deep as PD2 ships (cargo containers, big lockers).
--- Going much higher risks false rejects in narrow rooms (probe hits the
--- opposite wall of a tight corridor and treats it as wall-behind-crate).
-local COVER_CLEARANCE_BEHIND = 150 -- cm, max gap between "crate face" and "wall behind"
--- Clearance radii for the surrounding-walls check, split by probe geometry.
---
--- LATERAL probes (pure right/left): perpendicular to normal_flat, so they have
--- ZERO component in the wall direction and can never false-positive against
--- our own placement wall. Free to make these long — only constrained by "too
--- far rejects covers in narrow rooms unnecessarily". 200cm catches L-corner
--- placements where the player would otherwise see the prop's wide side
--- clipping into a perpendicular wall.
---
--- BACK-DIAGONAL probes (back-left, back-right at 45°): have SOME component
--- toward the placement wall. Max reach in the wall direction = radius *
--- cos(45°), so the radius MUST stay below COVER_AWAY_OFFSET / cos(45°) ≈
--- 141cm or we'd start rejecting every legitimate against-wall placement (own
--- wall hit).
-local COVER_LATERAL_CLEAR = 200
-local COVER_DIAG_CLEAR = 120
--- FRONT probe (pure +normal_flat): same "no component toward our own wall"
--- property as the lateral probes — can never false-positive against the
--- placement wall, only bounded by narrow-room rejects. Catches placements
--- facing into a second wall (alcove, narrow corridor) where the prop's
--- operator face would clip.
-local COVER_FRONT_CLEAR = 100
--- FRONT-DIAGONAL probes (front-left, front-right at 45°): like LATERAL and
--- FRONT, the wall-direction component is AWAY from the placement wall (the
--- +normal_flat component is positive), so no false-positive risk against the
--- placement wall. Reuses COVER_DIAG_CLEAR (120cm) for symmetry with the back-
--- diagonals — gives consistent diagonal rejection radius in all 4 quadrants
--- minus direct back. Going to the full COVER_LATERAL_CLEAR (200cm) would
--- over-reject in normal 200cm-wide corridors: a front-diagonal at 200cm range
--- hits the opposite wall at t = sqrt(2) * (corridor_width - COVER_AWAY_OFFSET)
--- = ~141cm in a 200cm corridor, and 141cm < 200cm = REJECT. 120cm radius
--- gives ~85cm lateral and ~85cm forward reach, which catches L-shaped corner
--- intrusions (a wall meeting our placement wall at 45° instead of 90°, an
--- adjacent prop sitting at the diagonal) without false-rejecting tight
--- corridors. Closes the front hemisphere of the probe sphere — combined with
--- the existing 5 probes, we now cover 7 of 8 horizontal compass directions
--- (everything except direct -normal_flat, which IS the placement wall).
--- MIN_COPIER_SEPARATION + too_close_to_existing live above spawn_at_closest_cover
--- (see the comment there for why); they'd belong here with the other placement
--- constants if not for Lua's top-down identifier resolution.
 
--- Given a raw nav cover (cover[1] = position, cover[2] = direction), run the
--- raycast wall-finding + prop placement math and return { pos = ..., rot = ... }
--- or nil if no suitable wall was found. Shared by pick_cover_spawns (auto) and
--- the F6 debug "spawn at closest cover" handler.
--- Assigned (not `local function`) because cover_to_placement is forward-declared
--- earlier in the file so spawn_at_closest_cover can close over it as an upvalue.
+-- Placement constants. See csr_in_world_props_architecture.md for derivation.
+local COVER_AWAY_OFFSET = 100
+local COVER_RAY_REACH = 200
+local COVER_CLEARANCE_BEHIND = 150
+-- Lateral and front probes have no wall-direction component → free to be long.
+local COVER_LATERAL_CLEAR = 200
+local COVER_FRONT_CLEAR = 100
+-- Back-diagonals have a wall-direction component; MUST stay below COVER_AWAY_OFFSET /
+-- cos(45°) ≈ 141cm or every legitimate against-wall placement false-rejects.
+local COVER_DIAG_CLEAR = 120
+
 cover_to_placement = function(cover)
 	if not (cover and cover[1] and cover[2]) then
 		return nil
 	end
-	-- Raycast for the real wall: start slightly above cover[1] so the ray
-	-- doesn't hit the floor, shoot in cover[2] direction first, and if nothing
-	-- is there try the opposite direction (cover[2] direction is inconsistent
-	-- per map). The hit normal is the wall's outward direction, independent of
-	-- nav-cover convention.
+	-- Raycast for the real wall. Start slightly above cover[1] to clear the floor.
+	-- cover[2] direction is per-map inconsistent — try opposite if first misses.
 	local mask = managers.slot:get_mask("world_geometry")
 	local ray_origin = cover[1] + Vector3(0, 0, 50)
 	local fwd_flat = Vector3(cover[2].x, cover[2].y, 0):normalized()
@@ -1059,41 +812,21 @@ cover_to_placement = function(cover)
 	if not ray then
 		return nil
 	end
-	-- Flatten the normal to the horizontal plane; we only care about yaw.
-	-- If the ray grazed a non-vertical surface (floor/ceiling) the flat normal
-	-- is near-zero — skip this cover.
+	-- Flatten the normal; skip if it's near-zero (grazed a non-vertical surface).
 	local normal_flat = Vector3(ray.normal.x, ray.normal.y, 0)
 	if normal_flat:length() <= 0.1 then
 		return nil
 	end
 	normal_flat = normal_flat:normalized()
 
-	-- Clearance probe: step a little INTO the first surface, then cast further
-	-- along the same inward direction. If this second ray hits anything within
-	-- COVER_CLEARANCE_BEHIND, the first hit was a thin object (crate, pillar,
-	-- pallet) with MORE geometry right behind it — i.e., a prop sitting against
-	-- a wall. Placing against the prop's face would bury the copier in the wall
-	-- behind, so we bail and let the caller try another cover.
-	--
-	-- Starting 5cm inside the surface avoids the degenerate "ray hits the very
-	-- surface we started on" case: Diesel's raycast from inside a body exits
-	-- the body (solid→void, no hit) and then hits the next entry (void→solid),
-	-- which is exactly what we want for the wall-behind-the-crate check.
+	-- Clearance-behind probe: detect crate-against-wall (would bury the copier).
+	-- 5cm-into-surface origin escapes the "started inside a solid body" 0.0cm artifact.
 	local into_surface = -normal_flat
 	local probe_origin = ray.position + into_surface * 5
 	local probe_end = probe_origin + into_surface * COVER_CLEARANCE_BEHIND
 	local probe = World:raycast("ray", probe_origin, probe_end, "slot_mask", mask)
 	if probe then
-		-- Filter out Diesel's "started inside a solid body" artifact: when the
-		-- probe origin is inside a thick wall, raycast returns an immediate hit
-		-- at distance ~0 against the SAME body, not the wall behind. Empirical
-		-- evidence (logs from 2026-04-22): ~70% of rejections were at 0.0cm,
-		-- corresponding to thick walls being mistaken for crate-against-wall.
-		-- A real crate-against-wall produces a probe hit at the gap distance
-		-- (typical 7-130cm in observed data), well above the 5cm filter floor.
-		-- Cost of the filter: we miss the very rare case of an obstacle thinner
-		-- than 5cm with a wall right behind it (would still be a 0.0cm hit if
-		-- the probe origin landed inside the wall after exiting the obstacle).
+		-- Filter the 0.0cm same-body artifact; real crate-behind-wall hits are 7-130cm.
 		local probe_dist = (probe.position - probe_origin):length()
 		if probe_dist > 5 then
 			debug_log(
@@ -1107,30 +840,10 @@ cover_to_placement = function(cover)
 		end
 	end
 
-	-- PD2's raycast returns the surface normal pointing AWAY from the hit
-	-- surface (standard convention), so ADD along it to push the prop into the
-	-- open room. Use ray.position for X/Y (wall-surface horizontal coords) but
-	-- take Z from cover[1] — ray.position.z is cover[1].z + 50 because we cast
-	-- the ray from a raised origin to avoid hitting the floor, so anchoring to
-	-- ray.position.z directly makes the prop hover. cover[1] is floor-anchored;
-	-- the -8 bias nudges into the floor to hide the nav-mesh height gap.
+	-- Z from cover[1] (floor), not ray.position.z (we cast from +50). -8 hides nav-mesh gap.
 	local pos = Vector3(ray.position.x, ray.position.y, cover[1].z - 8) + normal_flat * COVER_AWAY_OFFSET
 
-	-- Surrounding-walls clearance: cast rays from `pos` in horizontal directions
-	-- OTHER than toward the placement wall (-normal_flat). Any hit within the
-	-- per-probe distance means the prop would clip into a wall corner, an
-	-- L-shaped wall flank, or an adjacent prop. right_dir = perpendicular to
-	-- normal_flat in the horizontal plane (sign doesn't matter since we probe
-	-- both ±). Distances differ by probe geometry — see the constant block above.
-	--
-	-- Probe origin is LIFTED 50cm above pos. pos.z = cover[1].z - 8, which puts
-	-- pos 8cm INSIDE the floor body — and Diesel's raycast from inside a body
-	-- returns an immediate 0.0cm hit artifact (same root cause we filter for in
-	-- the behind-probe). Logs from 2026-04-22 showed the right probe firing
-	-- 0.0cm rejections for the vast majority of covers because of this.
-	-- Lifting to pos.z + 50 puts the origin in clean air; walls extend well
-	-- above 50cm so we still detect them, and we no longer false-reject covers
-	-- whose only crime was sitting on a floor body extending downward.
+	-- Surrounding-walls probes from pos +50cm (lifted clear of floor body for 0.0cm artifact).
 	local surround_origin = pos + Vector3(0, 0, 50)
 	local right_dir = normal_flat:cross(math.UP):normalized()
 	local surround_probes = {
@@ -1146,10 +859,6 @@ cover_to_placement = function(cover)
 		local hit = World:raycast("ray", surround_origin, surround_origin + p.dir * p.dist, "slot_mask", mask)
 		if hit then
 			local d = (hit.position - surround_origin):length()
-			-- Same > 5cm filter as the behind-probe: defends against any
-			-- residual same-body artifact (e.g. probe origin happens to land
-			-- inside an overhanging shelf or low ceiling). Real walls always
-			-- produce non-trivial distances.
 			if d > 5 then
 				debug_log(
 					string.format(
@@ -1164,35 +873,13 @@ cover_to_placement = function(cover)
 		end
 	end
 
-	-- Rotate the prop PARALLEL to the wall (long side flush against it), with
-	-- its operator face toward the open room. Aligning forward-Y to the wall
-	-- normal puts the short axis perpendicular to the wall (good); sign choice
-	-- `-normal_flat` (not `+`) points +Y AWAY from the wall into the open room
-	-- so the prop's front faces the player approach rather than the wall.
+	-- Align +Y AWAY from wall into the open room. Long side flush against the wall.
 	local rot = Rotation(-normal_flat, math.UP)
 	return { pos = pos, rot = rot }
 end
 
--- Per-cover walkability check that catches the "intra-seg ledge" case the
--- seg-level filter (is_seg_player_reachable) can't see. Panic Room's rooftop
--- is ONE nav seg containing both the walkable deck AND the cop-only AC unit
--- ledges; the seg passes seg-level reachability (because the deck is reachable)
--- and a cover anchored on the ledge slips through.
---
--- Multi-sample: we collect up to 5 walkable anchor points inside the cover's
--- own seg (1 canonical seg center + up to 4 random points), raycast each to
--- placement.pos at chest height under player_ground_check, and reject if 2 or
--- more anchors are blocked. Single-sample (the prior implementation) missed
--- the case where the random sample happened to land on the SAME side of an
--- intra-seg railing as the cover — both points sit in the cop-only sub-zone,
--- LOS is clear, and the unreachable placement passes through. With multiple
--- anchors, as long as a few of them land on the player-walkable side of the
--- barrier, the barrier shows up as repeated blockage.
---
--- "≥2 blocked = reject" threshold over 5 samples: tolerates one false-positive
--- blockage from a stray prop in a long, narrow seg, but rejects on systematic
--- blockage. Player preference is reachable-printer > many-printers, so we err
--- toward rejection.
+-- Multi-sample intra-seg LOS check. Catches "rooftop ledge" pattern where one
+-- seg contains both walkable deck AND cop-only ledges.
 local PLACEMENT_SAMPLE_REJECT_THRESHOLD = 2
 local function is_placement_in_seg_walkable(seg_id, target_pos)
 	if not (seg_id and target_pos) then
@@ -1207,9 +894,6 @@ local function is_placement_in_seg_walkable(seg_id, target_pos)
 		return true
 	end
 
-	-- Collect anchors: seg.pos (canonical walkable center used by vanilla
-	-- search_coarse itself) plus up to 4 random in-seg points. Both can be nil
-	-- for unusual segs, hence the pcall + length check.
 	local anchors = {}
 	local nav_segs = nav._nav_segments
 	local seg = nav_segs and nav_segs[seg_id]
@@ -1243,18 +927,7 @@ local function is_placement_in_seg_walkable(seg_id, target_pos)
 	return true
 end
 
--- End-to-end LOS sanity check from the host's actual local player position to
--- the placement. Only meaningful when the player is reasonably close — beyond
--- ~25m a straight LOS naturally hits walls/floors/props the player walks
--- around, so a long-distance LOS fail is not informative. Within the range
--- threshold, a blocked LOS commonly indicates the placement is on the far side
--- of a railing/glass/inaccessible alcove from where the host is standing.
---
--- This is a SUPPLEMENTARY filter; the heavy lifting is done by the seg-level
--- reachability search and the multi-sample intra-seg LOS above. Use case:
--- placements in the same room or adjacent room as the spawn lobby that the
--- in-seg multi-sample misses (e.g. a tiny cop-only alcove the random samples
--- all happened to land inside).
+-- Supplementary LOS check from player → placement. Only meaningful within 25m.
 local PLAYER_LOS_RANGE_SQ = 2500 * 2500
 local function is_placement_los_from_player(target_pos)
 	if not target_pos then
@@ -1297,37 +970,20 @@ local function pick_cover_spawns(n)
 		return {}
 	end
 
-	-- Fisher-Yates shuffle so the picks are from random segments, not the
-	-- first N in pairs() order (which tends to cluster near the heist entry).
+	-- Fisher-Yates so picks don't cluster near the heist entry (pairs() order bias).
 	for i = #seg_ids, 2, -1 do
 		local j = math.random(i)
 		seg_ids[i], seg_ids[j] = seg_ids[j], seg_ids[i]
 	end
 
-	-- Player reachability prefilter (see helper docs). Built once per batch.
-	-- player_seg may be nil if the host player isn't spawned yet; in that case
-	-- is_seg_player_reachable returns true for everything (legacy behavior).
 	local player_seg = get_player_nav_seg()
 	local reach_cache = {}
 	local skipped_unreachable = 0
-	-- Per-placement intra-seg rejections (the "Panic Room rooftop ledge"
-	-- pattern: seg passes seg-level reachability but the cover itself sits
-	-- behind a railing inside that same seg). Tracked separately from the
-	-- seg-level skip count so a future spike here flags an intra-seg filter
-	-- regression specifically.
 	local skipped_blocked_placement = 0
-	-- Player-LOS rejections (placement near host but no straight LOS — typical
-	-- "behind glass / railing in same starting room" pattern). Tracked
-	-- separately so a future spike here flags player-LOS regressions vs the
-	-- intra-seg multi-sample.
 	local skipped_blocked_player_los = 0
 
 	local results = {}
-	-- Parallel list of just the pos vectors, passed to too_close_to_existing so
-	-- placements picked earlier in THIS batch block placements picked later.
-	-- Without this, two adjacent nav segments can raycast to the same wall and
-	-- produce two near-identical placements (same bug as F6-at-same-spot, just
-	-- across segs instead of across keypresses).
+	-- Parallel list of accepted positions so picks earlier in this batch block later ones.
 	local accepted_positions = {}
 	for _, seg_id in ipairs(seg_ids) do
 		if #results >= n then
@@ -1357,32 +1013,15 @@ local function pick_cover_spawns(n)
 		csr_log(string.format("[CSR Copier] auto-spawn: skipped %d player-unreachable segments", skipped_unreachable))
 	end
 	if skipped_blocked_placement > 0 then
-		csr_log(
-			string.format(
-				"[CSR Copier] auto-spawn: skipped %d cover placement(s) blocked from intra-seg walkable area (rooftop ledge / railing)",
-				skipped_blocked_placement
-			)
-		)
+		csr_log(string.format("[CSR Copier] auto-spawn: skipped %d intra-seg blocked", skipped_blocked_placement))
 	end
 	if skipped_blocked_player_los > 0 then
-		csr_log(
-			string.format(
-				"[CSR Copier] auto-spawn: skipped %d nearby placement(s) blocked from host player straight LOS",
-				skipped_blocked_player_los
-			)
-		)
+		csr_log(string.format("[CSR Copier] auto-spawn: skipped %d player-LOS blocked", skipped_blocked_player_los))
 	end
 
-	-- Cover-less fallback: if we WANTED copiers but found NOTHING via covers,
-	-- at least spawn one at a known walkable point. Zero-cover maps are rare
-	-- (some community heists), and we'd rather have one awkward spawn than
-	-- none. Gated on n > 0 so a rolled-zero-this-heist still means zero.
-	-- The fallback walks the shuffled seg_ids honoring the same reachability
-	-- filter — picking seg_ids[1] blindly could land us in the exact AI-only
-	-- zone we just filtered out of the main loop. We prefer seg.pos (the
-	-- canonical walkable center vanilla search_coarse uses) over a random
-	-- in-seg point, because random points can land in cop-only sub-areas of
-	-- multi-zone segs that the seg-level reachability filter can't see.
+	-- Cover-less fallback: at least one printer on a known walkable seg if we
+	-- wanted any. Walks shuffled seg_ids honoring reachability. Prefer seg.pos
+	-- (canonical walkable center) over random in-seg point.
 	if n > 0 and #results == 0 then
 		local nav_segs = managers.navigation._nav_segments
 		for _, seg_id in ipairs(seg_ids) do
@@ -1403,7 +1042,7 @@ local function pick_cover_spawns(n)
 	return results
 end
 
-local do_auto_spawn_host -- forward decl for self-retry after DB load
+local do_auto_spawn_host
 do_auto_spawn_host = function()
 	if not (DB and DB.has and DB:has(UNIT_EXT, UNIT_NAME)) then
 		log("[CSR Copier] auto-spawn: unit not in DB, aborting")
@@ -1426,7 +1065,6 @@ do_auto_spawn_host = function()
 		return
 	end
 
-	-- Roll this heist's count in [MIN, MAX] inclusive.
 	local desired = math.random(AUTO_SPAWN_COUNT_MIN, AUTO_SPAWN_COUNT_MAX)
 
 	local spawns = pick_cover_spawns(desired)
@@ -1457,10 +1095,7 @@ end
 
 _G.CSR_AutoCopierSpawned = _G.CSR_AutoCopierSpawned or false
 
--- One-shot host-authoritative auto-spawn per CS heist. Nav data isn't ready the
--- frame GameSetupUpdate starts firing, so re-check every frame and spawn as soon
--- as the gate opens. Network:is_server() is true in SP too. csr_heist_active()
--- is the no-leak CSR-heist signal (job == crime_spree, vanilla CS not active).
+-- Nav data isn't ready the frame GameSetupUpdate starts firing; re-check each frame.
 Hooks:Add("GameSetupUpdate", "CSR_CopierSpawner_Input", function(_t, _dt)
 	if _G.CSR_AutoCopierSpawned then
 		return
@@ -1478,10 +1113,6 @@ Hooks:Add("GameSetupUpdate", "CSR_CopierSpawner_Input", function(_t, _dt)
 	do_auto_spawn_host()
 end)
 
--- Debug spawn entry points exposed for SuperBLT keybinds. They handle the
--- DB-presence check and lazy package load, then route to the existing host
--- spawn helpers. Kept as globals so the lua/debug/keybind_*.lua files (which
--- run in a sandboxed scope per keypress) can reach them.
 local function _ensure_loaded_then(callback, key_label)
 	local db_has = DB and DB.has and DB:has(UNIT_EXT, UNIT_NAME)
 	if not db_has then
@@ -1508,25 +1139,16 @@ _G.CSR_SpawnPrinterAtCrosshair = function()
 	_ensure_loaded_then(spawn_at_crosshair, "the printer-crosshair key")
 end
 
--- Purge copier list across heists -- the units die with the world. Destroy
--- billboard workspaces so they don't leak, and re-arm the auto-spawner. (CSR
--- sound sources are single-sound and auto-close, so no manual cleanup here.)
 Hooks:Add("BaseNetworkSessionOnLoadComplete", "CSR_CopierSpawner_SessionReset", function()
 	for _, c in ipairs(_G.CSR_Copiers or {}) do
 		destroy_billboard(c.billboard_ws)
 	end
 	_G.CSR_Copiers = {}
-	-- Drop the client-side spawn dedup set so next heist's mirrored copiers spawn.
 	_G.CSR_SeenCopierSpawns = {}
-	-- Re-arm the auto-spawner; GameSetupUpdate re-latches once nav data is ready
-	-- and the CSR-heist gate opens.
 	_G.CSR_AutoCopierSpawned = false
 end)
 
--- Globals exposed for CrimeSpreeCopierInteractionExt (lua/core/copier_interaction_ext.lua).
--- The subclass runs inside the Diesel engine's extension dispatch and has no
--- access to this file's locals; the globals are the bridge. Same pattern as
--- _G.CSR_Copiers / _G.CSR_CopierProxState above.
+-- Bridge to the interaction subclass (CrimeSpreeCopierInteractionExt can't see our locals).
 _G.CSR_UseCopier = use_copier
 
 _G.CSR_FindCopierByUnit = function(unit)
@@ -1541,30 +1163,14 @@ _G.CSR_FindCopierByUnit = function(unit)
 	return nil
 end
 
--- True if the local player owns any item of `tier` (the offer's rarity) to
--- sacrifice. Read by CrimeSpreeCopierInteractionExt:_interact_blocked.
 _G.CSR_CopierHasSacrifice = function(tier)
 	return #owned_defs_of_tier(tier) > 0
 end
 
--- Proximity-gated yellow contour. Same pattern as scrapper_spawner.lua —
--- the csr_yellow_interactable palette is registered in
--- lua/tweakdata/copier_interaction.lua; this hook toggles its opacity per
--- frame based on player distance.
--- Hand-tuned by feel because vanilla's "can-press-F" gate uses a raycast from
--- the player camera (~165 cm above the feet) against the prop body, while
--- this hook measures feet-to-pivot distance. Auto-deriving from
--- csr_copier.interact_distance (250) was tried and didn't visually align —
--- the camera-height offset plus the prop body extent shift the practical
--- threshold below 250 in feet-distance terms. Bump this number until the
--- contour pops on at the same moment the "Hold F" prompt becomes pressable.
-local CSR_PROX_RANGE = 240 -- centimeters; manual. Slightly over the practical interact threshold so the contour acts as a "you're getting close" cue before F becomes pressable — intentional.
+-- Manual: vanilla's "can-press-F" gate doesn't visually align with the contour;
+-- bump until the contour pops on at the same moment "Hold F" becomes pressable.
+local CSR_PROX_RANGE = 240
 local CSR_PROX_RANGE_SQ = CSR_PROX_RANGE * CSR_PROX_RANGE
--- Exposed globally so CrimeSpreeCopierInteractionExt:set_contour (in
--- copier_interaction_ext.lua) can read the per-unit range state and force
--- opacity=0 when out-of-range, regardless of which code path calls set_contour
--- (our prox hook, vanilla's selected/unselect, Clientsided Uppers wrappers,
--- etc.). Weak-keyed so dead units fall out automatically.
 _G.CSR_CopierProxState = _G.CSR_CopierProxState or setmetatable({}, { __mode = "k" })
 
 Hooks:Add("GameSetupUpdate", "CSR_CopierProximityContour", function(t, dt)
@@ -1595,20 +1201,10 @@ Hooks:Add("GameSetupUpdate", "CSR_CopierProximityContour", function(t, dt)
 	end
 end)
 
--- Expose for scrapper_spawner.lua's auto-spawn flow. Reusing this function
--- (instead of duplicating the cover-find/separation/reachability logic) means
--- any future tweak to placement rules (rejection radii, fallback behavior,
--- player-reachability gating) is applied uniformly to printers AND scrappers.
+-- Exposed so scrapper_spawner reuses the same placement rules for its auto-spawn.
 _G.CSR_PickCoverSpawns = pick_cover_spawns
 
--- === M3: client-side mirror of host-spawned copiers ===
--- The host broadcasts each spawn (broadcast_copier_spawn); a client spawns its
--- own local copy from the synced pos/rot/offer and registers it in CSR_Copiers,
--- so the existing interaction (_is_csr_owned -> CSR_FindCopierByUnit) lights up
--- and the exchange runs against this peer's own (guest-session) inventory.
-
--- Resolve a registry def by its item type (for the synced offer). Cheap: one
--- scan per mirrored spawn (a handful per heist), not a hot path.
+-- Client-side mirror of host-broadcast copier spawns.
 local function find_def_by_type(item_type)
 	local mgr = managers.csr
 	if not (item_type and item_type ~= "" and mgr and mgr.registered_items) then
@@ -1622,12 +1218,9 @@ local function find_def_by_type(item_type)
 	return nil
 end
 
--- Client dedup: the real-time broadcast and the late-join replay can both carry
--- the same spawn; key on the host unit key so each copier spawns exactly once.
 _G.CSR_SeenCopierSpawns = _G.CSR_SeenCopierSpawns or {}
 
 local function on_copier_spawn(payload)
-	-- Mirror only on a real client; SP/host spawn natively and never receive this.
 	if not (_G.CSR_MP and _G.CSR_MP.is_client and _G.CSR_MP.is_client()) then
 		return
 	end
@@ -1640,7 +1233,6 @@ local function on_copier_spawn(payload)
 	if _G.CSR_SeenCopierSpawns[key] then
 		return
 	end
-	-- Asset must be registered (a mismatched client install can lack it).
 	if not (DB and DB.has and DB:has(UNIT_EXT, UNIT_NAME)) then
 		log("[CSR Copier] on_copier_spawn: copier unit not in DB, skipping")
 		return
@@ -1652,10 +1244,7 @@ local function on_copier_spawn(payload)
 	local offer_def = find_def_by_type(offer_type)
 
 	local function do_spawn()
-		-- Native-AV guard: spawning a unit whose package isn't mounted AVs in C++
-		-- (pcall can't catch it). supermod.xml mounts ours on every client, but a
-		-- partial/mismatched install might not -- PackageManager:has + skip is the
-		-- only safe net. Client-path only; the host keeps its proven is_ready gate.
+		-- Native-AV guard before direct spawn (pcall can't catch a C++ AV).
 		if PackageManager and PackageManager.has and not PackageManager:has(UNIT_EXT, UNIT_NAME) then
 			log("[CSR Copier] on_copier_spawn: package not mounted, skipping (native-AV guard)")
 			return
@@ -1663,8 +1252,6 @@ local function on_copier_spawn(payload)
 		_spawn_copier(pos, rot, offer_def)
 	end
 
-	-- Same load gate the host's auto-spawn uses: spawn now if the dyn resource is
-	-- ready, else lazy-load then spawn in the callback.
 	if is_ready() then
 		do_spawn()
 	elseif managers.dyn_resource then
@@ -1682,4 +1269,4 @@ if _G.CSR_MP and _G.CSR_MP.register_handler and _G.CSR_MP.MSG then
 	end)
 end
 
-csr_log("[CSR Copier] copier_spawner.lua loaded — F7 spawn, interact key to use")
+csr_log("[CSR Copier] copier_spawner.lua loaded")

@@ -1,17 +1,7 @@
--- Bonnie's Lucky Chip (rare) -- each bullet hit has a small chance to instakill.
---
--- Per-item-file model (see cup_of_joe.lua). Text fields are localization keys.
---
--- PreHook on CopDamage:damage_bullet: against a valid enemy, off cooldown, roll
--- 1-(1-chance)^stacks; on a win, AMPLIFY the attack's damage so the ORIGINAL
--- damage_bullet lands the kill itself. That routes the death through vanilla MP
--- networking (a client RPCs the host, the host syncs the death back); a local
--- self:die() on a client would desync. The cooldown is armed on EVERY eligible
--- attempt (win or lose) so high-RPM weapons can't spam rolls.
---
--- On a confirmed proc-kill the dead enemy's position plays a chip clip and the
--- position is broadcast so nearby peers hear it. Values mirror the 6.2 register
--- line (chance 0.10 / cooldown 1.5).
+-- Bonnie's Lucky Chip (rare) — each bullet hit has a small chance to instakill.
+-- Amplification pattern: amplify damage so vanilla damage_bullet lands the kill
+-- (routes through MP networking — never :die() on a client).
+-- See csr_damage_amplification_pattern.md.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -21,7 +11,6 @@ local CHANCE = 0.10
 local COOLDOWN = 1.5
 local BONNIE_CHIP_RPC = "CSR_ChipKill"
 
--- Single-item cooldown timestamp (game time of the last roll attempt).
 local last_roll = nil
 
 local function bonnie_try_proc(cop, attack_data)
@@ -33,11 +22,10 @@ local function bonnie_try_proc(cop, attack_data)
 	if not au or not au:base() or au:base().is_local_player ~= true then
 		return false
 	end
-	-- Target must be a live, non-converted enemy.
 	if not cop._unit or not alive(cop._unit) or cop._dead or cop._converted then
 		return false
 	end
-	-- Skip civilians and scripted NPCs (npc_*) -- instakill is enemy-only.
+	-- Civilians and npc_* are excluded.
 	local base = cop._unit:base()
 	local tweak_table = (base and base._tweak_table) or ""
 	local is_npc = type(tweak_table) == "string" and tweak_table:sub(1, 4) == "npc_"
@@ -56,13 +44,13 @@ local function bonnie_try_proc(cop, attack_data)
 	if last_roll and now - last_roll < COOLDOWN then
 		return false
 	end
-	last_roll = now -- arm on every eligible attempt
+	-- Arm cooldown on every eligible attempt (win OR lose) so high-RPM weapons can't spam rolls.
+	last_roll = now
 	local total_chance = 1 - (1 - CHANCE) ^ stacks
 	if math.random() > total_chance then
 		return false
 	end
-	-- Amplify so the original damage_bullet kills the enemy (vanilla clamps the
-	-- applied damage to self._health internally, so just exceed current health).
+	-- Exceed current health; vanilla clamps applied damage internally.
 	attack_data.damage = (cop._health or 1) * 10
 	if mgr:debug_enabled() then
 		mgr:debug_log("bonnie_chip INSTAKILL proc")
@@ -82,8 +70,7 @@ local function bonnie_play_kill_sound(dead_unit)
 	end
 	local pos = dead_unit:position()
 	bonnie_play_chip_at(pos)
-	-- Broadcast the spot so other peers hear the kill. GetNumberOfPeers gates out
-	-- the solo case (no peers -> skip the work + log entirely).
+	-- Broadcast the kill spot so other peers hear it too.
 	if LuaNetworking and LuaNetworking.GetNumberOfPeers and LuaNetworking:GetNumberOfPeers() > 0 then
 		local payload = string.format("%.2f,%.2f,%.2f", pos.x, pos.y, pos.z)
 		pcall(function()
@@ -109,8 +96,7 @@ _G.CSR.register_item({
 			end
 			_G._CSR_BONNIE_CHIP_HOOKED = true
 
-			-- PreHook flags the proc (and amplifies damage); PostHook plays the
-			-- sound only once vanilla has confirmed the kill landed (cop._dead).
+			-- PreHook flags + amplifies; PostHook plays the sound after vanilla confirms the kill.
 			Hooks:PreHook(CopDamage, "damage_bullet", "CSR_BonnieChip_Pre", function(cop, attack_data)
 				if bonnie_try_proc(cop, attack_data) then
 					cop._csr_chip_proc = true
@@ -123,9 +109,7 @@ _G.CSR.register_item({
 				cop._csr_chip_proc = nil
 			end)
 
-			-- A peer's broadcast chip-kill: play it locally at the sent position.
-			-- Routed through the shared MP router (mp_sync.lua); it dispatches by id,
-			-- so the handler no longer filters. nil-guard for load-order safety.
+			-- Peer's broadcast chip-kill — play locally at the sent position.
 			if _G.CSR_MP and _G.CSR_MP.register_handler then
 				_G.CSR_MP.register_handler(BONNIE_CHIP_RPC, function(sender, data)
 					local x, y, z = tostring(data):match("([^,]+),([^,]+),([^,]+)")

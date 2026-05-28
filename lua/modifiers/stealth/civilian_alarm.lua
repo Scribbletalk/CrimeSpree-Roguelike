@@ -1,8 +1,5 @@
--- Witness Protection (stealth modifier family) -- the alarm sounds at fewer
--- civilian kills per tier (10 -> 7 -> 4). Stealth family (see less_pagers.lua).
--- EFFECT: vanilla ModifierCivilianAlarm, data `count` = body-count threshold;
--- aggregated with "min" so the strictest active tier wins. Host-side (the class
--- early-returns on a client).
+-- Witness Protection (stealth family) — alarm at fewer civ kills (10 → 7 → 4).
+-- data.count is the body-count threshold; "min" so the strictest active tier wins.
 if not (_G.CSR and _G.CSR.register_modifier) then
 	return
 end

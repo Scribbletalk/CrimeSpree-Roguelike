@@ -1,8 +1,5 @@
--- Crime Spree Roguelike - Gage Services open callback.
--- Opened from the CSR lobby sidebar "Black Market" row (missions_menu.lua ->
--- csr_open_shop -> this). Registers the callback only; the screen itself is
--- black_market_screen (node_register + component_register + black_market_menu.lua).
--- Mirrors logbook_button.lua.
+-- Open callback for Gage Services (Black Market). Triggered from the CSR lobby
+-- sidebar (missions_menu.lua csr_open_shop).
 
 if not RequiredScript then
 	return

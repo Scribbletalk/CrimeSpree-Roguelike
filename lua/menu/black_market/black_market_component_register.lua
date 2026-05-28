@@ -1,6 +1,5 @@
--- Crime Spree Roguelike - Gage Services GUI Component Registration.
--- Registers the component with MenuHelper so MenuComponentManager instantiates
--- it when the black_market_screen node opens. Mirrors logbook_component_register.lua.
+-- Registers the Gage Services GUI component with MenuHelper so
+-- MenuComponentManager instantiates it when black_market_screen opens.
 
 csr_log(
 	"[CSR Shop] black_market_component_register.lua loaded; MenuHelper="
@@ -13,7 +12,7 @@ if MenuHelper and CrimeSpreeBlackMarketMenuComponent then
 	MenuHelper:AddComponent("black_market_component", CrimeSpreeBlackMarketMenuComponent)
 	csr_log("[CSR Shop] black_market_component registered immediately")
 else
-	-- Defer: the component class may not have loaded yet (SuperBLT inter-file order).
+	-- Defer: component class may not have loaded yet (inter-file order).
 	Hooks:Add("MenuManagerInitialize", "CSR_BlackMarketComponentDeferred", function(menu_manager)
 		if MenuHelper and CrimeSpreeBlackMarketMenuComponent then
 			MenuHelper:AddComponent("black_market_component", CrimeSpreeBlackMarketMenuComponent)

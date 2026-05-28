@@ -1,35 +1,7 @@
 -- CSRHUDStageEndScreen — fork of vanilla HUDStageEndCrimeSpreeScreen.
---
--- Origin: pd2_source_code/lib/managers/hud/hudstageendcrimespreescreen.lua (106 lines)
--- Strategy: byte-for-byte copy with the class renamed and the level-name
--- source swapped off the spree backend. Everything else (the MenuBackdropGUI
--- layers, bg-text animation, the thin delegations to HUDStageEndScreen) is
--- byte-identical to vanilla.
---
--- This is the lightweight CS-style end-screen HUD backdrop. We fork it (not
--- the 3567-line HUDStageEndScreen) because the CS path delegates the heavy
--- stat work back to HUDStageEndScreen anyway via HUDStageEndScreen.set_* —
--- those vanilla globals are REUSED, never redefined (redefining them would
--- leak into every vanilla end screen — feedback_csr_only_no_vanilla_leak).
---
--- Class rename:
---   HUDStageEndCrimeSpreeScreen -> CSRHUDStageEndScreen
---
--- Backend swap / correctness fix (the only :init diff vs vanilla):
---   vanilla derives the stage name from
---     managers.crime_spree:get_mission(managers.crime_spree:current_played_mission())
---   CSR cannot: by the time this HUD builds, csr_mission_lifecycle's
---   at_enter PostHook has already called managers.csr:generate_mission_set()
---   which nils current_mission, so managers.csr:get_mission(nil) returns nil
---   and `mission.level.level_id` would crash. The robust, also-more-correct
---   source is the level actually just played — managers.job:current_level_id()
---   (still valid here; the job is not deactivated until _load_start_menu in
---   MissionEndState:at_exit, which runs later) -> tweak_data.levels[id].name_id.
---   Fully nil-guarded so a missing level just yields an empty title.
---
--- Routing (which HUD class instantiates) lives in endscreen_wiring.lua,
--- gated on the run-scoped no-leak signal (job == "crime_spree" AND vanilla CS
--- NOT active) so vanilla / vanilla CS / Skirmish are byte-for-byte untouched.
+-- Class rename + level-name source swap (vanilla reads current_played_mission
+-- which we've already cleared by this point; we read managers.job:current_level_id).
+-- Heavy stat work still delegated back to HUDStageEndScreen via reused vanilla statics.
 
 CSRHUDStageEndScreen = CSRHUDStageEndScreen or class()
 
@@ -65,8 +37,8 @@ function CSRHUDStageEndScreen:init(hud, workspace)
 	self._backdrop:set_panel_to_saferect(self._background_layer_safe)
 	self._backdrop:set_panel_to_saferect(self._foreground_layer_safe)
 
-	-- CSR backend swap: stage name from the level just played, not the spree
-	-- mission backend (which is already cleared by this point — see header).
+	-- Stage name from the level just played; vanilla's spree backend is already
+	-- cleared by this point (mission_lifecycle nilled current_mission).
 	local level_id = managers.job:current_level_id()
 	local lvl_td = level_id and tweak_data.levels[level_id]
 	self._stage_name = (lvl_td and lvl_td.name_id and managers.localization:to_upper_text(lvl_td.name_id)) or ""
@@ -135,4 +107,4 @@ end
 
 function CSRHUDStageEndScreen:send_xp_data(data, done_clbk) end
 
-csr_log("[CSR] hud_stage_endscreen.lua loaded (CSRHUDStageEndScreen fork)")
+csr_log("[CSR] hud_stage_endscreen.lua loaded")

@@ -1,11 +1,4 @@
--- Evidence Rounds (uncommon) -- +10% to ALL damage per copy owned.
---
--- "All damage" = ranged AND melee, so this hooks two engine classes (one hooks
--- entry each). Per-item-file model (see cup_of_joe.lua). Text fields are
--- localization keys.
---
--- The live mechanic is +10%/stack (the 6.2 register value); the english.json
--- logbook effect string matches it (was a stale 5% fallback until fixed 2026-05-25).
+-- Evidence Rounds (uncommon) — +10%/stack to all damage (ranged + melee).
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -24,7 +17,6 @@ _G.CSR.register_item({
 	icon_scale = 0.9,
 
 	hooks = {
-		-- Ranged: scale RaycastWeaponBase:_get_current_damage by (1 + bonus).
 		["lib/units/weapons/raycastweaponbase"] = function()
 			if _G._CSR_EVIDENCE_ROUNDS_RANGED_HOOKED then
 				return
@@ -51,12 +43,6 @@ _G.CSR.register_item({
 			end
 		end,
 
-		-- Melee: scale BlackMarketManager:equipped_melee_weapon_damage_info's dmg
-		-- and dmg_effect by (1 + bonus). Only the local player calls this, so each
-		-- peer scales its own swing; the boosted value networks via attack_data
-		-- (standard PD2 path). Stacks multiplicatively with Jiro's melee bonus
-		-- (each item wraps independently -- the per-item-file model's natural,
-		-- user-accepted result).
 		["lib/managers/blackmarketmanager"] = function()
 			if _G._CSR_EVIDENCE_ROUNDS_MELEE_HOOKED then
 				return
