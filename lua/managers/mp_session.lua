@@ -102,24 +102,39 @@ if CSR_MP and CSR_MP.register_handler then
 			end
 		end
 
-		-- Seed late-join wallet from host's gross; set_tokens not credit to avoid inflating gross.
-		local gross = tonumber(payload.host_tokens_gross)
-		if
-			gross
-			and gross > 0
-			and _G.CSR_Shop
-			and mgr
-			and mgr.guest_tokens_seeded
-			and not mgr:guest_tokens_seeded()
-		then
-			_G.CSR_Shop.set_tokens(CSR_MP.local_peer_id(), gross)
-			if mgr.mark_guest_tokens_seeded then
-				mgr:mark_guest_tokens_seeded()
-			end
-			if CSR_MP.log then
-				CSR_MP.log(
-					"late-join token seed: wallet=" .. tostring(gross) .. " run_seed=" .. tostring(payload.run_seed)
-				)
+		-- Late-join auto-grant: convert the host's progress into items for the guest (no choosing).
+		-- Runs as a first grant, or an INCREMENTAL delta when the host has completed more missions
+		-- since the last grant (snapshot keyed per host run). Guest-only; host/SP never reach here.
+		if _G.CSR_Shop and mgr and mgr.guest_grant_missions and _G.CSR_Shop.auto_grant_late_join then
+			local pid = CSR_MP.local_peer_id()
+			local hrank = tonumber(payload.host_rank) or 0
+			local hmissions = tonumber(payload.host_missions_completed) or 0
+			local gross = tonumber(payload.host_tokens_gross) or 0
+			local prev = mgr:guest_grant_missions() -- nil before the first grant
+			if prev ~= hmissions then
+				local prev_gross = mgr:guest_grant_gross()
+				local leftover = _G.CSR_Shop.auto_grant_late_join(pid, hrank, gross, hmissions, prev_gross)
+				-- Add (don't overwrite) the leftover: the guest may already hold a balance. set_tokens
+				-- leaves gross untouched so this never re-triggers the grant.
+				_G.CSR_Shop.set_tokens(pid, _G.CSR_Shop.tokens(pid) + leftover)
+				mgr:mark_guest_grant(hmissions, gross)
+				if _G.CSR_MP.broadcast_own_items then
+					_G.CSR_MP.broadcast_own_items()
+				end
+				local comp = managers.menu_component and managers.menu_component._crime_spree_missions
+				if comp and comp.refresh_for_rank_change then
+					comp:refresh_for_rank_change()
+				end
+				if CSR_MP.log then
+					CSR_MP.log(
+						"late-join grant rank="
+							.. tostring(hrank)
+							.. " missions="
+							.. tostring(hmissions)
+							.. " leftover="
+							.. tostring(leftover)
+					)
+				end
 			end
 		end
 	end)

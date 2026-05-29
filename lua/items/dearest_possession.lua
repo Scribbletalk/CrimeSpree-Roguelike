@@ -38,14 +38,18 @@ _G.CSR.register_item({
 					local stacks = mgr:owned("dearest_possession")
 					if stacks > 0 then
 						local eff_max_hp = self:_max_health() * (self._max_health_reduction or 1)
-						if eff_max_hp and health > eff_max_hp then
+						-- get_real_health()/get_real_armor() return nil until _health/_armor are first set:
+						-- the spawn-time _regenerated -> set_health runs BEFORE _health exists. Skip the
+						-- overheal-banking on that first set (cur_hp nil) and let vanilla initialise health.
+						local cur_hp = self:get_real_health()
+						if cur_hp and eff_max_hp and health > eff_max_hp then
 							-- Catch-up heal (not actually full HP yet) — normal heal.
-							if self:get_real_health() < eff_max_hp - 0.01 then
+							if cur_hp < eff_max_hp - 0.01 then
 								return orig_set_health(self, health)
 							end
 							-- Base armor must be full first.
 							local max_armor = self:_max_armor()
-							if self:get_real_armor() < max_armor - 0.01 then
+							if (self:get_real_armor() or 0) < max_armor - 0.01 then
 								self._csr_dp_in_set_health = true
 								orig_set_health(self, eff_max_hp)
 								self._csr_dp_in_set_health = false

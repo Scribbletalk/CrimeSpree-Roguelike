@@ -455,17 +455,29 @@ function CSRGameManager:mp_host_difficulty()
 	return mp and mp.host_difficulty or nil
 end
 
--- Guards the one-time token seed grant per host run; lives in the session record so re-joining the same host doesn't re-seed.
-function CSRGameManager:guest_tokens_seeded()
+-- Late-join grant snapshot, keyed per host run in the session record. Re-joining the same host
+-- triggers an INCREMENTAL grant only when the host's completed-mission count has changed since the
+-- last grant. guest_grant_missions() returns nil until the first grant has run.
+function CSRGameManager:guest_grant_missions()
 	local key = self:_guest_session_key()
 	if not key then
-		return false
+		return nil
 	end
 	local sess = self._meta.mp_sessions and self._meta.mp_sessions[key]
-	return (sess and sess.tokens_seeded) == true
+	return sess and sess.grant_missions
 end
 
-function CSRGameManager:mark_guest_tokens_seeded()
+-- Host gross-tokens already converted at the last grant; the next grant only spends the delta above this.
+function CSRGameManager:guest_grant_gross()
+	local key = self:_guest_session_key()
+	if not key then
+		return 0
+	end
+	local sess = self._meta.mp_sessions and self._meta.mp_sessions[key]
+	return (sess and sess.grant_gross) or 0
+end
+
+function CSRGameManager:mark_guest_grant(missions, gross)
 	local key = self:_guest_session_key()
 	if not key then
 		return
@@ -473,7 +485,8 @@ function CSRGameManager:mark_guest_tokens_seeded()
 	self:_guest_session_entry(true)
 	local sess = self._meta.mp_sessions and self._meta.mp_sessions[key]
 	if sess then
-		sess.tokens_seeded = true
+		sess.grant_missions = tonumber(missions) or 0
+		sess.grant_gross = tonumber(gross) or 0
 		self:save()
 	end
 end

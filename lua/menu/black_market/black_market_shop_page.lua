@@ -57,10 +57,8 @@ function CrimeSpreeBlackMarketShopPage:init(panel, parent)
 end
 
 function CrimeSpreeBlackMarketShopPage:_setup()
-	-- Restock a fully sold-out lineup on open so the shop never reopens as a dead end.
-	if CSR_Shop.lineup_sold_out and CSR_Shop.lineup_sold_out() then
-		CSR_Shop.roll_lineup()
-	end
+	-- No self-heal restock: a sold-out lineup stays sold until the next mission completes
+	-- (lineup restocks in mission_lifecycle). Re-opening shows the same SOLD cards.
 	self:_create_token_counter()
 	self:_create_reroll_button()
 	self:_create_dialogue_strip()
@@ -693,7 +691,7 @@ function CrimeSpreeBlackMarketShopPage:_on_reroll()
 end
 
 function CrimeSpreeBlackMarketShopPage:_on_buy(slot_index)
-	local ok, result = CSR_Shop.buy(CSR_Shop.local_peer_id(), slot_index)
+	local ok = CSR_Shop.buy(CSR_Shop.local_peer_id(), slot_index)
 	if not ok then
 		if managers.menu_component and managers.menu_component.post_event then
 			managers.menu_component:post_event("menu_error")
@@ -706,33 +704,7 @@ function CrimeSpreeBlackMarketShopPage:_on_buy(slot_index)
 		managers.menu_component:post_event("item_sell")
 	end
 
-	if result ~= "sold_out" then
-		self:_set_dialogue_line(CSR_Shop.pick_purchase_line(), true)
-		self:refresh()
-		return
-	end
-
-	-- Bought the last card: show sold-out for a 0.5s beat, then free restock via
-	-- DelayedCalls. The page also self-heals on open if the delay fires after close.
+	-- The bought slot stays SOLD until the next mission restocks the lineup; no free restock here.
+	self:_set_dialogue_line(CSR_Shop.pick_purchase_line(), true)
 	self:refresh()
-	local page = self
-	local function restock()
-		if CSR_Shop.lineup_sold_out() then
-			CSR_Shop.roll_lineup()
-		end
-		if not alive(page._panel) then
-			return
-		end
-		if managers.menu_component and managers.menu_component.post_event then
-			managers.menu_component:post_event("stinger_new_weapon")
-		end
-		page._dialogue_target = nil -- force re-animate even if the line repeats
-		page:_set_dialogue_line(CSR_Shop.pick_soldout_line(), true)
-		page:refresh()
-	end
-	if DelayedCalls and DelayedCalls.Add then
-		DelayedCalls:Add("csr_black_market_restock", 0.5, restock)
-	else
-		restock()
-	end
 end

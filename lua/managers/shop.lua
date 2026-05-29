@@ -277,7 +277,8 @@ function CSR_Shop.lineup_sold_out(peer_id)
 	return any
 end
 
--- Returns true [, "sold_out"] on success, or false + reason string on failure.
+-- Returns true on success, or false + reason string on failure.
+-- A bought slot stays SOLD until the next mission completes (lineup restocks in mission_lifecycle).
 function CSR_Shop.buy(peer_id, slot_index)
 	peer_id = peer_id or CSR_Shop.local_peer_id()
 	local m = mgr()
@@ -312,11 +313,6 @@ function CSR_Shop.buy(peer_id, slot_index)
 	csr_log(
 		"[CSR] shop: bought slot " .. tostring(slot_index) .. " (" .. tostring(slot.type) .. ") for " .. tostring(price)
 	)
-	-- Free restock after all 3 standard cards sold; UI re-rolls lazily on next open.
-	if CSR_Shop.lineup_sold_out(peer_id) then
-		csr_log("[CSR] shop: lineup sold out -> free restock pending")
-		return true, "sold_out"
-	end
 	return true
 end
 
@@ -333,24 +329,60 @@ function CSR_Shop.reroll_cost(peer_id)
 	return CSR_Shop.get_reroll_count(peer_id) + 1
 end
 
+-- Rerolls UNSOLD slots IN PLACE (standard + contraband); sold slots stay sold and untouched.
+-- Reroll stays usable as long as ANY slot is unsold (e.g. the contraband slot after the 3 standard
+-- cards are bought). Returns false without charging when every slot is sold.
 function CSR_Shop.reroll(peer_id)
 	peer_id = peer_id or CSR_Shop.local_peer_id()
 	local m = mgr()
 	if not m or not m.peer_entry then
 		return false
 	end
+	local lineup = CSR_Shop.get_lineup(peer_id)
+	local any_unsold = false
+	for _, slot in ipairs(lineup) do
+		if not slot.sold then
+			any_unsold = true
+			break
+		end
+	end
+	if not any_unsold then
+		return false
+	end
 	local cost = CSR_Shop.reroll_cost(peer_id)
 	if not CSR_Shop.debit(peer_id, cost) then
 		return false
 	end
-	local prev = CSR_Shop.get_reroll_count(peer_id)
-	if not CSR_Shop.roll_lineup(peer_id) then
-		-- Use set_tokens (not credit) so the refund doesn't inflate gross_earned.
-		CSR_Shop.set_tokens(peer_id, CSR_Shop.tokens(peer_id) + cost)
-		return false
+	-- Keep the 3 standard cards distinct: seed dedup with the SOLD standard types we're preserving.
+	local seen = {}
+	for _, slot in ipairs(lineup) do
+		if slot.rarity ~= "contraband" and slot.sold then
+			seen[slot.type] = true
+		end
 	end
-	-- roll_lineup resets count to 0; restore and increment so next reroll costs prev+2.
-	m:peer_entry(peer_id).shop.reroll_count = prev + 1
+	local std_pool = CSR_Shop.build_pool()
+	local cb_pool = CSR_Shop.build_contraband_pool()
+	for _, slot in ipairs(lineup) do
+		if not slot.sold then
+			if slot.rarity == "contraband" then
+				if #cb_pool > 0 then
+					local cb = cb_pool[math.random(#cb_pool)]
+					slot.type, slot.rarity = cb.type, cb.rarity
+				end
+			else
+				local entry, retries = nil, 0
+				repeat
+					entry = pick_one(std_pool)
+					retries = retries + 1
+				until (entry and not seen[entry.type]) or retries >= MAX_DUP_RETRIES
+				if entry then
+					slot.type, slot.rarity = entry.type, entry.rarity
+					seen[entry.type] = true
+				end
+			end
+		end
+	end
+	m:peer_entry(peer_id).shop.reroll_count = CSR_Shop.get_reroll_count(peer_id) + 1
 	m:save()
 	return true
 end
@@ -363,12 +395,202 @@ function CSR_Shop.owned_count(peer_id, item_type)
 	return m:item_count(peer_id or CSR_Shop.local_peer_id(), item_type)
 end
 
+-- ===== Late-join auto-grant (guest catch-up) =====
+
+-- A fair player buys at most 3 items per completed mission, so cap shop-sourced items at 3 * missions.
+local LATE_JOIN_ITEM_CAP_PER_MISSION = 3
+
+-- Auto-grant gives at most 1 wildcard total (add_item doesn't enforce the carry-1 rule). Only the
+-- rank source can roll it — the shop never sells wildcards. Weight mirrors the selection window.
+local LATE_JOIN_MAX_WILDCARDS = 1
+local RANK_WILDCARD_WEIGHT = 12
+
+-- Weighted rarity for one token-converted item, affordability-aware: rolls the shop's weighted
+-- distribution (pick_one); if that rarity costs more than budget, falls back to the most expensive
+-- AFFORDABLE rarity present in the pool. Returns a rarity string or nil.
+local function roll_affordable_rarity(pool, budget)
+	local item = pick_one(pool)
+	if not item then
+		return nil
+	end
+	if (CSR_Shop.PRICE[item.rarity] or math.huge) <= budget then
+		return item.rarity
+	end
+	local best, best_price = nil, -1
+	for _, e in ipairs(pool) do
+		local p = CSR_Shop.PRICE[e.rarity] or math.huge
+		if p <= budget and p > best_price then
+			best, best_price = e.rarity, p
+		end
+	end
+	return best
+end
+
+local function random_item_of_rarity(pool, rarity)
+	local matches = {}
+	for _, e in ipairs(pool) do
+		if e.rarity == rarity then
+			matches[#matches + 1] = e
+		end
+	end
+	if #matches == 0 then
+		return nil
+	end
+	return matches[math.random(1, #matches)]
+end
+
+-- Weighted rarity pick from a {rarity = weight} table (mirrors the selection window's roller).
+local function weighted_rarity(weights)
+	local total = 0
+	for _, w in pairs(weights) do
+		total = total + w
+	end
+	if total <= 0 then
+		return nil
+	end
+	local roll = math.random() * total
+	local acc = 0
+	for rarity, w in pairs(weights) do
+		acc = acc + w
+		if roll <= acc then
+			return rarity
+		end
+	end
+	local last
+	for r in pairs(weights) do
+		last = r
+	end
+	return last
+end
+
+-- Wildcard-rarity sellable items (registry), used only by the rank source's capped wildcard draw.
+local function build_wildcard_pool()
+	local pool = {}
+	local m = mgr()
+	if not m or not m.registered_items then
+		return pool
+	end
+	for _, entry in ipairs(m:registered_items()) do
+		if entry.rarity == "wildcard" and not entry.is_scrap then
+			pool[#pool + 1] = entry
+		end
+	end
+	return pool
+end
+
+-- Wildcard-rarity stacks the peer already holds, so the grant never pushes them past carry-1.
+local function wildcard_held(m, peer_id)
+	if not m.registered_items or not m.item_count then
+		return 0
+	end
+	local n = 0
+	for _, entry in ipairs(m:registered_items()) do
+		if entry.rarity == "wildcard" then
+			n = n + (m:item_count(peer_id, entry.type) or 0)
+		end
+	end
+	return n
+end
+
+-- Guest late-join catch-up.
+--   A) RANK items: auto-grant the owed picks (host_rank - rank_item_count); self-corrects on re-grant.
+--      Weighted like the selection window and may roll AT MOST 1 wildcard total (honouring carry-1);
+--      everything else comes from the standard common/uncommon/rare pool.
+--   B) SHOP items: convert the host's NEW gross tokens (gross - prev_gross) at shop prices, capped
+--      cumulatively at 3 * host_missions shop items. Standard pool only — the shop never sells wildcards.
+-- Returns leftover tokens (of the delta budget) for the caller to add to the wallet.
+function CSR_Shop.auto_grant_late_join(peer_id, host_rank, gross, host_missions, prev_gross)
+	peer_id = peer_id or CSR_Shop.local_peer_id()
+	host_rank = math.max(0, tonumber(host_rank) or 0)
+	gross = math.max(0, tonumber(gross) or 0)
+	host_missions = math.max(0, tonumber(host_missions) or 0)
+	prev_gross = math.max(0, tonumber(prev_gross) or 0)
+	local budget = math.max(0, gross - prev_gross)
+
+	local m = mgr()
+	if not m or not m.add_item then
+		return budget
+	end
+	local pool = CSR_Shop.build_pool()
+	if #pool == 0 then
+		return budget
+	end
+
+	-- Source A: rank items (do NOT bump shop_item_count, so they count as rank picks).
+	-- Weighted by POOL_WEIGHTS (+ wildcard) with a grant-wide wildcard cap that honours carry-1.
+	local owned_rank = (m.rank_item_count and m:rank_item_count(peer_id)) or 0
+	local wc_budget = math.max(0, LATE_JOIN_MAX_WILDCARDS - wildcard_held(m, peer_id))
+	local wc_pool = build_wildcard_pool()
+	local base_weights = {}
+	for _, e in ipairs(pool) do
+		base_weights[e.rarity] = POOL_WEIGHTS[e.rarity]
+	end
+	local wildcards_granted = 0
+	for _ = 1, host_rank - owned_rank do
+		local weights = base_weights
+		if wc_budget > 0 and #wc_pool > 0 then
+			weights = {}
+			for r, w in pairs(base_weights) do
+				weights[r] = w
+			end
+			weights.wildcard = RANK_WILDCARD_WEIGHT
+		end
+		local rarity = weighted_rarity(weights)
+		local item
+		if rarity == "wildcard" then
+			item = wc_pool[math.random(#wc_pool)]
+			wc_budget = wc_budget - 1
+			wildcards_granted = wildcards_granted + 1
+		elseif rarity then
+			item = random_item_of_rarity(pool, rarity)
+		end
+		if not item then
+			break
+		end
+		m:add_item(peer_id, item.type)
+	end
+
+	-- Source B: token -> shop items (delta budget, cumulative cap).
+	local owned_shop = (m.shop_item_count and m:shop_item_count(peer_id)) or 0
+	local cap = math.max(0, LATE_JOIN_ITEM_CAP_PER_MISSION * host_missions - owned_shop)
+	local cheapest = CSR_Shop.PRICE.common or 10
+	local granted = 0
+	while budget >= cheapest and granted < cap do
+		local rarity = roll_affordable_rarity(pool, budget)
+		if not rarity then
+			break
+		end
+		local item = random_item_of_rarity(pool, rarity)
+		if not item then
+			break
+		end
+		if not m:add_item(peer_id, item.type) then
+			break
+		end
+		local entry = m:peer_entry(peer_id)
+		entry.shop_item_count = (entry.shop_item_count or 0) + 1
+		budget = budget - (CSR_Shop.PRICE[rarity] or cheapest)
+		granted = granted + 1
+	end
+
+	csr_log(
+		"[CSR] shop: late-join grant rank_owed="
+			.. tostring(host_rank - owned_rank)
+			.. " wildcards="
+			.. tostring(wildcards_granted)
+			.. " shop_items="
+			.. tostring(granted)
+			.. " leftover="
+			.. tostring(budget)
+	)
+	return budget
+end
+
 -- ===== Gage dialogue =====
 -- Counts must match csr_gage_line_<category>_<n> keys in english.json.
 local GREETING_COUNT = 12
 local REROLL_COUNT = 6
 local PURCHASE_COUNT = 5
-local SOLDOUT_COUNT = 2
 
 -- Greeting is picked once per run and persists across menu opens.
 function CSR_Shop.get_or_pick_greeting(peer_id)
@@ -399,10 +621,6 @@ end
 
 function CSR_Shop.pick_purchase_line()
 	return "csr_gage_line_purchase_" .. tostring(math.random(1, PURCHASE_COUNT))
-end
-
-function CSR_Shop.pick_soldout_line()
-	return "csr_gage_line_soldout_" .. tostring(math.random(1, SOLDOUT_COUNT))
 end
 
 csr_log("[CSR] shop.lua loaded")
