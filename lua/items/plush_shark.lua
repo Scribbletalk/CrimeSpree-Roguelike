@@ -87,6 +87,18 @@ local function plush_stop_visuals(self)
 	end)
 end
 
+-- Reused radial-data table + closure-free pusher for the per-frame countdown.
+-- HUDTeammate:set_custom_radial reads current/total synchronously (no ref retained),
+-- so one table can be overwritten every frame -> zero per-frame allocation.
+local plush_radial_data = { current = 0, total = 0 }
+local function plush_push_radial(remaining, total)
+	if managers.hud then
+		plush_radial_data.current = remaining
+		plush_radial_data.total = total + 0.1
+		managers.hud:set_teammate_custom_radial(HUDManager.PLAYER_PANEL, plush_radial_data)
+	end
+end
+
 -- Cancel bleed-out + grant invuln. Returns true if it fired.
 local function try_plush_guardian(self, mgr, now)
 	if not self._csr_guardian_armed then
@@ -183,15 +195,7 @@ _G.CSR.register_item({
 				end
 				local remaining = (self._csr_plush_invuln_end or 0) - TimerManager:game():time()
 				if remaining > 0 then
-					pcall(function()
-						if managers.hud then
-							local total = self._csr_plush_duration or 10
-							managers.hud:set_teammate_custom_radial(
-								HUDManager.PLAYER_PANEL,
-								{ current = remaining, total = total + 0.1 }
-							)
-						end
-					end)
+					pcall(plush_push_radial, remaining, self._csr_plush_duration or 10)
 				else
 					plush_stop_visuals(self)
 				end

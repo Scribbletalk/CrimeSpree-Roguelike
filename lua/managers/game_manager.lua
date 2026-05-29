@@ -487,13 +487,22 @@ end
 -- =====================================================
 
 function CSRGameManager:local_peer_id()
+	-- Cached per session: the local peer id is stable for a session's lifetime, and
+	-- this is queried per-hit by combat item hooks. Cache is cleared on session load
+	-- (see CSR_ResetLocalPeerIdCache). Only a real resolved id is cached, never the
+	-- fallback, so a pre-session call doesn't pin the cache to 1.
+	if self._cached_local_peer_id then
+		return self._cached_local_peer_id
+	end
 	local nm = managers and managers.network
 	if nm and nm.session then
 		local session = nm:session()
 		if session and session.local_peer then
 			local peer = session:local_peer()
 			if peer and peer.id then
-				return peer:id()
+				local id = peer:id()
+				self._cached_local_peer_id = id
+				return id
 			end
 		end
 	end
@@ -2106,4 +2115,12 @@ Hooks:PostHook(Setup, "init_managers", "CSR_AttachGameManager", function(self, m
 		return
 	end
 	managers.csr = CSRGameManager:new()
+end)
+
+-- Peer ids are reassigned when a new network session loads (join/host). Drop the
+-- cached local peer id so the next query re-resolves it for the new session.
+Hooks:Add("BaseNetworkSessionOnLoadComplete", "CSR_ResetLocalPeerIdCache", function()
+	if managers and managers.csr then
+		managers.csr._cached_local_peer_id = nil
+	end
 end)

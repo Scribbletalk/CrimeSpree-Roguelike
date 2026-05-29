@@ -27,6 +27,16 @@ local direct_expiry = 0
 local active_fx = 0
 local fx_counter = 0
 
+-- Reused across procs to avoid per-proc allocations in the per-hit path.
+-- run_chain is never re-entrant (the `chaining` guard bails on_damage), so a single
+-- pooled candidates array + a hoisted comparator are safe.
+local candidates = {}
+local function cmp_dist(a, b)
+	return a.dist < b.dist
+end
+-- col_ray ray direction is read-only; share one constant like math.UP is shared for normal.
+local RAY_DOWN = Vector3(0, 0, -1)
+
 local SPECIAL_SUBSTRINGS = { "taser", "cloaker", "tank", "captain", "sniper", "shield", "marshal" }
 
 local function is_special_enemy(unit)
@@ -53,7 +63,7 @@ local function make_fake_col_ray(unit)
 		mvector3.set(pos, unit:position())
 	end
 	return {
-		ray = Vector3(0, 0, -1),
+		ray = RAY_DOWN,
 		position = pos,
 		normal = math.UP,
 		unit = unit,
@@ -124,18 +134,27 @@ local function run_chain(original_damage, attacker_unit, weapon_unit, initial_ta
 	local radius = RADIUS_BASE + (stacks - 1) * RADIUS_STEP
 	local chain_dmg = original_damage * CHAIN_DMG_PCT
 
-	local candidates = {}
+	local n = 0
 	for _, unit in ipairs(World:find_units_quick("sphere", src_pos, radius, managers.slot:get_mask("enemies"))) do
 		if alive(unit) and unit ~= initial_target and not direct_hits[unit] then
 			local cd = unit:character_damage()
 			if cd and not cd:dead() and unit:movement() then
-				table.insert(candidates, { unit = unit, dist = pos_dist_sq(src_pos, unit:movement():m_pos()) })
+				n = n + 1
+				local slot = candidates[n]
+				if not slot then
+					slot = {}
+					candidates[n] = slot
+				end
+				slot.unit = unit
+				slot.dist = pos_dist_sq(src_pos, unit:movement():m_pos())
 			end
 		end
 	end
-	table.sort(candidates, function(a, b)
-		return a.dist < b.dist
-	end)
+	-- Drop pooled slots beyond this proc's count so table.sort only ranks [1..n].
+	for i = #candidates, n + 1, -1 do
+		candidates[i] = nil
+	end
+	table.sort(candidates, cmp_dist)
 
 	for i = 1, math.min(CHAIN_COUNT, #candidates) do
 		local unit = candidates[i].unit
