@@ -1,22 +1,5 @@
--- CSR mission-briefing Black Market affordability reminder.
---
--- A second plate on MissionBriefingGui's saferect workspace (immediately below
--- the item reminder from briefing_reminder_input.lua). Visible when the local
--- peer has enough Gage Tokens to afford at least one unsold slot in the current
--- lineup. Clicking it opens the Black Market via managers.menu:open_node.
---
--- Positioning: same HUD-header anchor (hy + hh + fs) as the item reminder, but
--- offset UP by the BM panel height + 2px gap so BM sits just above the item reminder.
--- See briefing_reminder_input.lua for the coordinate-space rationale.
---
--- Mouse chain: this file is loaded AFTER briefing_reminder_input.lua in mod.txt,
--- so its raw wraps are the outermost layer. In mouse_moved orig (the item-reminder
--- wrapper) runs FIRST so it can clear its own hover before we apply the BM hover;
--- this prevents a stale-bright glitch when the cursor moves between the two plates.
--- In mouse_pressed BM hit-test runs before calling orig.
---
--- Critical Rule #1 exception: same as briefing_reminder_input.lua
--- (return-value hooks, feedback_rule1_return_value_exception).
+-- Black Market affordability reminder plate on MissionBriefingGui and the lobby.
+-- Raw wraps (not PostHook) because these hooks need return values.
 
 if not RequiredScript then
 	return
@@ -186,10 +169,7 @@ if MissionBriefingGui and not _G._CSR_BM_REMINDER_HOOKED then
 		end
 	end)
 
-	-- Mouse wraps: outermost layer (loaded after briefing_reminder_input.lua).
-	-- mouse_moved: call orig FIRST so item reminder can clear its own hover, then
-	-- overlay BM hit-test on top. mouse_pressed: check BM plate first, then fall
-	-- through to item reminder + vanilla via orig.
+	-- Outermost wrap: call orig first in mouse_moved so item-reminder clears its hover before BM applies its own.
 	local orig_mm = MissionBriefingGui.mouse_moved
 	if orig_mm then
 		function MissionBriefingGui:mouse_moved(x, y)
@@ -226,10 +206,7 @@ if MissionBriefingGui and not _G._CSR_BM_REMINDER_HOOKED then
 	end
 end
 
--- Lobby BM reminder — same plate on CSRMissionsMenuComponent (the mission-select
--- lobby). Positioned above the unselected-items reminder. Since this file loads at
--- missionbriefinggui time (after menucomponentmanager), CSRMissionsMenuComponent
--- already exists; PostHooks + chain-wraps are safe to install here.
+-- Lobby variant: same plate on CSRMissionsMenuComponent, positioned above the unselected-items reminder.
 if CSRMissionsMenuComponent and not _G._CSR_BM_LOBBY_REMINDER_HOOKED then
 	_G._CSR_BM_LOBBY_REMINDER_HOOKED = true
 	csr_log("[CSR] bm_reminder: lobby section registered (CSRMissionsMenuComponent found)")

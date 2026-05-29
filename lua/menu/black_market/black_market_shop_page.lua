@@ -1,11 +1,5 @@
 -- Crime Spree Roguelike - Gage's Services Shop Page.
--- Renders the Gage dialogue strip, token counter, reroll button and 3 item
--- cards for the Shop tab. U1 port of the pre-refactor shop page: backend swapped
--- from CSR_ShopManager/CSR_TokensManager/CSR_PlayerItems/CSR_ITEM_BY_TYPE to
--- CSR_Shop (lua/managers/shop.lua) + managers.csr. Item name/desc now come from
--- the registry def's separate name/desc loc keys (the old single loc_key
--- "NAME\ndesc" model is gone). Rarity-frame colours use proper 4-arg Color()
--- (the pre-refactor 3-arg values were alpha,red,green — blue missing).
+-- Dialogue strip, token counter, reroll button and 3 item cards for the Shop tab.
 
 if not RequiredScript then
 	return
@@ -23,8 +17,7 @@ local DIALOGUE_HEIGHT = 70
 local DIALOGUE_X = 0
 local TOOLBAR_TOP = 80
 
--- 4-arg rarity colours, matching item_selection.lua.
--- Contraband (orange) is included: slot 4 is always a contraband card.
+-- 4-arg rarity colours, matching item_selection.lua. Contraband included (slot 4).
 local RARITY_COLORS = {
 	common = Color.white,
 	uncommon = Color(1, 0, 0.95, 0),
@@ -32,12 +25,9 @@ local RARITY_COLORS = {
 	contraband = Color(1, 1, 0.4, 0),
 }
 
--- Single frame texture, tinted per rarity at draw time (same as the logbook /
--- items page / selection window).
 local FRAME_KEY = "csr_frame"
 
--- Resolve an item icon: a "/" means a full DB-mounted path (addon .dds); else a
--- short hud_icons id. Mirrors item_selection.lua's resolution.
+-- "/" means a full DB-mounted path (addon .dds); else a short hud_icons id.
 local function resolve_icon(icon)
 	if type(icon) == "string" and icon:find("/", 1, true) then
 		return icon, { 0, 0, 128, 128 }
@@ -45,7 +35,7 @@ local function resolve_icon(icon)
 	return tweak_data.hud_icons:get_icon_data(icon)
 end
 
--- Resolve a loc KEY to text, blanking the engine's "ERROR <key>" placeholder.
+-- :text() returns "ERROR <key>" for unknown keys; blank that out.
 local function loc_or_blank(key)
 	if not key or not managers.localization then
 		return ""
@@ -67,9 +57,7 @@ function CrimeSpreeBlackMarketShopPage:init(panel, parent)
 end
 
 function CrimeSpreeBlackMarketShopPage:_setup()
-	-- Restock a fully sold-out lineup on open so the shop never reopens as a dead
-	-- end (e.g. the player bought the last card then closed before the deferred
-	-- free restock fired). roll_lineup is free (no debit).
+	-- Restock a fully sold-out lineup on open so the shop never reopens as a dead end.
 	if CSR_Shop.lineup_sold_out and CSR_Shop.lineup_sold_out() then
 		CSR_Shop.roll_lineup()
 	end
@@ -78,21 +66,12 @@ function CrimeSpreeBlackMarketShopPage:_setup()
 	self:_create_dialogue_strip()
 	self:_create_cards()
 	self:_create_owned_strip()
-	-- Animate the persisted greeting line typewriter-style on open.
 	self:_set_dialogue_line(CSR_Shop.get_or_pick_greeting(), true)
 	self:refresh()
 end
 
--- Read-only owned-items strip ABOVE the Black Market box (user request), sized to
--- roughly the item-selection popup width (NOT the full shop width) so it reads as a
--- compact inventory band. Rebuilt by refresh() so a purchase shows up immediately.
---
--- Hosted on the component's OUTER panel (comp._panel), NOT the shop tab panel: the
--- tab panel is nested under the content box's opaque (alpha 0.92) background, where
--- the strip's content layers do not composite through -- hence "tooltip shows but
--- icons don't". The outer panel is top-level (like the selection window's ws panel),
--- so the strip draws cleanly; the component's close() removes the outer panel, which
--- cascades the strip + tooltip away -- no explicit destroy needed.
+-- Owned-items strip hosted on the OUTER panel (not the tab panel) to avoid the
+-- opaque content-box clipping its layers. Strip anchors beside the BM header.
 function CrimeSpreeBlackMarketShopPage:_create_owned_strip()
 	if not CSROwnedItemsStrip then
 		return
@@ -105,26 +84,16 @@ function CrimeSpreeBlackMarketShopPage:_create_owned_strip()
 	end
 	-- ~3 selection cards wide ((208 + 10) * 3 + 10 = 664).
 	local strip_w = 664
-	-- Explicit compact height cap: there is plenty of room here, so a box-relative
-	-- bound never shrank the strip -- this fixed cap makes the widget shrink its cell
-	-- to a compact band. Lower it to shrink further, raise it to grow.
 	local COMPACT_STRIP_H = 48
 	self._owned_strip = CSROwnedItemsStrip:new({
 		parent = outer,
 		tooltip_parent = outer,
 		width = strip_w,
-		-- Header / back button sit at layer 60 on the outer panel; match it so the
-		-- strip draws above the content box (layer 10) wherever they meet.
 		layer = 60,
 		max_height = COMPACT_STRIP_H,
-		-- Items hug the left inset (no centring) so the row flows rightward from just
-		-- past the header, continuing the header's line.
 		align = "left",
 		anchor = function(panel)
 			panel:set_center_x(box:center_x())
-			-- Sit on the "BLACK MARKET" header's line (top-left): centre vertically on
-			-- the header, clamped so a strip taller than the header band is not pushed
-			-- off the panel top.
 			local hdr = comp and comp._header
 			local cy = (hdr and alive(hdr) and hdr:center_y()) or 20
 			panel:set_center_y(cy)
@@ -173,15 +142,13 @@ function CrimeSpreeBlackMarketShopPage:_create_dialogue_strip()
 	})
 end
 
--- Set the dialogue line (a loc key). Displayed with a "> " chevron (PD2 bitmap
--- fonts have no runtime italic). animate=true runs a typewriter reveal.
+-- Set the dialogue line (a loc key). animate=true runs a typewriter reveal.
 function CrimeSpreeBlackMarketShopPage:_set_dialogue_line(loc_key, animate)
 	if not self._dialogue_text then
 		return
 	end
 	local target = "> " .. loc_or_blank(loc_key)
-	-- Skip if already showing this line (avoids restarting the typewriter on
-	-- repeated sets, e.g. rapid buy clicks).
+	-- Skip if already showing this line (avoids restarting the typewriter on rapid clicks).
 	if self._dialogue_target == target then
 		return
 	end
@@ -190,8 +157,7 @@ function CrimeSpreeBlackMarketShopPage:_set_dialogue_line(loc_key, animate)
 		self._dialogue_text:set_text(target)
 		return
 	end
-	-- panel:animate runs the function as a coroutine, resumed each frame with dt.
-	-- A new :animate cancels the previous, so reroll/buy mid-animation is safe.
+	-- panel:animate runs as a coroutine; a new :animate cancels the previous.
 	self._dialogue_text:stop()
 	self._dialogue_text:set_text("")
 	self._dialogue_text:animate(function(o)
@@ -327,13 +293,11 @@ function CrimeSpreeBlackMarketShopPage:_create_cards()
 	end
 end
 
--- Build the static visual structure of a card. Called once per slot (and again
--- if the slot's item type changes after a reroll).
+-- Build static card visuals. Called once per slot, or again if the item type changes after a reroll.
 function CrimeSpreeBlackMarketShopPage:_build_card_visuals(card, entry)
 	local panel = card.panel
 	local rcolor = RARITY_COLORS[entry.rarity] or Color.white
 
-	-- Dark card background.
 	panel:rect({
 		name = "card_bg",
 		x = 0,
@@ -350,7 +314,6 @@ function CrimeSpreeBlackMarketShopPage:_build_card_visuals(card, entry)
 	local frame_center_x = panel:w() / 2
 	local frame_center_y = 95
 
-	-- Rarity-coloured frame around the icon.
 	local ftex, frect = resolve_icon(FRAME_KEY)
 	card.frame = panel:bitmap({
 		name = "frame",
@@ -363,7 +326,6 @@ function CrimeSpreeBlackMarketShopPage:_build_card_visuals(card, entry)
 	})
 	card.frame:set_center(frame_center_x, frame_center_y)
 
-	-- Icon, centred in the frame.
 	local itex, irect = resolve_icon(entry.icon)
 	card.icon = panel:bitmap({
 		name = "icon",
@@ -376,8 +338,6 @@ function CrimeSpreeBlackMarketShopPage:_build_card_visuals(card, entry)
 	})
 	card.icon:set_center(frame_center_x, frame_center_y)
 
-	-- Name (rarity colour) + short description (white). U1 defs carry separate
-	-- name/desc loc keys.
 	local item_name = loc_or_blank(entry.name)
 	if item_name == "" then
 		item_name = string.upper(tostring(entry.type))
@@ -460,7 +420,7 @@ function CrimeSpreeBlackMarketShopPage:_build_card_visuals(card, entry)
 		layer = 2,
 	})
 
-	-- Buy button (bottom-right): bare blue text, brightens + underlines on hover.
+	-- Buy button (bottom-right): brightens + underlines on hover.
 	card.buy_panel = panel:panel({
 		name = "buy_btn",
 		x = panel:w() - 96,
@@ -527,8 +487,7 @@ end
 
 -- Refresh all dynamic UI to current state. Idempotent.
 function CrimeSpreeBlackMarketShopPage:refresh()
-	-- Bail if the page panel was destroyed (close removes it; a stale instance
-	-- pointer calling :set_text on a dead Diesel object = C++ access violation).
+	-- Guard against calling :set_text on a destroyed Diesel object (C++ AV).
 	if not self._panel or not alive(self._panel) then
 		return
 	end
@@ -540,14 +499,13 @@ function CrimeSpreeBlackMarketShopPage:refresh()
 		self._token_text:set_text(tostring(wallet))
 	end
 
-	-- Reroll cost + affordability tint (cost number dims red when unaffordable;
-	-- the label colour is hover-driven in mouse_moved).
+	-- Reroll cost dims red when unaffordable; label colour is hover-driven in mouse_moved.
 	local reroll_cost = CSR_Shop.reroll_cost(peer_id)
 	if self._reroll_cost_text then
 		local cost_str = tostring(reroll_cost)
 		self._reroll_cost_text:set_text(cost_str)
 		self._reroll_cost_text:set_color(wallet >= reroll_cost and Color.white or Color(1, 1, 0.5, 0.5))
-		-- Shrink-wrap so the right-flush content actually ends at the panel edge.
+		-- Shrink-wrap so right-flush content ends at the panel edge.
 		local _, _, cw = self._reroll_cost_text:text_rect()
 		if not cw or cw <= 0 then
 			cw = #cost_str * (self._reroll_cost_font_size or 26) * 0.6
@@ -565,7 +523,6 @@ function CrimeSpreeBlackMarketShopPage:refresh()
 		self:_refresh_card(i, lineup[i], wallet)
 	end
 
-	-- Reflect the current inventory (a purchase just added an item) in the strip.
 	if self._owned_strip then
 		self._owned_strip:rebuild()
 	end
@@ -588,8 +545,7 @@ function CrimeSpreeBlackMarketShopPage:_refresh_card(slot_index, slot, wallet)
 		return
 	end
 
-	-- Build visuals on first populate (or rebuild if the slot's type changed
-	-- after a reroll).
+	-- Build visuals on first populate, or rebuild if the slot's type changed after a reroll.
 	if not card.populated or card.populated_type ~= slot.type then
 		if card.populated then
 			card.panel:clear()
@@ -604,7 +560,6 @@ function CrimeSpreeBlackMarketShopPage:_refresh_card(slot_index, slot, wallet)
 		card.populated_type = slot.type
 	end
 
-	-- Sold state.
 	if card.sold_overlay then
 		card.sold_overlay:set_visible(slot.sold == true)
 	end
@@ -612,7 +567,6 @@ function CrimeSpreeBlackMarketShopPage:_refresh_card(slot_index, slot, wallet)
 		card.buy_panel:set_visible(not slot.sold)
 	end
 
-	-- Price affordability tint.
 	if card.price_text then
 		local price = CSR_Shop.price_for_rarity(entry.rarity)
 		local can_buy = not slot.sold and wallet >= price
@@ -650,8 +604,6 @@ function CrimeSpreeBlackMarketShopPage:mouse_pressed(button, x, y)
 end
 
 function CrimeSpreeBlackMarketShopPage:mouse_moved(o, x, y)
-	-- Owned-strip hover tooltip: a side effect (the strip is non-interactive), so the
-	-- buy/reroll hover + return value below are untouched.
 	if self._owned_strip then
 		self._owned_strip:mouse_moved(x, y)
 	end
@@ -693,7 +645,6 @@ function CrimeSpreeBlackMarketShopPage:mouse_moved(o, x, y)
 				card.buy_underline:set_visible(is_hot)
 			end
 		end
-		-- Reroll label follows the same brighten-on-hover (no underline).
 		if self._reroll_text then
 			self._reroll_text:set_color(
 				hovered == "reroll" and tweak_data.screen_colors.button_stage_2
@@ -755,25 +706,22 @@ function CrimeSpreeBlackMarketShopPage:_on_buy(slot_index)
 		managers.menu_component:post_event("item_sell")
 	end
 
-	-- Normal purchase: confirm and refresh in place.
 	if result ~= "sold_out" then
 		self:_set_dialogue_line(CSR_Shop.pick_purchase_line(), true)
 		self:refresh()
 		return
 	end
 
-	-- Bought the last card: show the sold-out lineup for a 0.5s beat, then the shop
-	-- restocks for FREE. The restock runs via DelayedCalls (ticked on MenuUpdate),
-	-- so it fires even if the player closes the menu first -- the lineup never stays
-	-- stuck sold-out (the page also self-heals on open). roll_lineup carries no debit.
-	self:refresh() -- render all three cards as sold for the beat
+	-- Bought the last card: show sold-out for a 0.5s beat, then free restock via
+	-- DelayedCalls. The page also self-heals on open if the delay fires after close.
+	self:refresh()
 	local page = self
 	local function restock()
 		if CSR_Shop.lineup_sold_out() then
-			CSR_Shop.roll_lineup() -- free restock; resets reroll cost to base
+			CSR_Shop.roll_lineup()
 		end
 		if not alive(page._panel) then
-			return -- menu closed during the delay; data already restocked above
+			return
 		end
 		if managers.menu_component and managers.menu_component.post_event then
 			managers.menu_component:post_event("stinger_new_weapon")
@@ -785,6 +733,6 @@ function CrimeSpreeBlackMarketShopPage:_on_buy(slot_index)
 	if DelayedCalls and DelayedCalls.Add then
 		DelayedCalls:Add("csr_black_market_restock", 0.5, restock)
 	else
-		restock() -- no timer available: restock immediately
+		restock()
 	end
 end

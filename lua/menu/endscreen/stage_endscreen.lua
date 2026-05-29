@@ -1,72 +1,15 @@
--- CSRStageEndScreenGui / CSRCrimeSpreeResultTabItem — fork of the vanilla
--- end-screen GUI pair.
---
--- Origin:
---   pd2_source_code/lib/managers/menu/stageendscreengui.lua
---     (StageEndScreenGui, lines 511-1241; StatsTabItem 1-509 is NOT forked)
---   pd2_source_code/lib/managers/menu/stageendscreentabcrimespree.lua
---     (CrimeSpreeResultTabItem, 749 lines)
---
--- Strategy: byte-for-byte copy of StageEndScreenGui with the class renamed and
--- a SMALL, surgical diff (the 6 `managers.crime_spree:is_active()` sites made
--- unconditional, plus two class-reference swaps). Every other method (tabs,
--- scrolling, mouse/input, bain debrief, console subtitles, update loop, close)
--- is byte-identical to vanilla — those drive the generic StatsTabItem stat
--- pages which are vanilla-correct and read managers.statistics, NOT crime_spree.
---
--- The base StatsTabItem class is REUSED, never redefined: CSRCrimeSpreeResultTabItem
--- subclasses the vanilla global StatsTabItem exactly as vanilla
--- CrimeSpreeResultTabItem does. Redefining StatsTabItem here would leak into
--- every vanilla end screen (feedback_csr_only_no_vanilla_leak).
---
--- Class renames:
---   StageEndScreenGui       -> CSRStageEndScreenGui
---   CrimeSpreeResultTabItem -> CSRCrimeSpreeResultTabItem
---   CrimeSpreeMissionsMenuComponent.get_height() -> CSRMissionsMenuComponent.get_height()
---
--- The 6 surgical gate flips in CSRStageEndScreenGui:init (all forced to the
--- CS-style branch, since this class is only ever instantiated for a CSR heist
--- by endscreen_wiring.lua):
---   1. panel width  : the CS `w = w - padding + 1` shrink, unconditional
---   2. panel bottom  : reserve CSRMissionsMenuComponent.get_height() like CS
---   3. continue_text : blanked ("") like CS — the real continue/cash-out flow
---                      is the post-heist options node (Slice B), not this button
---   4. result tab    : build CSRCrimeSpreeResultTabItem, skip the cash summary
---   5. small font    : reduced like CS (the CS result tab is wide)
---   6. set_continue_button_text : no-op like CS
---
--- Backend swaps (CSRCrimeSpreeResultTabItem only):
---   managers.crime_spree:mission_completion_gain() -> managers.csr:rank_for_current_level()
---     (length-scaled gain for the heist just played, not a flat per-heist constant)
---   managers.crime_spree:has_failed()              -> (dropped; CSR failure
---                                                     state is Slice B)
---   missions_completed counter sourced from managers.csr:missions_completed()
---
--- Dropped (vanilla-CS spree economy with no CSR backend, per the locked
--- end-screen design — rank-gain animation + missions counter only):
---   _create_rewards / _update_reward_gain   (spree reward-tier cards)
---   _create_timeline / _update_level_gain   (modifier-unlock timeline)
---   catchup_bonus / spree_level / mission_start_spree_level / modifiers_to_select
---
--- Routing (which class instantiates) lives in endscreen_wiring.lua, gated
--- on the run-scoped no-leak signal (job == "crime_spree" AND vanilla CS NOT
--- active) so vanilla / vanilla CS / Skirmish are byte-for-byte untouched.
+-- Fork of vanilla StageEndScreenGui + CrimeSpreeResultTabItem.
+-- 6 is_active() gates forced unconditional; reward/timeline panels dropped; rank gain replaces spree-level gain.
 
 local padding = 10
 
 -- =====================================================================
--- CSRCrimeSpreeResultTabItem — simplified fork of CrimeSpreeResultTabItem.
--- Only the rank-gain panel + a missions-completed line; the reward-card and
--- modifier-timeline panels are dropped (no CSR backend, per locked design).
--- The gain count-up animation machinery (stages / _advance_stage / update /
--- fade_in / count_text / _update_gain_calculate) is reused verbatim from
--- vanilla — it is generic and not spree-coupled.
+-- CSRCrimeSpreeResultTabItem — rank-gain panel only; reward-card and timeline dropped.
 -- =====================================================================
 
 CSRCrimeSpreeResultTabItem = CSRCrimeSpreeResultTabItem or class(StatsTabItem)
 
--- Verbatim vanilla CrimeSpreeResultTabItem:init (tab text + select rect),
--- then our trimmed :_setup().
+-- Verbatim vanilla init; calls our trimmed _setup() instead of vanilla's.
 function CSRCrimeSpreeResultTabItem:init(panel, tab_panel, text, i)
 	self._main_panel = panel
 	self._tab_panel = tab_panel
@@ -120,10 +63,7 @@ function CSRCrimeSpreeResultTabItem:_setup()
 	self:_create_token_convert()
 end
 
--- CSR has no per-mission failure state yet (Slice B). Success is purely the
--- vanilla stage-success flag here; the failure branches below stay only as a
--- defensive mirror of vanilla so the layout never errors if stage_success() is
--- false for some non-CSR-failure reason (kicked / server left).
+-- Failure branches kept as defensive mirror of vanilla (kicked / server left edge case).
 function CSRCrimeSpreeResultTabItem:success()
 	return managers.job:stage_success()
 end
@@ -137,14 +77,7 @@ function CSRCrimeSpreeResultTabItem:make_fine_text(text)
 	return x, y, w, h
 end
 
--- Repurposed vanilla _create_level: the animated "gain" number now counts the
--- run's rank gain for the heist just played (managers.csr:rank_for_current_level,
--- length-scaled: short = 1, medium = 2, long = 3) instead of the spree level gain,
--- and a static missions-completed line is added below it using the same loc keys
--- the lobby/briefing forks use (csr_lobby_rank / csr_lobby_missions_completed) so
--- all three CSR surfaces read identically. rank_for_current_level resolves the
--- played mission from the loaded level (current_mission is already cleared by the
--- mission-end hook by the time this tab builds) so it matches the grant + the clock.
+-- Animates length-scaled rank gain (short=1, medium=2, long=3) instead of vanilla spree-level gain.
 function CSRCrimeSpreeResultTabItem:_create_level(total_w)
 	self._level_panel = self._cs_panel:panel({})
 
@@ -247,19 +180,11 @@ function CSRCrimeSpreeResultTabItem:_create_level(total_w)
 		add_bonus(managers.localization:text("menu_cs_mission_complete"), rank_gain)
 	end
 
-	-- Rank/missions counters are NOT repeated here: the status bar above the
-	-- mission-cards strip (missions_menu.lua:_create_status_bar, now also
-	-- on the end screen via the fix-#3 wiring) already shows RANK + MISSIONS.
-	-- This tab only owns the animated rank-GAIN number.
+	-- Rank/missions totals are in the status bar strip; this tab owns only the gain animation.
 end
 
--- Stage-2 panel: animates the run's looted cash converting into Gage Tokens
--- (project_csr_token_earning). Mirrors the pre-refactor cash->rank bar, but the
--- right-side counter is the token gain (completion tokens shown first, then loot
--- tokens added as the cash drains) with the shop's token glyph. Display-only:
--- the wallet was already credited at mission end; this reads the values
--- managers.csr stashed there (_last_heist_rewards). Built hidden (alpha 0) and
--- revealed by _update_token_convert; skipped on failure / no data.
+-- Stage-2 panel: display-only animation of looted cash converting to Gage Tokens.
+-- Wallet already credited at mission end; reads stashed _last_heist_rewards.
 function CSRCrimeSpreeResultTabItem:_create_token_convert()
 	if not self:success() then
 		return
@@ -289,10 +214,7 @@ function CSRCrimeSpreeResultTabItem:_create_token_convert()
 		alpha = 0,
 		layer = 15,
 	})
-	-- Right-of-centre + upper area (user feedback 2026-05-26: the centred 0.30
-	-- placement was still too low and too far left). center_x 0.62 keeps the
-	-- 0.6-wide panel fully on-screen (right edge ~0.92w); y 0.16 sits it near the
-	-- top, clear of the reminder / status bar in the reserved bottom strip.
+	-- 0.62 center_x keeps the panel on-screen; 0.16 y clears the bottom status strip.
 	panel:set_center_x(cs_panel:w() * 0.62)
 	panel:set_y(math.floor(cs_panel:h() * 0.16))
 
@@ -390,8 +312,7 @@ function CSRCrimeSpreeResultTabItem:_create_token_convert()
 		loot = loot,
 		per_token = per_token,
 		remainder = remainder,
-		-- Exact (never negative) pool of cash converted on screen: the loot that
-		-- became tokens this call plus the remainder carried to the next heist.
+		-- Cash visible on-screen: loot converted this heist + remainder carried forward.
 		pool_cash = loot * per_token + remainder,
 		panel = panel,
 		money = money,
@@ -405,8 +326,7 @@ function CSRCrimeSpreeResultTabItem:set_stats(stats_data) end
 
 function CSRCrimeSpreeResultTabItem:feed_statistics(stats_data) end
 
--- Only the gain count-up stage survives; the level-timeline and reward-card
--- stages are dropped (their panels do not exist in this fork).
+-- Only gain count-up + token convert; timeline/reward-card stages dropped.
 CSRCrimeSpreeResultTabItem.stages = {
 	{
 		delay = 1,
@@ -490,9 +410,7 @@ function CSRCrimeSpreeResultTabItem:count_text(element, cash_string, start_val, 
 	managers.menu_component:post_event("count_1_finished")
 end
 
--- Verbatim vanilla _update_gain_calculate: fades each bonus in and counts the
--- gain number up by the bonus amount. With our single "mission complete" bonus
--- this animates the rank gain from 0 to rank_per_heist.
+-- Verbatim vanilla: fades bonuses in and counts the gain up by each bonus amount.
 function CSRCrimeSpreeResultTabItem:_update_gain_calculate(t, dt)
 	local t = 0
 	local fade_t = 0.5
@@ -543,13 +461,8 @@ function CSRCrimeSpreeResultTabItem:_update_gain_calculate(t, dt)
 	self:_advance_stage(t)
 end
 
--- Stage 2: reveal the completion-token count, then drain the looted cash into the
--- extra loot tokens (user design: completion first, loot added on top). Phases:
--- fade_in -> completion_hold -> filling -> carry_reveal -> hold -> fade_out. The
--- bar fills once per loot token (total fill time budgeted so a big haul stays
--- snappy); the final partial fill is the remainder carried to the next heist.
--- Sub-state rides self._csr_tc_state (cleared before _advance_stage). Reads only
--- the stashed display values -- never touches the wallet.
+-- Stage 2: fade_in → completion_hold → filling (one bar fill per loot token) → carry_reveal → hold → fade_out.
+-- Sub-state in _csr_tc_state; reads stashed display values only, never touches the wallet.
 function CSRCrimeSpreeResultTabItem:_update_token_convert(t, dt)
 	local cc = self._csr_token_convert
 	if not cc then
@@ -591,8 +504,7 @@ function CSRCrimeSpreeResultTabItem:_update_token_convert(t, dt)
 				st.elapsed = 0
 				st.token_idx = 1
 				st.fill_elapsed = 0
-				-- Budget total fill time so a big haul still resolves (<= ~4.5s) while
-				-- a small one is slow enough to read each token tick.
+				-- Clamp fill_duration so large hauls resolve in ~4.5s max, small ones stay readable.
 				st.fill_duration = math.max(0.12, math.min(1.0, 4.5 / cc.loot))
 				if managers.menu_component then
 					managers.menu_component:post_event("count_1")
@@ -605,8 +517,7 @@ function CSRCrimeSpreeResultTabItem:_update_token_convert(t, dt)
 		return
 	end
 
-	-- Fill the bar once per loot token; each token consumes per_token cash from the
-	-- displayed pool and bumps the counter by one.
+	-- Each tick fills bar + drains per_token cash + increments displayed count.
 	if st.phase == "filling" then
 		st.fill_elapsed = st.fill_elapsed + dt
 		local p = math.min(st.fill_elapsed / st.fill_duration, 1)
@@ -634,8 +545,7 @@ function CSRCrimeSpreeResultTabItem:_update_token_convert(t, dt)
 				if managers.menu_component then
 					managers.menu_component:post_event("count_1_finished")
 				end
-				-- Show the carried remainder as a partial bar (progress toward the
-				-- next token, kept for the next heist).
+				-- Partial bar shows remainder cash carried to next heist.
 				if cc.remainder > 0 and cc.per_token > 0 then
 					st.phase = "carry_reveal"
 					st.elapsed = 0
@@ -681,8 +591,7 @@ function CSRCrimeSpreeResultTabItem:_update_token_convert(t, dt)
 end
 
 -- =====================================================================
--- CSRStageEndScreenGui — fork of StageEndScreenGui (the 6 gate flips marked
--- inline with `CSR:`). Everything else is verbatim vanilla.
+-- CSRStageEndScreenGui — fork of StageEndScreenGui; 6 gate flips marked inline.
 -- =====================================================================
 
 CSRStageEndScreenGui = CSRStageEndScreenGui or class()
@@ -713,8 +622,7 @@ function CSRStageEndScreenGui:init(saferect_ws, fullrect_ws, statistics_data)
 		CONTINUE = continue_button,
 	}))
 
-	-- CSR gate 3: the CS end screen blanks the inline continue text; the real
-	-- continue/cash-out flow is the post-heist options node (Slice B).
+	-- CSR gate 3: blank inline continue text; actual flow is the post-heist options node.
 	continue_text = ""
 
 	self._continue_button = self._panel:text({
@@ -792,8 +700,7 @@ function CSRStageEndScreenGui:init(saferect_ws, fullrect_ws, statistics_data)
 	self._items = {}
 	local item = nil
 
-	-- CSR gate 4: build the forked result tab; never show the cash summary
-	-- (vanilla CS skips it too — CSR has no per-heist cash payout screen).
+	-- CSR gate 4: build the forked result tab; skip vanilla cash summary.
 	item = CSRCrimeSpreeResultTabItem:new(
 		self._panel,
 		self._tab_panel,
@@ -902,12 +809,7 @@ function CSRStageEndScreenGui:init(saferect_ws, fullrect_ws, statistics_data)
 	self:select_tab(1, true)
 	self._items[self._selected_item]:select()
 
-	-- The vanilla stats-box frame (BoxGuiObject around the selected tab) is
-	-- intentionally NOT drawn for the CSR fork. It framed the cash/XP summary
-	-- area; with per-heist cash/XP suppressed (fix #2) and the cash summary
-	-- skipped (gate 4), that frame is left as stray empty corners next to the
-	-- mission cards (user report 2026-05-18). box_panel was a throwaway local
-	-- (never stored on self / referenced again), so dropping it is inert.
+	-- Stats-box frame intentionally omitted: without the cash/XP summary it renders as stray empty corners.
 
 	if statistics_data then
 		self:feed_statistics(statistics_data)
@@ -1114,8 +1016,7 @@ function CSRStageEndScreenGui:show_cash_summary()
 	self._items[1]._panel:set_alpha(1)
 end
 
--- CSR gate 6: the CS end screen ignores inline continue-button-text updates
--- (the continue flow is the post-heist options node, Slice B). No-op.
+-- CSR gate 6: no-op; continue flow is the post-heist options node, not this button.
 function CSRStageEndScreenGui:set_continue_button_text(text, not_clickable)
 	return
 end

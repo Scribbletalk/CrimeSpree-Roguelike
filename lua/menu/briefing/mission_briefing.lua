@@ -1,58 +1,14 @@
--- CSRMissionBriefing — fork of vanilla HUDMissionBriefing.
---
--- Origin: pd2_source_code/lib/managers/hud/hudmissionbriefing.lua (904 lines)
--- Strategy: byte-for-byte copy with the class renamed and a SMALL, surgical
--- diff in :init only. Every other method (the ready-slot / MP "ready up"
--- machinery: set_player_slot, set_slot_ready, set_slot_joining,
--- set_dropin_progress, set_slot_outfit, remove_player_slot_by_peer_id, etc.)
--- is byte-identical to vanilla — those drive player readiness + networking and
--- MUST behave exactly as vanilla or the heist never starts.
---
--- Why this fork exists:
---   Launching a CSR heist activates a *temporary* "crime_spree" job
---   (game_manager.lua:select_mission -> JobManager:activate_temporary_job)
---   but, unlike vanilla Crime Spree, CSR deliberately does NOT enable
---   managers.crime_spree (Slice 6). Vanilla HUDMissionBriefing:init gates its
---   minimal CS-style layout behind `managers.crime_spree:is_active()`. With
---   that false, init falls into the full narrative-contact path and calls
---   `self._background_layer_two:gui(self._current_contact_data.assets_gui, {})`
---   for the temp job, whose contact assets_gui scene is not loaded -> the
---   `hudmissionbriefing.lua: attempt to index a nil value` crash on heist
---   launch (crash_report_2026_05_17_22_30; see
---   refactor_forked_launch_crashes_vanilla_cs_ui).
---
--- The diff vs vanilla init (everything else is verbatim):
---   * The CS-style branches (4 `managers.crime_spree:is_active()` sites) are
---     made UNCONDITIONAL — this fork always renders the minimal CS briefing.
---   * The displayed level + rank are sourced from managers.csr / the CSR
---     mission model + tweak_data.levels[level_id], NOT the vanilla
---     narrative-job graph (managers.job:current_contact_data /
---     managers.crime_spree:get_mission). This is the design constraint that
---     keeps future custom (BeardLib) heists renderable — see
---     project_mod_friendly_extension_goal.
---   * The base `text` (line ~526 in origin) is set to "" instead of being
---     derived from contact/job name_ids, since the now-unconditional CS block
---     overwrites it anyway — fully decouples this fork from the contact graph.
---
--- Routing (which briefing class instantiates) lives in briefing_wiring.lua;
--- it is gated on a run-scoped, no-leak signal (current job == "crime_spree"
--- AND managers.crime_spree NOT active) so vanilla / vanilla CS / Skirmish are
--- byte-for-byte untouched (feedback_csr_only_no_vanilla_leak).
+-- CSRMissionBriefing — fork of vanilla HUDMissionBriefing (init diff only).
+-- CSR does NOT enable managers.crime_spree, so vanilla init crashes on the unloaded temp-job contact scene.
+-- This fork makes the CS-style branches unconditional and sources level/rank from managers.csr instead.
 
 require("lib/managers/menu/MenuBackdropGUI")
 require("lib/managers/menu/SkirmishBriefingProgress")
 
 CSRMissionBriefing = CSRMissionBriefing or class()
 
--- Resolve the real narrative contact that owns a given level, so the briefing
--- shows that heist's actual contact scene instead of the crime_spree job's
--- hardcoded "hoxton" (which is the same wrong scene for every CSR heist).
--- Reverse-maps level_id -> owning narrative job -> contact by scanning the
--- narrative jobs' chains. Skips the crime_spree job itself (its chain is the
--- temp mission stage and its contact is the wrong hoxton). Fully defensive:
--- returns nil on any gap (no narrative graph, no owning job -- e.g. a future
--- custom heist outside the graph -- or a malformed chain) so the caller falls
--- back to the static backdrop instead of crashing.
+-- Reverse-maps level_id to its owning narrative contact so we can show the correct animated backdrop.
+-- Returns nil defensively if no owning job found (custom heist, malformed chain); caller falls back to static bain.
 local function csr_resolve_contact_for_level(level_id)
 	if not level_id then
 		return nil
@@ -73,8 +29,7 @@ local function csr_resolve_contact_for_level(level_id)
 			local chain = jd and jd.chain
 			if type(chain) == "table" then
 				for _, entry in ipairs(chain) do
-					-- A chain entry is a stage table, or an array of
-					-- alternative stage tables (multi-day alt routes).
+					-- Chain entry is a stage table or an array of alt-route stage tables.
 					local lvl = nil
 					if type(entry) == "table" then
 						lvl = entry.level_id
@@ -311,24 +266,8 @@ function CSRMissionBriefing:init(hud, workspace)
 		show_contact_gui = false
 	end
 
-	-- CSR (diff vs vanilla): show the per-heist-correct animated contact
-	-- background. Vanilla Crime Spree can't (it forces a static bain backdrop)
-	-- because the temp crime_spree job's contact is hardcoded "hoxton" --
-	-- self._current_contact_data is always hoxton regardless of the actual
-	-- heist, so vanilla's scene would be the same wrong one every time. We
-	-- resolve the REAL narrative contact that owns the loading level
-	-- (Global.game_settings.level_id, the source of truth that survives the
-	-- menu->game transition) and render ITS scene, loading that contact's
-	-- asset package on demand (it is not mounted for a CSR temp-job heist) and
-	-- unloading it again in hide() so it does not leak into the level.
-	--
-	-- This is the explicit accept-the-risk path the user chose: it couples to
-	-- the narrative-job graph (against the fork's decoupling design
-	-- constraint) and depends on package state. Every step is guarded; any
-	-- failure -- no owning job (e.g. a future custom heist not in the
-	-- narrative graph), package load failure, or :gui failure -- degrades to
-	-- the static bain pattern, never a crash (the original launch-crash class
-	-- stays closed).
+	-- Load the heist's real narrative contact backdrop on demand; temp job always has wrong "hoxton" contact.
+	-- Any failure (no owning job, package load fail, :gui fail) degrades to static bain, never a crash.
 	local contact_shown = false
 	local level_id = Global and Global.game_settings and Global.game_settings.level_id
 	local contact = show_contact_gui and csr_resolve_contact_for_level(level_id) or nil
@@ -339,8 +278,7 @@ function CSRMissionBriefing:init(hud, workspace)
 				PackageManager:load(pkg)
 			end)
 			if load_ok then
-				-- Set ONLY when this instance actually loaded it, so hide()
-				-- never unloads a package the game itself had mounted.
+				-- Track what WE loaded so hide() only unloads our own packages.
 				self._csr_loaded_contact_pkg = pkg
 			end
 		end
@@ -521,15 +459,7 @@ function CSRMissionBriefing:init(hud, workspace)
 		end
 	end
 
-	-- CSR (diff vs vanilla): a CSR mission is always a single heist (one stage),
-	-- and per the fork's design constraint this must NOT be derived from the
-	-- narrative-job chain (managers.job:current_job_chain_data). The temp
-	-- crime_spree job's chain is empty at briefing time, so vanilla's
-	-- `#self._current_job_chain or 0` yields 0 -> the day loop only creates
-	-- "day_1".."day_7", so child("day_0") below is nil and
-	-- `:center()` on it crashes (crash_report_2026_05_18_11_48:547). Forcing 1
-	-- both fixes the crash and is semantically correct for CSR. The whole
-	-- job-schedule panel is hidden at the end of init anyway.
+	-- CSR: temp job chain is empty at briefing time; vanilla yields 0 -> child("day_0") nil crash. Force 1.
 	local num_stages = 1
 	local day_color = tweak_data.screen_colors.item_stage_1
 	local chain = self._current_job_chain and self._current_job_chain or {}
@@ -672,34 +602,12 @@ function CSRMissionBriefing:init(hud, workspace)
 		self._paygrade_panel:move(0, -pg_text:h())
 	end
 
-	-- CSR (diff vs vanilla): the now-unconditional CS block below overwrites
-	-- `text` wholesale, so the vanilla derivation from contact/job name_ids is
-	-- dead code here. Set "" to keep this fork fully decoupled from the
-	-- narrative-contact graph (the design constraint for future custom heists).
+	-- CSR: unconditional CS block below overwrites text, so decouple from the contact graph.
 	local text = ""
 	local text_align, text_len = nil
 
-	-- CSR (diff vs vanilla): unconditional + sourced from the CSR mission model
-	-- instead of Global.game_settings / managers.crime_spree:get_mission. The
-	-- rank shown is the FLAT per-heist amount — the exact same expression the
-	-- mission card (missions_menu.lua) and the award site
-	-- (mission_lifecycle.lua) use, so briefing, card, and payout can never
-	-- disagree.
-	-- CSR (diff vs vanilla): the heist title is the actual CSR level name,
-	-- sourced from the CSR mission model + tweak_data.levels (NOT the
-	-- narrative-job graph, per the fork design constraint -- the crime_spree
-	-- job's own name_id is the generic "heist_crime_spree"). Rendered LEFT and
-	-- with NO "+rank" suffix so it reads like a normal heist briefing (the user
-	-- chose the normal-heist look); leaving text_align nil lets the vanilla
-	-- big faded background title render too. The run's rank/progress lives in
-	-- the CSR counter header that replaces the Risk display below.
-	-- Primary source is Global.game_settings.level_id: it is set by
-	-- select_mission and persisted by the engine across the menu->game state
-	-- transition (it IS the level being loaded), exactly like
-	-- CSRGameManager:_setup_temporary_job. managers.csr:get_mission() is only a
-	-- menu-side fallback -- game-side it returns nil (current_mission is never
-	-- persisted, see game_manager.lua), which is why the title previously
-	-- fell back to the generic "heist_crime_spree" ("Crime Spree").
+	-- CSR: title from Global.game_settings.level_id (survives menu->game transition);
+	-- managers.csr:get_mission() is menu-side fallback only (current_mission not persisted game-side).
 	local level_id = Global and Global.game_settings and Global.game_settings.level_id
 	if not level_id then
 		local mission = managers.csr and managers.csr.get_mission and managers.csr:get_mission()
@@ -727,9 +635,7 @@ function CSRMissionBriefing:init(hud, workspace)
 		color = tweak_data.screen_colors.text,
 	})
 
-	-- CSR (diff vs vanilla): no set_range_color here — vanilla colours the CS
-	-- "+N spree level" suffix, which this fork no longer renders (rank moved to
-	-- the CSR counter header). text_len is intentionally unused/nil now.
+	-- CSR: no set_range_color — the "+N spree level" suffix is gone; rank lives in the CSR counter header.
 
 	if not text_align then
 		local big_text = self._background_layer_three:text({
@@ -775,30 +681,13 @@ function CSRMissionBriefing:init(hud, workspace)
 		day_2_sticker:move(math.random(4) - 2, math.random(4) - 2)
 	end
 
-	-- CSR (diff vs vanilla): hide the vanilla chrome the CSR briefing does not
-	-- use — the Risk display (paygrade stars + "RISK" label), the "JOB
-	-- OVERVIEW" label, and the day-schedule row (the 7 day markers + payday
-	-- stamp under our counter header). A CSR heist is a single stage with no
-	-- multi-day schedule, so that row is meaningless here and the user asked
-	-- for it gone. The CSR counter header below takes the Risk slot.
+	-- CSR: hide vanilla chrome (Risk display, Job Overview label, day-schedule row) — replaced by CSR counter header.
 	self._paygrade_panel:set_visible(false)
 	self._paygrade_text:set_visible(false)
 	self._job_overview_text:set_visible(false)
 	self._job_schedule_panel:set_visible(false)
 
-	-- CSR run-progress header in place of the Risk display: missions completed
-	-- (left) / rank (center) / difficulty (right). Mirrors the lobby header
-	-- (missions_menu.lua:_create_status_bar) one-for-one — same loc keys,
-	-- same managers.csr accessors, same spree glyph (U+E018), same yellow
-	-- value highlight, and the same 3-column left/center/right layout — so the
-	-- lobby and the briefing read identically.
-	--
-	-- Laid out on a panel that matches the briefing content/tab panel
-	-- (vanilla MissionBriefingGui._panel: the right HALF of the saferect,
-	-- pinned to its right edge — that is the panel carrying the plan/assets
-	-- tab row). The three labels therefore span exactly that panel's width and
-	-- sit over it. CSR_HEADER_X_NUDGE is the one in-game fine-tune knob
-	-- ("чуть правее" = raise it).
+	-- CSR run-progress header: missions / rank / difficulty, mirroring the lobby status bar layout.
 	if managers.csr then
 		local CSR_HEADER_X_NUDGE = 0
 		local C = managers.csr
@@ -807,9 +696,7 @@ function CSRMissionBriefing:init(hud, workspace)
 		local missions_p = managers.localization:to_upper_text("csr_lobby_missions_completed") .. ": "
 		local rank_p = managers.localization:to_upper_text("csr_lobby_rank") .. ": "
 		local diff_p = managers.localization:to_upper_text("csr_lobby_difficulty") .. ": "
-		-- Rank + difficulty follow the HOST while guesting (host_rank / mp_host_difficulty
-		-- are synced); both fall back to the own run for host/SP. This is what makes the
-		-- briefing header read the HOST's run for a guest instead of its own paused run.
+		-- Guests show host's rank/difficulty (synced); fallback to own run for host/SP.
 		local diff_id = (C.mp_host_difficulty and C:mp_host_difficulty()) or (C.difficulty and C:difficulty())
 		local diff_name_id = diff_id and tweak_data.difficulty_name_ids and tweak_data.difficulty_name_ids[diff_id]
 		local diff_str = diff_name_id and managers.localization:to_upper_text(diff_name_id) or tostring(diff_id)
@@ -820,8 +707,7 @@ function CSRMissionBriefing:init(hud, workspace)
 		local rank_s = rank_p .. tostring((C.host_rank and C:host_rank()) or (C.rank and C:rank()) or 0) .. " " .. glyph
 		local diff_s = diff_p .. diff_str
 
-		-- Same geometry as MissionBriefingGui._panel (the plan/assets tab +
-		-- content panel): right half of the saferect, pinned to its right edge.
+		-- Right half of the saferect, matching vanilla MissionBriefingGui._panel geometry.
 		local fw = self._foreground_layer_one:w()
 		local hdr = self._foreground_layer_one:panel({
 			name = "progress_header",
@@ -832,9 +718,7 @@ function CSRMissionBriefing:init(hud, workspace)
 		hdr:set_y(self._paygrade_text:y())
 		hdr:move(CSR_HEADER_X_NUDGE, 0)
 
-		-- Three full-panel-width siblings with differing alignment, exactly
-		-- like the lobby _title_panel: each text box defaults to the panel
-		-- width, so left/center/right place them at the panel's edges/center.
+		-- Full-width text boxes with left/center/right alignment, same pattern as lobby _title_panel.
 		local function field(txt, al, prefix_len, full_len)
 			local t = hdr:text({
 				vertical = "center",
@@ -852,15 +736,7 @@ function CSRMissionBriefing:init(hud, workspace)
 		field(rank_s, "center", utf8.len(rank_p), utf8.len(rank_s))
 		field(diff_s, "right", utf8.len(diff_p), utf8.len(diff_s))
 
-		-- Save the header reference so the unselected-items reminder
-		-- (rendered on MissionBriefingGui's saferect workspace -- see
-		-- briefing_reminder_input.lua) can read world coords from it
-		-- and position itself below the difficulty column. The reminder
-		-- itself does NOT live here on the HUD workspace -- the HUD and
-		-- the menu workspaces have different coord origins, so rendering
-		-- here and hit-testing from MissionBriefingGui created a constant
-		-- saferect-Y offset between visible plate and click area. Living
-		-- on the same workspace as mouse dispatch fixes that natively.
+		-- Exposed so briefing_reminder_input.lua can read world coords for positioning below the difficulty column.
 		self._csr_progress_header = hdr
 	end
 
@@ -915,12 +791,7 @@ function CSRMissionBriefing:hide()
 		self._background_layer_two:clear()
 	end
 
-	-- Unload the contact package this instance loaded on demand in init (it
-	-- was not mounted by the CSR temp-job heist; leaving it loaded would leak
-	-- it into the level). Guarded so it only ever unloads what WE loaded:
-	-- _csr_loaded_contact_pkg is set only on a successful PackageManager:load
-	-- by this instance. The :gui scene was just cleared above, so the package
-	-- is safe to drop here.
+	-- Unload the contact package we loaded on demand — not mounted by the temp-job, would leak into the level.
 	if self._csr_loaded_contact_pkg then
 		local pkg = self._csr_loaded_contact_pkg
 		self._csr_loaded_contact_pkg = nil

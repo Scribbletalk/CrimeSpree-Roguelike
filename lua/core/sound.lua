@@ -1,6 +1,4 @@
--- CSR sound system. Plays custom OGG clips through _G.CSR.play_sound(name, opts).
--- Item code registers a clip via _G.CSR.register_sound (extension_api.lua) and
--- plays it by name. BeardLib loads buffers when present; raw XAudio is the fallback.
+-- CSR sound system: register_sound + play_sound; BeardLib buffers first, raw XAudio fallback.
 
 if not RequiredScript then
 	return
@@ -68,8 +66,7 @@ local function load_buffer_raw(rel_path, sound_id)
 		return nil
 	end
 
-	-- BeardLib AddBuffer manages the XAudio.Buffer lifecycle; returns the buffer
-	-- so playback treats it identically to a raw one.
+	-- BeardLib manages the XAudio.Buffer lifecycle; returned buffer is drop-in compatible.
 	if BeardLib and BeardLib.Managers and BeardLib.Managers.Sound and BeardLib.Managers.Sound.AddBuffer then
 		local ok, beard_buf = pcall(function()
 			return BeardLib.Managers.Sound:AddBuffer({
@@ -94,8 +91,7 @@ local function load_buffer_raw(rel_path, sound_id)
 	return buf
 end
 
--- Public: exposed so a late register_sound (addon loaded after the retry loop)
--- loads on the spot.
+-- Public: lets a late register_sound (addon loaded after retry loop) load immediately.
 function _G.CSR._load_sound(name, def)
 	if not def then
 		return
@@ -130,14 +126,7 @@ local function load_all_registered()
 	end
 end
 
--- _G.CSR._play_sound(name, opts). opts = {
---   unit         = unit ref  -> XAudio.UnitSource (3D, follows the unit)
---   position     = Vector3   -> XAudio.Source + set_position (3D static)
---   (neither)                -> XAudio.Source + set_relative(true) (2D)
---   volume       = 0..1  (multiplied by the master sfx_volume setting)
---   min_distance / max_distance = spatial falloff range
--- }
--- The source is single-sound: auto-plays, auto-closes. Caller doesn't stop it.
+-- opts: unit=UnitSource(3D), position=static-3D, neither=2D; volume scaled by sfx_volume setting.
 function _G.CSR._play_sound(name, opts)
 	opts = opts or {}
 	local entry = loaded_buffers[name]
@@ -175,8 +164,7 @@ function _G.CSR._play_sound(name, opts)
 		if opts.max_distance and src.set_max_distance then
 			src:set_max_distance(opts.max_distance)
 		end
-		-- Set gain BEFORE the first XAudio update; single-sound sources push gain
-		-- then auto-play, so the clip starts at the correct volume.
+		-- Must set gain before first XAudio update or clip starts at wrong volume.
 		src:set_volume(vol)
 	end)
 

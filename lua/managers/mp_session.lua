@@ -1,11 +1,4 @@
--- Host-state push for MP. Broadcasts {rank, difficulty, run_seed, level_id,
--- tokens_gross} to all peers; guests apply via set_mp_host_state and copy host's
--- level into Global.game_settings so they load the same heist. Late-joining guest
--- wallet seeded to host's GROSS earned tokens. See csr_mp_architecture.md.
---
--- LOADS IN BOTH Lua states (mod.txt: lib/entry AND lib/states/ingamewaitingforplayers).
--- The host pushes from the lobby-join handshake (menu state), but at_enter lives in
--- the game state. broadcast_host_state must exist in both.
+-- Host-state push: broadcasts rank/difficulty/seed/tokens to peers; loaded in both Lua states so broadcast_host_state exists for lobby-join and at_enter.
 
 if not RequiredScript then
 	return
@@ -41,10 +34,8 @@ local function broadcast_host_state()
 		host_difficulty = mgr:difficulty(),
 		host_missions_completed = (mgr.missions_completed and mgr:missions_completed()) or 0,
 		run_seed = mgr:seed(),
-		-- Host's currently-selected heist; guests adopt this so they load the same level.
 		host_level_id = (gs and gs.level_id) or false,
 		host_mission = (gs and gs.mission) or "none",
-		-- Host's GROSS tokens earned this run — seeds a late-joining guest's wallet.
 		host_tokens_gross = (_G.CSR_Shop and _G.CSR_Shop.gross_earned and _G.CSR_Shop.gross_earned()) or 0,
 	})
 	LuaNetworking:SendToPeers(CSR_MP.MSG.HANDSHAKE_OK, payload)
@@ -67,8 +58,7 @@ if CSR_MP and CSR_MP.register_handler then
 		if not (CSR_MP.is_client and CSR_MP.is_client() and is_from_host) then
 			return
 		end
-		-- NOT gated on csr_heist_active() — false in the lobby. is_from_host blocks forgery
-		-- and the host only sends this in a CSR context, so receiving it IS the CSR signal.
+		-- Not gated on csr_heist_active() — it's false in lobby; is_from_host blocks forgery.
 		local ok, payload = pcall(json.decode, data)
 		if not ok or type(payload) ~= "table" then
 			return
@@ -81,7 +71,7 @@ if CSR_MP and CSR_MP.register_handler then
 				tonumber(payload.run_seed),
 				tonumber(payload.host_missions_completed)
 			)
-			-- Adopt host's level/mission/difficulty so this guest loads the same heist.
+			-- Adopt host's level/mission so the guest loads the same heist.
 			if Global and Global.game_settings then
 				if type(payload.host_level_id) == "string" then
 					Global.game_settings.level_id = payload.host_level_id
@@ -93,13 +83,12 @@ if CSR_MP and CSR_MP.register_handler then
 					Global.game_settings.difficulty = payload.host_difficulty
 				end
 			end
-			-- Repaint guest's lobby RANK + item quota if it's currently open.
+			-- Repaint lobby rank + item quota if currently open.
 			local comp = managers.menu_component and managers.menu_component._crime_spree_missions
 			if comp and comp.refresh_for_rank_change then
 				comp:refresh_for_rank_change()
 			end
-			-- Re-apply enemy-damage modifier with fresh host_rank — guest's own at_enter
-			-- often runs before host state arrives, leaving scaling at rank 0 all heist.
+			-- Re-apply modifiers with fresh host_rank; guest at_enter often fires before state arrives.
 			if mgr.apply_modifiers then
 				mgr:apply_modifiers()
 			end
@@ -113,8 +102,7 @@ if CSR_MP and CSR_MP.register_handler then
 			end
 		end
 
-		-- Late-join token seed: wallet = host's GROSS earned, ONCE per host run.
-		-- set_tokens (not credit) so the seed doesn't inflate gross.
+		-- Seed late-join wallet from host's gross; set_tokens not credit to avoid inflating gross.
 		local gross = tonumber(payload.host_tokens_gross)
 		if
 			gross
@@ -152,8 +140,7 @@ if IngameWaitingForPlayersState and not _G._CSR_MP_SESSION_HOOKED then
 		if not CSR_MP then
 			return
 		end
-		-- Guest: clear stale host state then PULL fresh state from host. The pull makes
-		-- in-heist re-acquire reliable (request-reply, not waiting on a timed push).
+		-- Guest: clear stale state then pull fresh — request-reply is more reliable than waiting on a push.
 		if CSR_MP.is_client and CSR_MP.is_client() then
 			if managers.csr and managers.csr.clear_mp_host_state then
 				managers.csr:clear_mp_host_state()
@@ -163,7 +150,7 @@ if IngameWaitingForPlayersState and not _G._CSR_MP_SESSION_HOOKED then
 			end
 			return
 		end
-		-- Host: belt-and-suspenders timed push so state arrives after every guest's clear.
+		-- Host: delayed push so state arrives after guests have cleared stale data.
 		if CSR_MP.is_host and CSR_MP.is_host() and CSR_MP.is_multiplayer() and csr_heist_active() then
 			DelayedCalls:Add("CSR_MP_HostStatePush", 0.75, broadcast_host_state)
 		end

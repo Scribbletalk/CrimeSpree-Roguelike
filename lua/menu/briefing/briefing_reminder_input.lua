@@ -1,32 +1,6 @@
 -- CSR mission-briefing unselected-items reminder (UI + input).
---
--- LIVES on MissionBriefingGui's saferect workspace (NOT on the HUD's
--- foreground_layer_one) for a single reason: input dispatch on the briefing
--- screen flows through MissionBriefingGui:mouse_moved/pressed, and those
--- callbacks receive coordinates in `_safe_workspace`-local space (saferect
--- origin). Rendering on the HUD's saferect-aligned panel and hit-testing
--- here produced a constant Y mismatch -- the visible plate was at HUD
--- coords, the click target at menu-saferect coords, off by saferect_y.
--- Living on the same workspace as the mouse dispatch eliminates the
--- mismatch natively: panel:inside(x, y) just works.
---
--- The visible POSITION still anchors to the CSR briefing's
--- _csr_progress_header (rendered on HUD), so the reminder reads as "the
--- row under the difficulty column above". We read the header's world rect
--- and convert to MissionBriefingGui workspace local coords.
---
--- Critical Rule #1 exception: mouse_moved returns (used, pointer) and
--- mouse_pressed returns `used` -- both values matter for the input
--- dispatcher upstream, and PostHook cannot carry return values. Raw chain
--- wrap is the established CSR convention for return-value hooks
--- (feedback_rule1_return_value_exception). _G guards stop hot-reload from
--- compounding wraps.
---
--- No-leak guarantee: the reminder is built only when a CSR briefing fork
--- is live (managers.hud._hud_mission_briefing._csr_progress_header is a
--- field that only exists on CSRMissionBriefing). When the briefing screen
--- runs in a non-CSR session, the reminder stays hidden and the wraps fall
--- through to vanilla return values.
+-- Must live on MissionBriefingGui's saferect workspace: mouse coords are in that
+-- space, so hit-testing against a HUD panel produces a Y mismatch.
 
 if not RequiredScript then
 	return
@@ -57,10 +31,6 @@ end
 if MissionBriefingGui and not _G._CSR_BRIEFING_REMINDER_INPUT_HOOKED then
 	_G._CSR_BRIEFING_REMINDER_INPUT_HOOKED = true
 
-	-- Build the reminder UI on the briefing GUI's saferect workspace. Run
-	-- exactly once per MissionBriefingGui instance (the panels persist for
-	-- the lifetime of the gui, which is the whole menu session per the
-	-- MenuComponentManager:create_mission_briefing_gui memoised-lazy pattern).
 	function MissionBriefingGui:_csr_build_reminder()
 		if self._csr_reminder_panel and alive(self._csr_reminder_panel) then
 			return
@@ -70,15 +40,7 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_REMINDER_INPUT_HOOKED then
 			return
 		end
 
-		-- Subscribe ONCE per MissionBriefingGui instance to CSRGameManager
-		-- item-added events: any add_item caller drives the reminder counter
-		-- repaint with no per-call-site wiring. Guarded by _csr_reminder_unsub
-		-- so the show()-driven idempotent rebuild path doesn't stack
-		-- subscriptions. Body is alive-guarded inside _csr_refresh_reminder
-		-- (it short-circuits on a dead/missing panel), so the close-time
-		-- unsub is belt-and-braces -- but it's still cheap, and required for
-		-- correctness if MissionBriefingGui is ever destroyed + recreated
-		-- (memoised-lazy today, may not be tomorrow).
+		-- Subscribe once; guard prevents stacking on idempotent rebuild.
 		local mgr = managers and managers.csr
 		if not self._csr_reminder_unsub and mgr and mgr.on_item_added then
 			self._csr_reminder_unsub = mgr:on_item_added(function()
@@ -111,9 +73,7 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_REMINDER_INPUT_HOOKED then
 		self._csr_reminder_hovered = false
 	end
 
-	-- Update count, plate position+size, visibility. Called from init / show
-	-- PostHooks AND from the selection-window's finalize (after a pick the
-	-- count must drop without waiting for show()).
+	-- Also called from selection-window finalize so the count drops immediately after a pick.
 	function MissionBriefingGui:_csr_refresh_reminder()
 		if not self._csr_reminder_panel or not alive(self._csr_reminder_panel) then
 			return
@@ -129,17 +89,9 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_REMINDER_INPUT_HOOKED then
 			count = count,
 		}))
 
-		-- WIDTH from MENU workspace (NOT from HUD header's :w()): the two
-		-- workspaces' saferects may not have identical dimensions, and the
-		-- earlier "BG got shorter" report came from inheriting HUD's width
-		-- into a smaller menu workspace, getting clipped. CSRMissionBriefing
-		-- itself builds its header as fw/2 right-anchored to fw (where fw is
-		-- the HUD saferect width); we mirror that formula in MENU workspace
-		-- so the plate sits right-half-saferect on whatever the menu's
-		-- saferect actually is.
-		-- Y still derives from the HUD header's screen position (via world-y
-		-- diff) so the plate visually sits exactly under the difficulty row
-		-- the player can see, no matter how the workspaces are aligned.
+		-- Width from MENU workspace (not HUD header): the two saferects may differ,
+		-- causing clipping if we inherit HUD's width. Y from HUD world coords so
+		-- the plate sits visually under the difficulty row regardless of workspace alignment.
 		local ws_panel = self._safe_workspace:panel()
 		local hdr = hud_briefing._csr_progress_header
 		local fw = ws_panel:w()
@@ -155,8 +107,6 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_REMINDER_INPUT_HOOKED then
 		self._csr_reminder_text:set_size(plate_w - PAD_X * 2, text_h)
 		self._csr_reminder_text:set_position(PAD_X, PAD_Y)
 
-		-- Reset hover-derived colour every refresh; stale bright tint can't
-		-- persist if the reminder rebuilds.
 		self._csr_reminder_text:set_color(UNSELECTED_DIM)
 		self._csr_reminder_bg:set_color(UNSELECTED_DIM)
 		self._csr_reminder_hovered = false
@@ -187,8 +137,7 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_REMINDER_INPUT_HOOKED then
 		if self._csr_reminder_bg and alive(self._csr_reminder_bg) then
 			self._csr_reminder_bg:set_color(c)
 		end
-		-- Single hover SFX on the false->true transition. mouse_moved fires
-		-- per pixel; this gate keeps it from buzzing.
+		-- Gate to one SFX per transition; mouse_moved fires per pixel.
 		if state and managers.menu_component then
 			managers.menu_component:post_event("highlight")
 		end
@@ -203,11 +152,6 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_REMINDER_INPUT_HOOKED then
 		end
 	end
 
-	-- Build the reminder on every init (in practice runs once per session
-	-- per the MenuComponentManager memoised lazy-create pattern; the
-	-- idempotent _csr_build_reminder guard makes a retry safe). Refresh on
-	-- show() so the count + position are correct each time the briefing
-	-- screen comes up.
 	Hooks:PostHook(MissionBriefingGui, "init", "CSR_BriefingReminderInit", function(self)
 		self:_csr_build_reminder()
 	end)
@@ -227,10 +171,6 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_REMINDER_INPUT_HOOKED then
 		end
 	end)
 
-	-- Drop the CSRGameManager subscription when the gui closes. Belt-and-braces
-	-- against MissionBriefingGui ever becoming non-memoised (today the
-	-- MenuComponentManager lazy-creates and never closes the briefing gui mid-
-	-- session, but coupling this teardown to close keeps the contract right).
 	Hooks:PostHook(MissionBriefingGui, "close", "CSR_BriefingReminderClose", function(self)
 		if self._csr_reminder_unsub then
 			self._csr_reminder_unsub()
@@ -238,30 +178,12 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_REMINDER_INPUT_HOOKED then
 		end
 	end)
 
-	-- Input wraps. While the modal selection window is up (_G._csr_item_selection
-	-- is not nil), MissionBriefingGui must NOT consume any mouse event --
-	-- MenuComponentManager:mouse_pressed dispatches MissionBriefingGui BEFORE
-	-- it dispatches the alive_components loop, so a truthy return from vanilla
-	-- here starves our selection window (priority -100) of clicks entirely.
-	-- That was the briefing-side softlock (issue 2): the window opened but
-	-- nothing inside could be clicked, because briefing UI under the modal
-	-- consumed every click. Returning nil makes MenuComponentManager fall
-	-- through to the live-components loop, where the selection window picks
-	-- the click up first by priority. Same gate suppresses hover state on
-	-- the reminder + every vanilla briefing button (READY / PLAN / ASSETS /
-	-- skill tree / mutator toggle / etc.) -- nothing under the modal should
-	-- react to the cursor.
-	--
-	-- When the modal is NOT up, our reminder hit-test runs FIRST -- if our
-	-- plate is hit we consume, otherwise pass through to vanilla.
+	-- Raw wraps needed: mouse_moved/pressed return values matter to the dispatcher
+	-- and PostHook can't carry return values (see feedback_rule1_return_value_exception).
+	-- When modal is open, yield nil so the selection window (lower priority) gets clicks.
 	local orig_mouse_moved = MissionBriefingGui.mouse_moved
 	if orig_mouse_moved then
 		function MissionBriefingGui:mouse_moved(x, y)
-			-- Modal selection window open OR briefing disabled (a sub-screen --
-			-- preplanning / loadout / skill tree -- sits on top; vanilla gates
-			-- its own input on self._enabled): clear the reminder hover and don't
-			-- hit-test. Vanilla returns nil when not self._enabled, so yielding
-			-- here matches its contract.
 			if _G._csr_item_selection or not self._enabled then
 				if self._csr_reminder_set_hover then
 					self:_csr_reminder_set_hover(false)
@@ -282,11 +204,6 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_REMINDER_INPUT_HOOKED then
 	local orig_mouse_pressed = MissionBriefingGui.mouse_pressed
 	if orig_mouse_pressed then
 		function MissionBriefingGui:mouse_pressed(button, x, y)
-			-- Modal open OR briefing disabled (preplanning / loadout / skill tree
-			-- on top -- vanilla gates input on self._enabled): don't consume,
-			-- don't run the reminder hit-test. Yielding nil lets the modal's live
-			-- component pick up the click; when merely disabled vanilla bails to
-			-- nil here anyway.
 			if _G._csr_item_selection or not self._enabled then
 				return
 			end

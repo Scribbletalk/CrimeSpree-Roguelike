@@ -1,17 +1,10 @@
--- Lobby node redirect — vanilla's on_enter_lobby routes by gamemode, which CSR
--- never enables, so the player always lands in the empty "lobby" node. Two paths:
---   1. Host self-redirect via Global.CSR_RETURN_TO_LOBBY (one-shot flag).
---   2. Joining client pings host via mp_sync.lua LOBBY_PING.
--- Plus tears down the orphaned end-screen HUD backdrop that survives the transition.
--- See csr_mp_architecture.md.
+-- Redirects vanilla on_enter_lobby to the CSR lobby node (vanilla gamemode flag never set).
 
 if not RequiredScript then
 	return
 end
 
--- CSRHUDStageEndScreen._backdrop lives on the PERSISTENT fullscreen workspace and
--- nothing in vanilla destroys it on the CSR temp-job return path. close() removes
--- _panel + workspaces; nilling _hud_stage_endscreen lets the next setup build fresh.
+-- End-screen backdrop persists on the fullscreen workspace; vanilla never clears it on CSR's return path.
 local function csr_teardown_endscreen_hud()
 	local hud = managers and managers.hud
 	local screen = hud and hud._hud_stage_endscreen

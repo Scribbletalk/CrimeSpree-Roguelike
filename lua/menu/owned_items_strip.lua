@@ -1,21 +1,5 @@
--- CSROwnedItemsStrip — reusable read-only inventory strip widget.
---
--- Renders the local peer's CURRENT items (icon + rarity frame + "xN" badge) as a
--- wrapped grid inside a black / blurred / bordered panel, with a hover tooltip
--- (name + desc). Same visual vocabulary as the lobby Items panel. Shared by the
--- item-selection popup (above the cards) and the Black Market shop page.
---
--- The widget OWNS its panel + tooltip + hit-targets. The host:
---   * creates it with { parent, tooltip_parent, width, layer, max_height, anchor }
---   * calls :rebuild() to (re)draw from live manager state (on open + whenever the
---     inventory can have changed -- pick granted, item bought)
---   * forwards :mouse_moved(x, y) for the hover tooltip
---   * calls :destroy() on close (or lets the parent panel teardown cascade clean it)
---
--- `anchor(panel)` is invoked at the end of each rebuild to POSITION the freshly
--- sized panel: only the host knows where the strip belongs on its own screen
--- (above the selection title vs. below the shop cards). `max_height` bounds the
--- adaptive cell shrink so a large inventory can't climb out of the host's region.
+-- CSROwnedItemsStrip — reusable inventory strip widget (selection popup + BM shop).
+-- Call :rebuild() after item changes, :mouse_moved() for hover tooltip, :destroy() on close.
 
 if not RequiredScript then
 	return
@@ -26,12 +10,11 @@ CSROwnedItemsStrip = CSROwnedItemsStrip or class()
 local OWNED_CELL = 56 -- icon container / hit-test footprint
 local OWNED_FRAME = 62 -- frame overflows the cell so it reads as a border
 local OWNED_MIN_CELL = 30 -- readability floor for the shrink loop
-local OWNED_GAP = 6 -- inter-cell gap (== frame overflow*2, so frames tile edge to edge)
-local OWNED_PAD = 6 -- inner margin so the overflowing frame / badge are not clipped (kept >= frame overflow + badge rise; trimmed from 10 to shorten the strip)
-local OWNED_GLYPH_RATIO = 0.5625 -- glyph fills this fraction of the cell (the lobby ratio)
+local OWNED_GAP = 6 -- inter-cell gap
+local OWNED_PAD = 6 -- inner margin so frame overflow and badge are not clipped
+local OWNED_GLYPH_RATIO = 0.5625 -- matches the lobby Items panel ratio
 local OWNED_BADGE_OUTLINE = { { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } }
--- Inventory-view rarity palette: INCLUDES contraband (orange) because owned items
--- can be contraband (shop / scrapper). Matches the lobby Items panel palette.
+-- Includes contraband: owned items can be contraband (shop / scrapper).
 local OWNED_RARITY_COLORS = {
 	common = Color.white,
 	uncommon = Color(1, 0, 0.95, 0),
@@ -40,9 +23,7 @@ local OWNED_RARITY_COLORS = {
 	wildcard = Color(1, 1, 0.3, 0.8),
 }
 
--- Resolve a localization KEY to text. Item defs store name/desc as keys; :text()
--- returns the localized string for a known key (and an "ERROR ..." placeholder for
--- an unknown one -- so we never feed already-resolved text back through it).
+-- Resolve a localization key to text; nil-safe.
 local function csr_loc(s)
 	if s and managers.localization then
 		return managers.localization:text(s)
@@ -50,15 +31,6 @@ local function csr_loc(s)
 	return s
 end
 
--- opts:
---   parent         : panel hosting the strip panel (required)
---   tooltip_parent : panel hosting the hover tooltip (default = parent)
---   width          : strip panel width in px (required)
---   layer          : strip panel layer (default 51)
---   max_height     : max strip height; the cell shrinks to fit (default 600)
---   align          : "center" (default) centres the item block in the panel width;
---                    "left" hugs the left inset
---   anchor         : function(panel) positions the freshly sized panel each rebuild
 function CSROwnedItemsStrip:init(opts)
 	opts = opts or {}
 	self._parent = opts.parent
@@ -81,9 +53,7 @@ function CSROwnedItemsStrip:panel()
 	return self._panel
 end
 
--- (Re)build the strip content from live manager state. Idempotent: prior content
--- + hover state are torn down first, so it is safe to call on open AND whenever the
--- inventory can have changed. Hidden entirely when the local peer owns nothing.
+-- Idempotent: tears down prior content first. Hidden when the local peer owns nothing.
 function CSROwnedItemsStrip:rebuild()
 	if not self._panel or not alive(self._panel) then
 		return
@@ -108,8 +78,7 @@ function CSROwnedItemsStrip:rebuild()
 		by_type[def.type] = def
 	end
 
-	-- Items in ACQUISITION ORDER (first-obtained first); a duplicate only bumps the
-	-- badge count. player_items_order is the self-healing ordered type list.
+	-- Items in acquisition order; duplicates bump the badge count.
 	local pid = mgr:local_peer_id()
 	local counts = mgr:player_items(pid) or {}
 	local items_list = {}
@@ -127,13 +96,9 @@ function CSROwnedItemsStrip:rebuild()
 	end
 	self._panel:set_visible(true)
 
-	-- Grid is inset by OWNED_PAD on every side so the frame (overflows the cell) and
-	-- the "xN" badge (rides the icon corner) are never clipped by the content panel.
+	-- Floored at OWNED_MIN_CELL (not OWNED_CELL) so the shrink loop can reduce below one full row.
 	local count = #items_list
 	local grid_w = self._width - OWNED_PAD * 2
-	-- Grid height budget: the host's max_height minus the panel's own padding. Floored
-	-- at OWNED_MIN_CELL (NOT OWNED_CELL) -- flooring at the full cell would stop the
-	-- cell from ever shrinking below one full row, making a small max_height a no-op.
 	local avail_h = math.max(OWNED_MIN_CELL, self._max_height - OWNED_PAD * 2)
 
 	local function layout_for(size)
@@ -142,9 +107,7 @@ function CSROwnedItemsStrip:rebuild()
 		return per_row, math.ceil(count / per_row), step
 	end
 
-	-- Shrink the shared square cell until every wrapped row fits avail_h (same
-	-- adaptive idea as the lobby Items grid). OWNED_MIN_CELL is the readability
-	-- floor; an inventory too large even at the floor overflows (rare).
+	-- Shrink cell until all rows fit avail_h; stop at OWNED_MIN_CELL.
 	local cell = OWNED_CELL
 	local per_row, rows, step = layout_for(cell)
 	while cell > OWNED_MIN_CELL and rows * (cell + OWNED_GAP) - OWNED_GAP > avail_h do
@@ -154,14 +117,9 @@ function CSROwnedItemsStrip:rebuild()
 	cell = math.floor(math.max(cell, OWNED_MIN_CELL))
 	per_row, rows, step = layout_for(cell)
 
-	-- Frame keeps its over-cell ratio so it overflows symmetrically at any size.
 	local frame_size = math.floor(cell * OWNED_FRAME / OWNED_CELL)
 	local frame_overflow = (frame_size - cell) / 2
 
-	-- Panel spans the configured width. The item block hugs the left inset when
-	-- align == "left"; otherwise it is centred horizontally so a short row sits in the
-	-- middle (a partial last row left-aligns within the centred full-row block).
-	-- Height tracks the row count.
 	local used_cols = math.min(count, per_row)
 	local block_w = used_cols * step - OWNED_GAP
 	local grid_left = OWNED_PAD
@@ -179,11 +137,7 @@ function CSROwnedItemsStrip:rebuild()
 	})
 	self._content = content
 
-	-- Black background + blur + bordered corners, matching the lobby Items panel
-	-- (missions_menu.lua _create_feature_panels). Drawn on `content` (torn down and
-	-- rebuilt each populate) so it resizes with the strip and never accumulates;
-	-- BoxGuiObject bakes its corner positions at construction, so it must be rebuilt
-	-- with the panel rather than created once on the persistent strip panel.
+	-- BoxGuiObject bakes corner positions at construction — must rebuild with the panel, not reuse.
 	local bg = content:panel({
 		layer = -1,
 	})
@@ -218,9 +172,7 @@ function CSROwnedItemsStrip:rebuild()
 		local ix = grid_left + col * step
 		local iy = OWNED_PAD + row * step
 
-		-- Frame is a SIBLING of the cell (not its child) so its larger footprint can
-		-- overflow the cell symmetrically; layer 5 (frame) < layer 10 (cell) keeps the
-		-- icon above the frame even where the frame extends past the cell.
+		-- Sibling (not child) of the cell so the larger frame overflows without clipping.
 		local frame_bmp = content:bitmap({
 			name = "rarity_frame",
 			texture = frame_tex,
@@ -241,8 +193,7 @@ function CSROwnedItemsStrip:rebuild()
 			layer = 10,
 		})
 
-		-- Resolve icon: a "/" means a full DB-mounted texture path (addon shipping its
-		-- own .dds); otherwise a short hud_icons id (CSR's built-in items).
+		-- "/" in icon = full texture path (addon .dds); otherwise a hud_icons id.
 		local icon_tex, icon_rect
 		local raw_icon = entry.def.icon or "dog_tags"
 		if type(raw_icon) == "string" and raw_icon:find("/", 1, true) then
@@ -263,10 +214,7 @@ function CSROwnedItemsStrip:rebuild()
 			layer = 10,
 		})
 
-		-- Stack badge "xN": white glyph with a thin black outline (no bg box), drawn as
-		-- siblings on `content` because cell panels clip children. Anchored bottom-left
-		-- to the glyph's top-right corner so it stays clear of the centred glyph at any
-		-- cell size; layers 19/20 (outline under white) sit above frame (5) / cell (10).
+		-- Badge drawn as sibling on `content` because cell panels clip children.
 		local badge_x = ix + glyph_inset + glyph
 		local badge_drop = math.floor(tweak_data.menu.pd2_small_font_size * 0.2)
 		local badge_y = iy + math.min(glyph_inset, 9) + badge_drop - OWNED_CELL
@@ -299,9 +247,7 @@ function CSROwnedItemsStrip:rebuild()
 	end
 end
 
--- Edge-triggered hover: only rebuilds the tooltip when the hovered cell CHANGES, so
--- moving within one icon does not recreate (and leak) the tooltip panel every event.
--- Returns true while a cell is hovered (the host may use it to set a link cursor).
+-- Edge-triggered: only rebuilds tooltip when the hovered cell changes, avoiding per-event leaks.
 function CSROwnedItemsStrip:mouse_moved(x, y)
 	if not self._panel or not alive(self._panel) or not self._panel:visible() then
 		if self._hover_target ~= nil then
@@ -341,8 +287,7 @@ function CSROwnedItemsStrip:_clear_tooltip()
 	self._tooltip = nil
 end
 
--- Tooltip anchored below the hovered icon (flipping above it if it would overflow
--- the parent bottom), clamped to the tooltip parent on both axes.
+-- Tooltip below the icon, flips above if it would overflow the parent bottom.
 function CSROwnedItemsStrip:_show_tooltip(target)
 	if not target or not alive(target.panel) then
 		return
@@ -357,9 +302,7 @@ function CSROwnedItemsStrip:_show_tooltip(target)
 	local tip_w = 220
 	local name_h = tweak_data.menu.pd2_small_font_size + 2
 
-	-- Build at a placeholder height to host the text nodes, measure, then resize and
-	-- add chrome LAST (BoxGuiObject bakes its corner sprites at construction time, so
-	-- building it pre-resize would strand the corners at the placeholder size).
+	-- Build text first, measure, then resize and add BoxGuiObject (bakes at construction).
 	local tip = parent:panel({
 		layer = 200,
 		w = tip_w,

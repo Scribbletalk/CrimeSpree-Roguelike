@@ -1,8 +1,5 @@
--- CSRMissionsMenuComponent — Modifiers feature-panel (extracted from missions_menu.lua).
--- Loads on lib/managers/menu/menucomponentmanager AFTER missions_menu.lua (mod.txt
--- order); adds the Modifiers panel (Loud/Stealth sub-tabs + scroll list) and its
--- mouse routing to the class. The methods stay on the SAME class, so the briefing's
--- lazy method-borrow (briefing_sidebar.lua) still picks them up at runtime.
+-- Modifiers feature-panel methods for CSRMissionsMenuComponent (split from missions_menu.lua).
+-- Loads after missions_menu.lua (mod.txt order); methods land on the same class so briefing borrows them at runtime.
 if not RequiredScript then
 	return
 end
@@ -11,29 +8,21 @@ if not CSRMissionsMenuComponent then
 	return
 end
 
--- Shared feature-panel inner padding (declared locally in each sidebar file).
+-- Shared inner padding (mirrors the other sidebar files).
 local items_panel_padding = 16
 
--- Modifiers feature-panel sub-tab row (Loud / Stealth). The two buttons split
--- the panel width 50/50 (no gap -- a segmented control) and sit at the top; the
--- modifier icon grid renders below them. Icons are frameless and the grid has its
--- OWN size + gap rather than reusing the items metrics.
+-- Sub-tab row geometry.
 local modifiers_subtab_h = 28
-local modifiers_subtab_gap = 6 -- small gap between the Loud / Stealth buttons
+local modifiers_subtab_gap = 6 -- gap between Loud / Stealth buttons
 local modifiers_grid_top_gap = 16
 
--- Modifiers panel list rows (replaces the old icon grid): a vertical ScrollablePanel
--- where each row is an icon on the left + name (top) and wrapped description (below)
--- to its right. Row height grows to fit the wrapped description.
+-- Row list geometry.
 local modifiers_row_icon_size = 48
 local modifiers_row_text_gap = 12 -- icon right edge -> text column
 local modifiers_row_gap = 12 -- vertical gap between rows
-local modifiers_row_scrollbar_margin = 18 -- reserve the right edge for the scroll bar
+local modifiers_row_scrollbar_margin = 18 -- reserve space for the scroll bar
 
--- One Loud/Stealth tab button at the given x/width. Rebuilt (not mutated) on
--- every repopulate, so `active` is baked in at build time -- no separate
--- set_active path needed. Returns the hit-test panel; the caller stores it for
--- mouse_moved/pressed.
+-- Build one Loud/Stealth sub-tab button. Active state is baked in at build time.
 local function csr_build_modifier_subtab(parent, text_str, x, y, w, active)
 	local p = parent:panel({
 		x = x,
@@ -48,8 +37,6 @@ local function csr_build_modifier_subtab(parent, text_str, x, y, w, active)
 		alpha = active and 0.5 or 0.4,
 		layer = 0,
 	})
-	-- Frame discarded like the feature-panel borders (anonymous; panel-tree
-	-- teardown removes it with its parent).
 	BoxGuiObject:new(p:panel({ layer = 2 }), { sides = { 1, 1, 1, 1 } })
 	p:text({
 		name = "label",
@@ -66,15 +53,8 @@ local function csr_build_modifier_subtab(parent, text_str, x, y, w, active)
 	return p
 end
 
--- Build / rebuild the Modifiers feature-panel content: a Loud / Stealth sub-tab row
--- at the top and, below it, a vertical scroll list of the modifiers active for the
--- chosen sub-tab. Each row is an icon (left) + name (top) + wrapped description
--- (below) -- the description is inline now, so there is no hover tooltip anymore.
--- Idempotent: prior content (and the ScrollablePanel inside it) is removed first.
--- Borrowed by MissionBriefingGui (briefing_sidebar.lua METHODS_TO_BORROW) so both
--- surfaces share it; mouse routing lives in mouse_wheel_up/down + mouse_released +
--- the modifiers branches of mouse_moved/mouse_pressed (lobby) and the briefing's own
--- input wraps (wheel only -- the briefing never receives mouse_released).
+-- Build / rebuild the Modifiers feature-panel: sub-tab row + scrollable modifier list.
+-- Idempotent: removes prior content before rebuilding. Borrowed by MissionBriefingGui.
 function CSRMissionsMenuComponent:_populate_modifiers_panel()
 	if not self._feature_panels or not alive(self._feature_panels.modifiers) then
 		return
@@ -86,8 +66,7 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 	end
 	self._modifiers_content = nil
 	self._modifiers_subtab_buttons = nil
-	-- The scroll lived inside the content panel just removed; drop the stale ref so
-	-- the mouse handlers can't poke a dead panel between repopulates.
+	-- Drop stale scroll ref so mouse handlers can't poke a dead panel between repopulates.
 	self._modifiers_scroll = nil
 	self._modifiers_hit_targets = {}
 	self:_clear_items_tooltip()
@@ -102,8 +81,7 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 	})
 	self._modifiers_content = content
 
-	-- Sub-tab row: the two buttons split the content width with a small gap between
-	-- them -- together they still span the full panel width.
+	-- Sub-tab row: two buttons split the panel width with a small gap, tiling flush.
 	local pad = items_panel_padding
 	local section_w = panel:w() - pad * 2
 	local btn_w = math.floor((section_w - modifiers_subtab_gap) / 2)
@@ -122,12 +100,9 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 		stealth = { panel = b_stealth },
 	}
 
-	-- Loud-only ambient header: the per-rank enemy HP/damage scaling (continuous in
-	-- rank, separate from the unlockable modifiers listed below). Reads the percent
-	-- from managers.csr:enemy_scaling so the shown number can't drift from what
-	-- apply_modifiers applies. Fixed on `content` (NOT in the scroll canvas) so it
-	-- stays pinned at the very top; the scroll list is pushed down by header_h.
-	-- Hidden at 0% (rank 0). HP% == DMG% today, so one number covers both.
+	-- Loud-only ambient header: per-rank enemy HP/damage scaling pinned above the scroll list.
+	-- Reads live from managers.csr:enemy_scaling so the shown number matches apply_modifiers.
+	-- Hidden at rank 0 (0%). HP% == DMG% so one number covers both.
 	local header_h = 0
 	if not is_stealth then
 		local smgr = managers and managers.csr
@@ -136,9 +111,7 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 			hp_pct = (smgr:enemy_scaling()) or 0
 		end
 		if hp_pct > 0 then
-			-- White sentence, yellow number + "%" (the mod's accent, same highlight
-			-- the status bar uses). set_range_color recolors the trailing value
-			-- substring -- the vanilla-proven pattern from _create_status_bar.
+			-- Yellow accent on the trailing value via set_range_color (same pattern as _create_status_bar).
 			local prefix = "Enemy's base health and damage increased by "
 			local full = prefix .. math.floor(hp_pct) .. "%"
 			local header = content:text({
@@ -162,10 +135,7 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 		end
 	end
 
-	-- Scroll list below the sub-tabs (engine ScrollablePanel: draggable bar + wheel,
-	-- canvas clipped to the viewport). Content goes on :canvas(); update_canvas_size
-	-- recomputes the scroll height from the rows after they are laid out. list_top
-	-- includes header_h so the loud ambient header (when shown) sits above the list.
+	-- Scroll list below the sub-tabs + optional ambient header.
 	local list_top = pad + modifiers_subtab_h + modifiers_grid_top_gap + header_h
 	local list_h = math.max(0, panel:h() - list_top - pad)
 	local scroll = ScrollablePanel:new(content, "csr_modifiers_scroll", {
@@ -182,24 +152,16 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 	local mgr = managers and managers.csr
 	local list = (mgr and mgr.active_modifiers and mgr:active_modifiers(self._modifiers_subtab)) or {}
 	if #list == 0 then
-		-- Empty (rank 0, or this category's pool already exhausted): sub-tabs stand
-		-- alone, empty scroll. No filler text -- matches the items panel convention.
 		scroll:update_canvas_size()
 		return
 	end
 
-	-- Newest-unlocked modifier first (user spec 2026-05-24): active_modifiers returns
-	-- the unlock sequence oldest-first (entry i unlocked at rank i), so reversing it
-	-- floats the modifier gained at the current rank to the TOP. Reversed in the VIEW
-	-- only -- active_modifiers' "rank R is a prefix-superset of R+1" contract (relied
-	-- on by apply_modifiers) stays intact. The list is a fresh per-call table, so the
-	-- in-place reverse mutates nothing shared.
+	-- Reverse so the newest-unlocked modifier appears first (view-only; the source list is untouched).
 	for i = 1, math.floor(#list / 2) do
 		list[i], list[#list - i + 1] = list[#list - i + 1], list[i]
 	end
 
-	-- Text column reserves a right margin for the scroll bar so a wrapped line never
-	-- runs under it.
+	-- Text column reserves a right margin so wrapped lines never run under the scroll bar.
 	local text_x = modifiers_row_icon_size + modifiers_row_text_gap
 	local text_w = math.max(40, canvas:w() - text_x - modifiers_row_scrollbar_margin)
 	local row_y = 0
@@ -214,8 +176,7 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 			body = full:sub(nl + 1)
 		end
 
-		-- One panel per row, sized to the taller of the icon and the text block
-		-- after the wrapped description is measured.
+		-- One panel per row, height set after measuring the wrapped description.
 		local row = canvas:panel({
 			x = 0,
 			y = row_y,
@@ -223,8 +184,7 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 			h = modifiers_row_icon_size,
 		})
 
-		-- Icon (left). get_icon_data returns (texture, rect) and is nil-safe. The y is
-		-- set below once the text block is measured so the icon centres against it.
+		-- Icon (left); y adjusted below to vertically center against the text block.
 		local icon_tex, icon_rect = tweak_data.hud_icons:get_icon_data(entry.icon or "csr_dog_tags")
 		local icon = row:bitmap({
 			name = "mod_icon",
@@ -237,7 +197,7 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 			layer = 1,
 		})
 
-		-- Name (top of the text column), measured + resized to its own line height.
+		-- Name (top of the text column).
 		local name_text = row:text({
 			name = "mod_name",
 			text = title,
@@ -253,7 +213,7 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 		local _, _, _, name_h = name_text:text_rect()
 		name_text:set_h(name_h)
 
-		-- Description (below the name, wrapped); measured h tracks the line count.
+		-- Description (wrapped, below the name).
 		local desc_text = row:text({
 			name = "mod_desc",
 			text = body,
@@ -271,9 +231,7 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 		local _, _, _, desc_h = desc_text:text_rect()
 		desc_text:set_h(desc_h)
 
-		-- Center the icon AND the text block on the row's mid-line, so the icon sits
-		-- vertically centered against the name+description block beside it (rather than
-		-- top-aligned, which looked off when the description wrapped to several lines).
+		-- Center icon and text block on the row mid-line (avoids top-aligned look when description wraps).
 		local text_block_h = name_h + desc_h
 		local row_h = math.max(modifiers_row_icon_size, text_block_h)
 		row:set_h(row_h)
@@ -288,27 +246,22 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 	scroll:update_canvas_size()
 end
 
--- True when the Modifiers scroll list exists AND its panel is visible. Gates the
--- scroll mouse routing so wheel / grab events do nothing while another tab is up.
--- Borrowed by the briefing so its input wrap can gate the same way.
+-- True when the modifiers scroll list is visible. Gates wheel/drag routing.
+-- Borrowed by the briefing.
 function CSRMissionsMenuComponent:_modifiers_scroll_visible()
 	local panel = self._feature_panels and self._feature_panels.modifiers
 	return self._modifiers_scroll ~= nil and panel ~= nil and alive(panel) and panel:visible()
 end
 
--- Hover for the Modifiers panel: scroll bar (hover / drag cursor) + sub-tab link
--- cursor. The description is inline in each row now, so there is no icon tooltip.
--- Returns true when the cursor is over the scroll bar or a sub-tab so the caller can
--- flip the pointer to "link". Shared by the lobby + the briefing.
+-- Hover routing for the Modifiers panel: scroll bar + sub-tab link cursor.
+-- Returns true if the cursor is over either, so the caller can flip the pointer.
 function CSRMissionsMenuComponent:_modifiers_panel_mouse_moved(x, y)
 	local panel = self._feature_panels and self._feature_panels.modifiers
 	if not panel or not alive(panel) or not panel:visible() then
 		return false
 	end
 
-	-- Scroll bar hover / drag. Drag is only ever active on the lobby (which grabs
-	-- the bar in mouse_pressed); the briefing never grabs, so this is hover-only
-	-- there. ScrollablePanel:mouse_moved returns (used, pointer).
+	-- Scroll bar hover / drag (lobby grabs in mouse_pressed; briefing is hover-only).
 	if self._modifiers_scroll then
 		local used = self._modifiers_scroll:mouse_moved(nil, x, y)
 		if used then
@@ -328,9 +281,7 @@ function CSRMissionsMenuComponent:_modifiers_panel_mouse_moved(x, y)
 	return false
 end
 
--- Click handling for the Modifiers sub-tabs. Returns true if a sub-tab was hit
--- (switching repopulates the grid). Called from the lobby's mouse_pressed and
--- the briefing input wrap. Posts the same click SFX the sidebar / cards use.
+-- Click handling for sub-tabs. Returns true if a tab was hit (switching rebuilds the list).
 function CSRMissionsMenuComponent:_modifiers_panel_mouse_pressed(x, y)
 	local panel = self._feature_panels and self._feature_panels.modifiers
 	if not panel or not alive(panel) or not panel:visible() then

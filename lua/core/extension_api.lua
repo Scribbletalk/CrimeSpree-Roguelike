@@ -1,7 +1,4 @@
--- Public CSR API shim. Defines _G.CSR so addon mods can register items / modifiers
--- / sounds regardless of load order. Hooked on three early targets so this runs
--- before any other CSR file (see csr_log_bootstrap_timing); _bootstrapped guards
--- against re-init.
+-- Public CSR API shim. Defines _G.CSR for addon mods; _bootstrapped guards against re-init.
 
 if not RequiredScript then
 	return
@@ -25,14 +22,12 @@ if not _G.csr_log then
 	end
 end
 
--- Persistent lists. CSRGameManager:init() runs multiple times per session and
--- builds an empty _registry each time, so every init must replay these.
+-- Persistent lists — replayed into each fresh CSRGameManager:init() registry.
 _G.CSR._registrations = _G.CSR._registrations or {}
 _G.CSR._modifier_registrations = _G.CSR._modifier_registrations or {}
 _G.CSR._sound_registrations = _G.CSR._sound_registrations or {}
 
--- Item-hook dispatcher: item_dispatch.lua hooks `*` and calls on_script_loaded
--- on every engine script load. We install matching item/modifier hooks then.
+-- Hook dispatch tables — populated by register_item/modifier, fired by on_script_loaded.
 _G.CSR._hooks_by_req = _G.CSR._hooks_by_req or {} -- [req_lower] = { {type=, fn=}, ... }
 _G.CSR._installed_hooks = _G.CSR._installed_hooks or {} -- ["type|req"] = true
 _G.CSR._loaded_reqs = _G.CSR._loaded_reqs or {} -- [req_lower] = true
@@ -68,8 +63,7 @@ function _G.CSR.on_script_loaded(req)
 	end
 end
 
--- Dedup key falls back to def.id for modifiers (no def.type) — must be unique
--- across modifiers hooking the same script.
+-- Dedup key: modifiers use def.id (no def.type); must be unique per script target.
 local function index_item_hooks(def)
 	if type(def.hooks) ~= "table" then
 		return
@@ -113,8 +107,7 @@ function _G.CSR.register_modifier(def)
 	if managers and managers.csr and managers.csr.register_modifier then
 		managers.csr:register_modifier(def)
 	end
-	-- Modifiers without a vanilla ModifierX class (e.g. Guilty Conscience) hand-roll
-	-- their effect via behavior hooks, same as items.
+	-- Class-less modifiers (e.g. Guilty Conscience) use behavior hooks, same as items.
 	index_item_hooks(def)
 	return true
 end
@@ -131,9 +124,7 @@ function _G.CSR._apply_registrations(mgr)
 	end
 end
 
--- def = { path = "<rel.ogg>" } or { pattern = "<rel_$.ogg>", n = <count> }.
--- Safe to call any time — sound.lua installs the loader and sweeps registrations
--- when its XAudio retry loop succeeds.
+-- def = { path = "<rel.ogg>" } or { pattern = "<rel_$.ogg>", n = <count> }. Safe to call any time.
 function _G.CSR.register_sound(name, def)
 	if type(name) ~= "string" or type(def) ~= "table" then
 		log("[CSR][api] register_sound: (name string, def table) required -- ignored")
@@ -153,8 +144,7 @@ function _G.CSR.play_sound(name, opts)
 	return nil
 end
 
--- Recursively dofile every .lua under `dir`. Files self-register (PD2's dofile
--- returns nothing), exactly as an addon mod would.
+-- Recursively dofile every .lua under `dir`; files self-register via register_item/modifier.
 local function run_lua_dir(dir, label)
 	local count = 0
 	local names = file.GetFiles(dir)
@@ -203,9 +193,7 @@ end
 load_item_defs()
 load_modifier_defs()
 
--- Drain engine scripts that the wildcard delegator buffered before _G.CSR existed
--- (engine classes loaded inside lib/entry's body, e.g. PlayerManager). The hook
--- index is now built, so install any of their hooks.
+-- Drain scripts buffered before _G.CSR existed (loaded inside lib/entry before this ran).
 if _G.__CSR_pending_reqs then
 	local pending = _G.__CSR_pending_reqs
 	_G.__CSR_pending_reqs = nil

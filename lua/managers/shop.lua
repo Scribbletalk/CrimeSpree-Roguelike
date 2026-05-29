@@ -1,6 +1,4 @@
--- Gage Services shop (logic layer). Token wallet + per-heist earning + 3-card
--- standard lineup + 4th contraband slot + purchase + escalating reroll + Gage
--- dialogue. Per-peer state lives on managers.csr:peer_entry, persists with the run.
+-- Gage Services shop: token wallet, per-heist earning, 3-card lineup + contraband slot, purchase, escalating reroll.
 
 if not RequiredScript then
 	return
@@ -76,9 +74,7 @@ function CSR_Shop.credit(peer_id, amount)
 		return
 	end
 	peer_id = peer_id or CSR_Shop.local_peer_id()
-	-- Monotonic gross-earned accumulator — credit() is the single choke point both
-	-- earn paths funnel through. Never reduced (debit/reroll refund go through set_tokens).
-	-- Drives the late-joining guest's wallet seed in mp_session.lua.
+	-- Monotonic; never reduced — drives late-join wallet seed in mp_session.lua.
 	local m = mgr()
 	if m and m.peer_entry then
 		local entry = m:peer_entry(peer_id)
@@ -109,8 +105,6 @@ function CSR_Shop.debit(peer_id, amount)
 end
 
 -- ===== Token earning (per-heist) =====
--- Two independent streams: completion ranks + looted cash. Driven from
--- mission_lifecycle.lua's success path.
 
 CSR_Shop.TOKENS_PER_RANK = 5
 
@@ -124,8 +118,7 @@ function CSR_Shop.award_completion_tokens(peer_id, completion_ranks)
 	return tokens
 end
 
--- Per-token threshold = reward_per_rank / TOKENS_PER_RANK. Remainder carries on
--- peer entry so loot accumulates across heists.
+-- Remainder carries forward across heists so loot accumulates fractionally.
 function CSR_Shop.accrue_loot_tokens(peer_id, loot_cash)
 	loot_cash = tonumber(loot_cash) or 0
 	local m = mgr()
@@ -155,7 +148,7 @@ end
 
 -- ===== Lineup =====
 
--- Sellable registered items (common/uncommon/rare; never scrap).
+-- Sellable pool: common/uncommon/rare only, no scrap.
 function CSR_Shop.build_pool()
 	local pool = {}
 	local m = mgr()
@@ -239,7 +232,7 @@ function CSR_Shop.roll_lineup(peer_id)
 	return lineup
 end
 
--- Lazily rolls on first read. Old saves missing the contraband slot get one appended.
+-- Rolls on first read; appends missing contraband slot to pre-contraband saves.
 function CSR_Shop.get_lineup(peer_id)
 	peer_id = peer_id or CSR_Shop.local_peer_id()
 	local m = mgr()
@@ -266,8 +259,7 @@ function CSR_Shop.get_lineup(peer_id)
 	return entry.shop.lineup
 end
 
--- Contraband slot is NOT required for the free-restock trigger — buying the 3 standard
--- cards triggers it whether the player bought contraband or not.
+-- Sold-out = all 3 standard slots bought; contraband slot doesn't count.
 function CSR_Shop.lineup_sold_out(peer_id)
 	local lineup = CSR_Shop.get_lineup(peer_id)
 	if not lineup or #lineup == 0 then
@@ -285,8 +277,7 @@ function CSR_Shop.lineup_sold_out(peer_id)
 	return any
 end
 
--- Returns true / (true, "sold_out") on success; false + reason ("no_slot" / "sold" /
--- "no_price" / "cant_afford" / "add_failed") otherwise. Local-only by design.
+-- Returns true [, "sold_out"] on success, or false + reason string on failure.
 function CSR_Shop.buy(peer_id, slot_index)
 	peer_id = peer_id or CSR_Shop.local_peer_id()
 	local m = mgr()
@@ -308,9 +299,7 @@ function CSR_Shop.buy(peer_id, slot_index)
 	if CSR_Shop.tokens(peer_id) < price then
 		return false, "cant_afford"
 	end
-	-- Tally shop_item_count BEFORE add_item so the on_item_added callback reads a
-	-- consistent rank_item_count (shop purchases don't consume rank picks).
-	-- Rolled back if add_item rejects the type so a bad entry never inflates.
+	-- Increment before add_item so the callback sees a consistent rank_item_count; roll back on failure.
 	local entry = m:peer_entry(peer_id)
 	entry.shop_item_count = (entry.shop_item_count or 0) + 1
 	if not m:add_item(peer_id, slot.type) then
@@ -323,8 +312,7 @@ function CSR_Shop.buy(peer_id, slot_index)
 	csr_log(
 		"[CSR] shop: bought slot " .. tostring(slot_index) .. " (" .. tostring(slot.type) .. ") for " .. tostring(price)
 	)
-	-- Free restock after the 3rd non-contraband card. UI defers the re-roll so the
-	-- player sees the lineup for a beat first; shop page self-heals on open.
+	-- Free restock after all 3 standard cards sold; UI re-rolls lazily on next open.
 	if CSR_Shop.lineup_sold_out(peer_id) then
 		csr_log("[CSR] shop: lineup sold out -> free restock pending")
 		return true, "sold_out"
@@ -357,11 +345,11 @@ function CSR_Shop.reroll(peer_id)
 	end
 	local prev = CSR_Shop.get_reroll_count(peer_id)
 	if not CSR_Shop.roll_lineup(peer_id) then
-		-- Refund: set_tokens (not credit) so refund doesn't inflate gross.
+		-- Use set_tokens (not credit) so the refund doesn't inflate gross_earned.
 		CSR_Shop.set_tokens(peer_id, CSR_Shop.tokens(peer_id) + cost)
 		return false
 	end
-	-- roll_lineup reset reroll_count to 0; restore+increment so next costs prev+2.
+	-- roll_lineup resets count to 0; restore and increment so next reroll costs prev+2.
 	m:peer_entry(peer_id).shop.reroll_count = prev + 1
 	m:save()
 	return true
@@ -376,13 +364,13 @@ function CSR_Shop.owned_count(peer_id, item_type)
 end
 
 -- ===== Gage dialogue =====
--- Loc-key counts must match the csr_gage_line_<category>_<n> entries in english.json.
+-- Counts must match csr_gage_line_<category>_<n> keys in english.json.
 local GREETING_COUNT = 12
 local REROLL_COUNT = 6
 local PURCHASE_COUNT = 5
 local SOLDOUT_COUNT = 2
 
--- Greeting persists across menu open/close (next to wallet/lineup); picked lazily.
+-- Greeting is picked once per run and persists across menu opens.
 function CSR_Shop.get_or_pick_greeting(peer_id)
 	peer_id = peer_id or CSR_Shop.local_peer_id()
 	local m = mgr()
@@ -404,7 +392,7 @@ function CSR_Shop.reset_greeting(peer_id)
 	end
 end
 
--- Action lines are ephemeral.
+-- Action lines are ephemeral (re-picked each time).
 function CSR_Shop.pick_reroll_line()
 	return "csr_gage_line_reroll_" .. tostring(math.random(1, REROLL_COUNT))
 end

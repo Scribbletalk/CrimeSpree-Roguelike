@@ -1,9 +1,4 @@
 -- Crooked Badge (contraband) — shorter bleedout in exchange for downs back between assaults.
--- Hyperbolic curves (K = 0.05):
---   revive chance %  = 400 - 370/(1 + K*(stacks-1))     → 30% @ 1 stack
---   bleedout penalty = 25  - 15 /(1 + K*(stacks-1))     → 10s @ 1 stack
--- MP DEFERRED: 6.2 broadcast ASSAULT_END so each client rolled its own revive.
--- Here only the host's player gets the revive.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return

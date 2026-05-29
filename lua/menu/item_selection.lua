@@ -1,32 +1,5 @@
--- CSRItemSelectionComponent — fork of vanilla CrimeSpreeModifiersMenuComponent.
---
--- Origin: pd2_source_code/lib/managers/menu/crimespreemodifiersmenucomponent.lua
--- Strategy: byte-for-byte copy with class renames + the backend decoupled from
--- managers.crime_spree. Vanilla read the offered items from
--- managers.crime_spree:get_loud_modifiers() and the description from
--- :make_modifier_description(); that backend is not ported in U1, so the
--- component is now DATA-DRIVEN — :new() takes a plain item list and each entry
--- carries its own id / icon / rarity / name / desc. The selection-pool and
--- "when does this open" logic is intentionally NOT wired yet (user scope:
--- "just the window, opened by a debug key").
---
--- Class renames:
---   CrimeSpreeModifiersMenuComponent -> CSRItemSelectionComponent
---   CrimeSpreeModifierButton         -> CSRItemSelectionButton
---   CrimeSpreeButton                 -> CSRItemSelectionActionButton
---
--- Folded in: the rarity frame that the pre-refactor mod added via
--- PreHook/PostHook on CrimeSpreeModifierButton:update (item_frames_in_selection.lua).
--- Owning the fork removes the "restore vanilla icon size each frame so
--- smoothstep does not compound" hack — the frame is just sized off the icon
--- inside our own update().
---
--- Trigger: lobby "unselected items" reminder click (missions_menu.lua
--- `_on_unselected_items_clicked`). The reminder is rank-vs-owned-gated
--- (visible only when host_rank > rank_item_count), so it enforces "one pick
--- per rank earned" -- and the click passes the gap as the pick quota
--- (CSR_OpenItemSelection(num_to_select)), which the component then chews
--- through one pick at a time via _advance_pick before closing.
+-- CSRItemSelectionComponent — data-driven fork of CrimeSpreeModifiersMenuComponent.
+-- Opened by the lobby reminder click; rarity frame baked in (no per-frame PostHook hack).
 
 if not RequiredScript then
 	return
@@ -35,22 +8,8 @@ end
 local padding = 10
 local COMP_ID = "item_selection"
 
--- Build the item-card data set for one round of the selection window.
---
--- Reads the LOCKED offer (frozen 3-card set) currently at the head of the
--- peer's pending_offers via CSRGameManager:peek_offer. The first open of a
--- given owed pick rolled the cards via ensure_offers; every subsequent open
--- of the SAME pick (re-open after BACK, re-open after game restart) returns
--- the same offer until the pick is spent. add_item -> pop_offer is what
--- advances to the next stored set; BACK does not touch offers.
---
--- Reads name/desc/icon/rarity off the registered def. name/desc are localization
--- KEYS (the per-item-file model stores keys, text lives in loc/<lang>.json), so
--- they are resolved through managers.localization here -- :text() returns the
--- localized string for a known key and the input verbatim for anything else, so a
--- legacy literal still renders. These keys are STATIC english.json entries (not the
--- partially-ported localization.lua generator). Defined at file scope (not
--- local to a method) so :_setup AND :_advance_pick both reach it.
+-- Returns the current card set from the frozen offer at the head of the peer's pending_offers.
+-- Re-opening the same owed pick always sees the same offer until pop_offer is called.
 local function csr_loc(s)
 	if s and managers.localization then
 		return managers.localization:text(s)
@@ -78,8 +37,7 @@ local function build_item_pool()
 	end
 
 	if #items == 0 then
-		-- No stored offer or every type in it was orphaned by addon removal.
-		-- Keep the window readable as "nothing yet" instead of an empty layout.
+		-- Fallback: no offer stored yet, or all types were orphaned by addon removal.
 		items[1] = {
 			id = "none",
 			icon = "dog_tags",
@@ -92,28 +50,18 @@ local function build_item_pool()
 	return items
 end
 
--- Generic rarity frame (single texture, tinted per rarity at draw time) — same
--- mapping the pre-refactor selection overlay used, minus contraband: contraband
--- items no longer appear in the item selection (user, U1 drop-rate redesign).
+-- Rarity tint per card (contraband excluded from selection pool by design).
 local RARITY_COLORS = {
 	common = Color.white,
 	uncommon = Color(1, 0, 0.95, 0),
 	rare = Color(1, 0.3, 0.7, 1),
 	wildcard = Color(1, 1, 0.3, 0.8),
 }
--- Frame is drawn larger than the icon so it reads as a border around it.
--- Applied to the icon's ACTUAL (0.8-modified) size in BOTH init and update so
--- there is no size jump on the first update tick.
+-- Frame drawn larger than the icon container so it reads as a border.
 local FRAME_SCALE = 2.0
-
--- Owned-items strip (the read-only inventory row above the title) is the shared
--- CSROwnedItemsStrip widget (lua/menu/owned_items_strip.lua) -- created in :_setup,
--- rebuilt after each pick, and destroyed in :close.
 
 -- ===================================================================
 -- CSRItemSelectionButton — one selectable item card.
--- Fork of CrimeSpreeModifierButton with the rarity frame baked in and the
--- icon/description sourced from the data table instead of managers.crime_spree.
 -- ===================================================================
 CSRItemSelectionButton = CSRItemSelectionButton or class(MenuGuiItem)
 CSRItemSelectionButton._type = "CSRItemSelectionButton"
@@ -131,16 +79,9 @@ function CSRItemSelectionButton:init(parent, data)
 		h = CSRItemSelectionButton.size.h,
 	})
 
-	-- Vertical gap above the icon (top of card to top of icon panel).
 	local top_padding = padding * 4
-	-- Vertical gap between icon-panel bottom and the description text. Kept
-	-- separate from top_padding so we can push the text further down without
-	-- moving the icon (item descriptions are short -- ~one line -- so the icon
-	-- already sits where it should and only the text needs more breathing room).
 	local desc_top_gap = padding * 6
-	-- Base icon size. Final on-screen size is _image_size * _size_modifier (idle)
-	-- or _image_size (hover/selected, per update()); the rarity frame and update
-	-- smoothstep both derive from this single value, so one knob controls all.
+	-- Base icon size; final size = _image_size * _size_modifier (idle) or _image_size (hover).
 	self._image_size = 96
 	self._size_modifier = 0.8
 	self._image = self._panel:panel({
@@ -156,9 +97,7 @@ function CSRItemSelectionButton:init(parent, data)
 		y = self._image:center_y(),
 	}
 
-	-- Rarity frame BEHIND the icon (layer 5 < icon layer 10). Lives on the
-	-- 208x298 button panel, not the icon panel, so it is not clipped. Sized
-	-- and centred every frame in update() to track the icon's smoothstep.
+	-- Rarity frame on the button panel (not clipped by the icon panel); tracked in update().
 	local frame_base = self._image_size * self._size_modifier * FRAME_SCALE
 	self._frame = self._panel:bitmap({
 		name = "rarity_frame",
@@ -168,9 +107,7 @@ function CSRItemSelectionButton:init(parent, data)
 	})
 	self._frame:set_center(self._image_pos.x, self._image_pos.y)
 
-	-- NOT grown to fill the icon panel: sized explicitly to container * icon_scale
-	-- and centred (set_item + update) so a per-item icon_scale shrinks/grows the
-	-- glyph WITHOUT touching the rarity frame, which tracks the container size.
+	-- icon_scale shrinks/grows the glyph without touching the rarity frame (which tracks the container).
 	self._item_image = self._image:bitmap({
 		blend_mode = "add",
 		name = "icon",
@@ -230,11 +167,7 @@ function CSRItemSelectionButton:set_item(data)
 		return
 	end
 
-	-- Resolve icon: a "/" in the value means a full DB-mounted texture path
-	-- (an addon shipping its own .dds via DB:create_entry); otherwise it is a
-	-- short hud_icons id (CSR's built-in items). The direct-path branch assumes
-	-- 128x128 since hud_icons records carry that rect for every CSR icon; an
-	-- addon needing a different rect would warrant promoting `icon` to a table.
+	-- "/" in icon = full DB texture path (addon); otherwise a hud_icons id (built-in).
 	local texture, rect
 	if type(self._data.icon) == "string" and self._data.icon:find("/", 1, true) then
 		texture, rect = self._data.icon, { 0, 0, 128, 128 }
@@ -244,13 +177,10 @@ function CSRItemSelectionButton:set_item(data)
 
 	self._item_image:set_image(texture)
 	self._item_image:set_texture_rect(unpack(rect))
-	-- Per-item icon scale (1.0 default). Size the glyph now so it is correct on
-	-- the first rendered frame, before update() takes over the smoothstep.
 	self._icon_scale = self._data.icon_scale or 1
 	self:_size_icon(self._image:w())
 	self._desc:set_text(self._data.desc or "")
 
-	-- Rarity frame: tint per the item's rarity (white = common).
 	local frame_tex, frame_rect = tweak_data.hud_icons:get_icon_data("csr_frame")
 	self._frame:set_image(frame_tex)
 	self._frame:set_texture_rect(unpack(frame_rect))
@@ -258,9 +188,6 @@ function CSRItemSelectionButton:set_item(data)
 	self._frame:set_visible(true)
 end
 
--- Size the icon glyph to (square) container_size * icon_scale and centre it in
--- the icon panel. The panel is square (w == h == container_size), so centring
--- on container_size * 0.5 keeps the glyph centred at any scale.
 function CSRItemSelectionButton:_size_icon(container_size)
 	if not self._item_image then
 		return
@@ -315,12 +242,8 @@ function CSRItemSelectionButton:update(t, dt)
 	self._image:set_center_x(self._image_pos.x)
 	self._image:set_center_y(self._image_pos.y)
 
-	-- Track the animated container size; icon_scale shrinks the glyph relative
-	-- to it without affecting the rarity frame below.
 	self:_size_icon(s)
 
-	-- Frame tracks the icon's animated size at an independent scale so the
-	-- border thickness stays proportional as the card grows/shrinks.
 	if self._frame then
 		local fs = s * FRAME_SCALE
 		self._frame:set_size(fs, fs)
@@ -337,8 +260,7 @@ function CSRItemSelectionButton:smoothstep(a, b, step, n)
 end
 
 -- ===================================================================
--- CSRItemSelectionActionButton — the FINALIZE / BACK text buttons.
--- Verbatim fork of CrimeSpreeButton (no behavioural change).
+-- CSRItemSelectionActionButton — FINALIZE / BACK text buttons.
 -- ===================================================================
 CSRItemSelectionActionButton = CSRItemSelectionActionButton or class(MenuGuiItem)
 CSRItemSelectionActionButton._type = "CSRItemSelectionActionButton"
@@ -433,9 +355,7 @@ function CSRItemSelectionActionButton:shrink_wrap_button(w_padding, h_padding)
 end
 
 -- ===================================================================
--- CSRItemSelectionComponent — the centred modal popup.
--- Fork of CrimeSpreeModifiersMenuComponent; :new() takes (ws, fullscreen_ws,
--- items) where `items` is an array of { id, icon, rarity, name, desc }.
+-- CSRItemSelectionComponent — centred modal popup.
 -- ===================================================================
 CSRItemSelectionComponent = CSRItemSelectionComponent or class(MenuGuiComponentGeneric)
 
@@ -447,10 +367,6 @@ function CSRItemSelectionComponent:init(ws, fullscreen_ws, items, num_to_select)
 	self._buttons = {}
 	self._item_buttons = {}
 	self._action_buttons = {}
-	-- Pick budget: how many items the player is entitled to grab in this open.
-	-- Quota source is the caller (lobby reminder passes host_rank - owned; debug
-	-- keybind passes nil -> defaults to 1). _current_num counts picks IN PROGRESS
-	-- (1 = the pick currently shown), so the header reads "1 / N" on open.
 	self._num_to_select = math.max(1, num_to_select or 1)
 	self._current_num = 1
 
@@ -458,9 +374,6 @@ function CSRItemSelectionComponent:init(ws, fullscreen_ws, items, num_to_select)
 end
 
 function CSRItemSelectionComponent:close()
-	-- The owned strip + its hover tooltip live on the headers' workspace (so they can
-	-- sit ABOVE the popup), which does not clean them up on its own -- the widget's
-	-- destroy() removes both.
 	if self._owned_strip then
 		self._owned_strip:destroy()
 		self._owned_strip = nil
@@ -538,11 +451,7 @@ function CSRItemSelectionComponent:_setup()
 	self._text_header:set_left(self._panel:left())
 	self._text_header:set_bottom(self._panel:top())
 
-	-- Pick counter (right-aligned, top-right of the popup, opposite the title).
-	-- Shown only when more than one pick is queued -- a 1-of-1 reads as noise.
-	-- _current_num / _num_to_select are set in :init(); the actual text is
-	-- written via _update_counter_text so the call site (here AND _advance_pick)
-	-- can stay one-liner.
+	-- Pick counter (top-right, opposite title); hidden for 1-of-1 to reduce noise.
 	self._number_header = self._ws:panel():text({
 		vertical = "top",
 		align = "right",
@@ -558,11 +467,7 @@ function CSRItemSelectionComponent:_setup()
 	self._number_header:set_bottom(self._panel:top())
 	self:_update_counter_text()
 
-	-- Owned-items strip above the title: the shared CSROwnedItemsStrip widget. Lives
-	-- on the headers' workspace (NOT inside self._panel) so it can sit above the popup.
-	-- Width = popup width; anchored centred just above the title; rebuilt after each
-	-- pick (_advance_pick) and destroyed in close(). max_height keeps a large inventory
-	-- from climbing past the screen top (space above the title, minus margins).
+	-- Owned-items strip lives on the headers' workspace so it sits above the popup.
 	if CSROwnedItemsStrip then
 		local title_top = (self._text_header and alive(self._text_header) and self._text_header:top())
 			or self._panel:top()
@@ -572,7 +477,6 @@ function CSRItemSelectionComponent:_setup()
 			width = self._panel:w(),
 			layer = 51,
 			max_height = math.max(64, title_top - 12),
-			-- Items hug the left (no centring), matching the Black Market strip.
 			align = "left",
 			anchor = function(panel)
 				panel:set_center_x(self._panel:center_x())
@@ -603,8 +507,6 @@ function CSRItemSelectionComponent:_setup()
 		btn:set_y(0)
 		btn:set_callback(callback(self, self, "_on_select_item", btn))
 		table.insert(self._buttons, btn)
-		-- Track item buttons separately so _advance_pick can rebuild only this
-		-- subset between picks without disturbing the action buttons below.
 		table.insert(self._item_buttons, btn)
 	end
 
@@ -711,18 +613,6 @@ function CSRItemSelectionComponent:_on_select_item(item)
 	end
 end
 
--- Grant the picked item to the local peer, then close. Local-only: the count
--- model store (`managers.csr` peer_items) is not yet MP-synced (design open
--- item O4) -- the host doesn't yet broadcast a grant, the client doesn't yet
--- listen. When that slice lands, this is the point that should also fire a
--- network message.
---
--- Pick-cap gate: handled OUTSIDE this function via the lobby reminder. The
--- reminder is the production trigger and is rank-vs-owned-gated (only visible
--- while host_rank > rank_item_count, which excludes shop purchases), so add_item
--- is naturally bounded to the "one pick per rank earned" budget on that path. The debug keybind bypasses
--- the gate -- intentional, dev-only escape hatch. Selection-pool weighting
--- (60/24/4/12 per rarity) is still parked separately.
 function CSRItemSelectionComponent:_on_finalize_item()
 	if not self._picked_item then
 		managers.menu:post_event("menu_error")
@@ -736,18 +626,8 @@ function CSRItemSelectionComponent:_on_finalize_item()
 
 	if mgr and mgr.add_item and mgr.local_peer_id and item_type then
 		local pid = mgr:local_peer_id()
-		-- add_item fans out via CSRGameManager.on_item_added callbacks: each
-		-- interested surface (lobby reminder, lobby items panel, briefing
-		-- reminder, briefing items panel) subscribes on build and unsubscribes
-		-- on close. We no longer hand-roll the refresh dispatch from here --
-		-- a new grant site (rank-up auto-grant, scrapper payoff) gets the same
-		-- repaint for free as long as it calls add_item.
 		mgr:add_item(pid, item_type)
-		-- Consume the head offer: the player picked from THIS frozen set, so
-		-- it is spent. The OTHER two cards in that offer are discarded with
-		-- it -- intentional, "you pick one, the others don't carry over".
-		-- Future opens (and the immediate _advance_pick below) peek the next
-		-- stored offer.
+		-- pop_offer discards the whole 3-card set; the unchosen cards never carry over.
 		if mgr.pop_offer then
 			mgr:pop_offer(pid)
 		end
@@ -759,24 +639,16 @@ function CSRItemSelectionComponent:_on_finalize_item()
 		)
 	end
 
-	-- MP (M2b): announce the updated inventory so every peer's items panel reflects
-	-- the pick. broadcast_own_items self-gates on is_multiplayer (no-op in SP).
+	-- MP: broadcast so every peer's items panel reflects the pick (no-op in SP).
 	if _G.CSR_MP and _G.CSR_MP.broadcast_own_items then
 		_G.CSR_MP.broadcast_own_items()
 	end
 
 	managers.menu_component:post_event("item_buy")
 
-	-- Multi-pick: if the player is still owed more picks, reroll the cards in
-	-- place and stay open; otherwise close. _advance_pick handles both branches
-	-- (it sets _wants_close on the last pick), and the close itself is deferred
-	-- via _wants_close for the same reason _on_back is -- see _on_back / update.
 	self:_advance_pick()
 end
 
--- Top-right "X / Y" counter. Shown only when the quota is > 1; a 1-of-1 pick
--- reads as noise and matches the prior debug-window behaviour. Safe to call
--- before _setup wires the header (no-op) so :init ordering is forgiving.
 function CSRItemSelectionComponent:_update_counter_text()
 	if not self._number_header or not alive(self._number_header) then
 		return
@@ -788,17 +660,8 @@ function CSRItemSelectionComponent:_update_counter_text()
 	end
 end
 
--- Advance to the next pick OR close if the quota is spent.
---
--- Called from _on_finalize_item after the item is granted. If picks remain we
--- rebuild ONLY self._items_panel's children (the item cards) -- the action
--- buttons, header, blur, and modal-focus registration are untouched so the
--- window stays visually live (no close/reopen flicker) and the live-component
--- snapshot in CSR_OpenItemSelection stays valid.
---
--- self._buttons is reassembled as item buttons + action buttons in the same
--- order :_setup produced, so mouse_moved / mouse_pressed / update keep their
--- existing semantics (item buttons first -> action buttons second).
+-- Advance to the next pick, or set _wants_close if the quota is spent.
+-- Rebuilds only the item cards; action buttons and modal registration stay live.
 function CSRItemSelectionComponent:_advance_pick()
 	if self._current_num >= self._num_to_select then
 		self._wants_close = true
@@ -808,9 +671,6 @@ function CSRItemSelectionComponent:_advance_pick()
 	self._current_num = self._current_num + 1
 	self:_update_counter_text()
 
-	-- Tear down previous item cards. The panels live under _items_panel so
-	-- removing them there cleans up the bitmap/text children automatically;
-	-- no need to walk each button's internal panel tree.
 	for _, btn in ipairs(self._item_buttons or {}) do
 		if btn._panel and alive(btn._panel) then
 			self._items_panel:remove(btn._panel)
@@ -820,10 +680,6 @@ function CSRItemSelectionComponent:_advance_pick()
 	self._picked_item = nil
 	self._selected_item = nil
 
-	-- Fresh roll. build_item_pool is the current pool source -- when the
-	-- weighted selection pool lands (CSRGameManager:roll_item_pool), swap this
-	-- single call for the production roller; the rest of this function still
-	-- works unchanged.
 	self._items = build_item_pool()
 	local count = math.max(#self._items, 1)
 
@@ -836,8 +692,7 @@ function CSRItemSelectionComponent:_advance_pick()
 		table.insert(self._item_buttons, btn)
 	end
 
-	-- Rebuild self._buttons = item buttons + action buttons. Order matches
-	-- :_setup so dispatch iteration sees the same shape it did at open time.
+	-- Rebuild self._buttons = item buttons + action buttons (same order as :_setup).
 	self._buttons = {}
 	for _, b in ipairs(self._item_buttons) do
 		table.insert(self._buttons, b)
@@ -846,9 +701,6 @@ function CSRItemSelectionComponent:_advance_pick()
 		table.insert(self._buttons, b)
 	end
 
-	-- Relink keyboard / controller navigation. The action buttons (finalize,
-	-- back) are stable across rolls -- only the item buttons' left/right/down
-	-- links need re-pointing.
 	local finalize_btn = self._action_buttons and self._action_buttons[1]
 	local back_btn = self._action_buttons and self._action_buttons[2]
 	for i = 1, count do
@@ -866,41 +718,23 @@ function CSRItemSelectionComponent:_advance_pick()
 		back_btn:set_link("up", self._item_buttons[1])
 	end
 
-	-- Controller path: _setup ends with _move_selection("up") to seed a focused
-	-- card. Mirror that here so the next pick starts highlighted on the
-	-- (rebuilt) first card -- otherwise gamepad nav reads as "no focus" until
-	-- the player flicks the stick.
+	-- Seed controller focus on the first card of the new set (mirrors :_setup).
 	if not managers.menu:is_pc_controller() and self._move_selection then
 		self:_move_selection("up")
 	end
 
-	-- Reflect the item just granted by the previous pick (count bumped / new type
-	-- added) in the owned strip before the next card set is chosen.
 	if self._owned_strip then
 		self._owned_strip:rebuild()
 	end
 end
 
 function CSRItemSelectionComponent:_on_back()
-	-- Back-action SFX: vanilla convention is "menu_exit" (BlackMarket / LootDrop
-	-- / SearchBox all post this on back/close). Posting here -- not in
-	-- CSR_CloseItemSelection -- so a close triggered by something OTHER than
-	-- the BACK button (e.g. _advance_pick's auto-close on quota spent) stays
-	-- silent / uses its own SFX (item_buy plays on every successful pick).
+	-- Post "menu_exit" here only; quota-spent auto-close uses item_buy SFX instead.
 	if managers.menu_component then
 		managers.menu_component:post_event("menu_exit")
 	end
 
-	-- Do NOT close here. _on_back runs from the popup's mouse_pressed, which is
-	-- itself called from MenuComponentManager:run_return_on_all_live_components
-	-- while it ipairs-iterates _alive_components. Calling CSR_CloseItemSelection
-	-- now would unregister_component (table.remove + table.sort on that live
-	-- list) and node_gui:set_visible (renderer stencil/bg re-apply) mid-dispatch,
-	-- corrupting mouse routing so the lobby component never gets clicks again
-	-- (user report: "after Back none of the CSR buttons can be clicked").
-	-- Defer to update(), which runs outside the input/renderer call stack —
-	-- the same pattern the pre-refactor briefing_select_item.lua used (it
-	-- closed its popup from an update PostHook, never from an input handler).
+	-- Defer close to update() — closing mid-dispatch corrupts MCM's _alive_components iteration.
 	self._wants_close = true
 end
 
@@ -930,37 +764,17 @@ function CSRItemSelectionComponent:confirm_pressed()
 	return true
 end
 
--- Claim modal input focus. MenuComponentManager:input_focus() ends with
--- run_return_on_all_live_components("input_focus") and returns the first
--- non-nil; we are registered at priority -100 so we are hit first. With this
--- truthy, MenuInput:mouse_moved (menuinput.lua:203) and :mouse_pressed (:503)
--- BOTH skip the active node_gui's row-item hover/click handling — so the
--- hidden vanilla buttons (Inventory / Options / Back) can no longer be
--- clicked or highlighted — while the component-manager dispatch that feeds
--- THIS popup's own mouse_moved/mouse_pressed is left untouched (that path is
--- not gated by input_focus). The component is only registered while the popup
--- is open, so focus is released automatically on close.
+-- Returning truthy here blocks vanilla node-gui hover/click while the popup is open.
 function CSRItemSelectionComponent:input_focus()
 	return true
 end
 
--- Effectively modal via the dark/blur backdrop, but input is consumed ONLY
--- while the cursor is over the popup itself. Consuming unconditionally would
--- be unsafe: this is a debug toggle with no node lifecycle, so an ESC out of
--- the lobby leaves the component registered (only the keybind closes it) — an
--- "always true" handler would then lock ALL menu mouse input on the next
--- screen until the keybind is pressed again. Scoping to self._panel keeps an
--- orphaned popup harmless. Registered at priority -100 so it still sees input
--- before crime_spree_missions when both are live.
+-- Only consumes input over self._panel — scoped so an orphaned popup can't lock all menu input.
 function CSRItemSelectionComponent:mouse_moved(o, x, y)
 	if not managers.menu:is_pc_controller() or not alive(self._panel) then
 		return
 	end
 
-	-- Owned-strip hover (above the popup, outside self._panel): handled as a side
-	-- effect here -- this body always runs for the live modal regardless of cursor
-	-- position, and we leave the return value to the popup-body logic below so the
-	-- non-interactive strip never claims clicks or breaks the existing routing.
 	if self._owned_strip then
 		self._owned_strip:mouse_moved(x, y)
 	end
@@ -983,10 +797,6 @@ function CSRItemSelectionComponent:mouse_moved(o, x, y)
 	return inside and true or nil, pointer
 end
 
--- NOTE: MenuComponentManager dispatches this via
--- run_return_on_all_live_components("mouse_pressed", button, x, y)
--- (menucomponentmanager.lua:1693) — THREE args, no leading `o`. Same shape
--- CSRMissionsMenuComponent:mouse_pressed uses.
 function CSRItemSelectionComponent:mouse_pressed(button, x, y)
 	for idx, btn in ipairs(self._buttons) do
 		if btn._panel:visible() and btn:is_selected() and btn:callback() then
@@ -996,8 +806,7 @@ function CSRItemSelectionComponent:mouse_pressed(button, x, y)
 		end
 	end
 
-	-- Swallow clicks that land on the popup body (but not selectable) so they
-	-- don't punch through to the lobby; let clicks outside fall through.
+	-- Swallow unhandled clicks inside the popup so they don't punch through to the lobby.
 	if alive(self._panel) and self._panel:inside(x, y) then
 		return true
 	end
@@ -1046,30 +855,11 @@ end
 
 -- ===================================================================
 -- Open/close lifecycle for the selection window.
--- Registers at priority -100 so the modal sees mouse input before the
--- lobby's crime_spree_missions component (priority 0). The pool builder
--- (build_item_pool) lives at file scope -- see top of the file.
+-- Registered at priority -100 so the modal sees mouse before crime_spree_missions.
 -- ===================================================================
 
--- Hide / restore everything behind the popup.
---
--- The popup is an OVERLAY on the crime_spree_lobby node — there is no menu-node
--- switch (vanilla CS opened its modifiers menu as its own node, so the menu
--- system swapped the whole screen for free; we don't). Two separate layers
--- keep drawing on top of our dark/blur backdrop unless we hide them ourselves:
---
---  1. The forked lobby panel (CSRMissionsMenuComponent — cards, sidebar,
---     branded title, missions/rank counters, Start/Reroll). It is a
---     managers.menu_component component → hide its _panel / _fullscreen_panel.
---     Same pattern the pre-refactor briefing_select_item.lua used.
---  2. The vanilla menu NODE list (Inventory / Options / Back / etc.). That is
---     rendered by the menu renderer, NOT a menu_component. The active node gui
---     is renderer:selected_node() (top of _node_gui_stack,
---     coremenurenderer.lua:248) and MenuNodeGui:set_visible (menunodegui.lua:1791)
---     toggles it (and re-applies stencil/bg on show — vanilla's own restore).
---
--- We restore ONLY what we hid, and only if we hid it, so an open from a screen
--- with no lobby panel / node can't wrongly force something visible.
+-- Overlay approach: no menu-node switch, so lobby chrome must be hidden manually.
+-- Hides CSRMissionsMenuComponent panels + active node gui + lobby-code widget.
 local function csr_active_node_gui()
 	local am = managers and managers.menu and managers.menu:active_menu()
 	local renderer = am and am.renderer
@@ -1100,9 +890,7 @@ local function csr_hide_lobby_chrome()
 		hidden.node_gui = node_gui
 	end
 
-	-- MP lobby-code widget draws on layer 100 -- ABOVE the modal's dark/blur
-	-- backdrop -- so it stays visible over the popup unless hidden too (user report
-	-- 2026-05-25). Nil in SP (no lobby code) -> skipped.
+	-- Lobby-code widget draws above the blur backdrop (layer 100), so hide it too.
 	local code_gui = mcm and mcm._lobby_code_gui
 	if code_gui and code_gui.panel then
 		local cp = code_gui:panel()
@@ -1161,9 +949,7 @@ function _G.CSR_CloseItemSelection()
 
 	csr_restore_lobby_chrome()
 
-	-- Restore the pre-popup live-component order (see open snapshot comment).
-	-- Rebuild deterministically: original components in their original order
-	-- (minus ours), then any registered while the popup was up (minus ours).
+	-- Restore _alive_components order from snapshot (see CSR_OpenItemSelection).
 	local snap = _G._csr_alive_snapshot
 	_G._csr_alive_snapshot = nil
 	if snap and mcm._alive_components then
@@ -1203,16 +989,8 @@ function _G.CSR_OpenItemSelection(num_to_select)
 		return
 	end
 
-	-- num_to_select: how many picks this open is entitled to. Lobby reminder
-	-- passes host_rank - owned (the rank-vs-owned gap); the debug keybind
-	-- passes nil (defaults to 1 inside :init so the dev path stays one-shot).
-	--
-	-- Lock in N offers BEFORE the component builds its first card set, so
-	-- :init -> :_setup -> build_item_pool sees a stored offer rather than
-	-- nothing. ensure_offers is idempotent (no-op if enough are stored),
-	-- which is the property that gives us "first open's cards stay forever":
-	-- re-opening this window for the same owed pick finds the same offer
-	-- already there and never re-rolls.
+	-- Pre-generate N offers before building the first card set; ensure_offers is
+	-- idempotent, so re-opening the same owed pick always shows the same cards.
 	local mgr = managers and managers.csr
 	if mgr and mgr.ensure_offers and mgr.local_peer_id then
 		mgr:ensure_offers(mgr:local_peer_id(), num_to_select or 1)
@@ -1231,14 +1009,8 @@ function _G.CSR_OpenItemSelection(num_to_select)
 		return
 	end
 
-	-- Snapshot the live-component ORDER before we register. register_component
-	-- runs table.sort(_alive_components, a.priority < b.priority); Lua's sort is
-	-- NOT stable, so inserting our entry reshuffles the existing equal-priority
-	-- (p=0) components (lobby_code / crime_spree_missions / socialhub) and
-	-- unregister never re-sorts -> the lobby's crime_spree_missions can end up
-	-- behind a component whose mouse_pressed returns non-nil, starving it
-	-- forever (the "after close, CSR buttons dead" bug). We restore this exact
-	-- order on close.
+	-- Snapshot _alive_components order before register (Lua sort is unstable; restore on close
+	-- to prevent crime_spree_missions getting starved by a higher-priority component).
 	do
 		local snap = {}
 		for i, cd in ipairs(mcm._alive_components or {}) do
@@ -1253,15 +1025,8 @@ function _G.CSR_OpenItemSelection(num_to_select)
 	csr_log("[CSR] item selection window opened")
 end
 
--- While the item-selection modal is open, report it as the active "crime spree
--- modifiers" component so vanilla surfaces gating on it behave as during vanilla
--- modifier selection. The sole reader is CrimeSpreeContractBoxGui:can_take_input()
--- (crimespreecontractboxgui.lua:154) -> it then ignores the peer-panel click that
--- opens a player's profile / FBI-files overlay through the modal (user report
--- 2026-05-25). crime_spree_modifiers() is a pure boolean gate (verified: that
--- can_take_input is its only reader), so returning our component is safe. PostHook
--- return-override per mods/base/req/core/Hooks.lua; a nil return leaves vanilla's
--- value intact, so this is inert whenever our modal is closed.
+-- Mask as the active crime_spree_modifiers component so CrimeSpreeContractBoxGui:can_take_input()
+-- blocks peer-panel clicks through the modal.
 if MenuComponentManager and not _G._CSR_ITEMSEL_INPUT_GATE then
 	_G._CSR_ITEMSEL_INPUT_GATE = true
 	Hooks:PostHook(MenuComponentManager, "crime_spree_modifiers", "CSR_ItemSelInputGate", function(self)

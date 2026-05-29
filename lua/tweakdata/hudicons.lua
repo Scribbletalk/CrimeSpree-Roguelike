@@ -1,21 +1,9 @@
 -- Crime Spree Roguelike - Custom icons
---
--- U1 refactor port. Disk paths re-pointed to the refactor mod's new asset
--- layout (assets/gui/...). The fixed engine DB targets
--- (guis/textures/pd2/crime_spree/csr_*) are UNCHANGED — the logbook and other
--- CSR surfaces resolve icons by those DB ids, so they must not move.
---
--- Removed during the port (files never existed in the collected asset set, and
--- their consumer surfaces — shop / rewards / CS coin — are not ported yet):
--- csr_cs_icon, csr_coin, csr_chest_closed, csr_chest_open, csr_frame_common,
--- csr_frame_uncommon, csr_frame_contraband. The logbook only needs the single
--- generic csr_frame (it tints it per rarity), which maps to item_frame.dds.
 
 if not RequiredScript then
 	return
 end
 
--- ModPath always exists in BLT, no fallback needed
 local mod_path = ModPath
 
 -- Item icons
@@ -76,10 +64,7 @@ local turron_file = mod_path .. "assets/gui/items/wildcard/turron.dds"
 local turron_path = "guis/textures/pd2/crime_spree/csr_turron"
 local hippocratic_oath_file = mod_path .. "assets/gui/items/wildcard/hippocratic_oath.dds"
 local hippocratic_oath_path = "guis/textures/pd2/crime_spree/csr_hippocratic_oath"
--- Pre-mirrored wildcard icons. Used ONLY by hud_wildcard_slot.lua: applying
--- texture_rect={w,0,-w,h} to a mirrored DDS un-flips the visual AND reverses
--- the VertexColorTexturedRadial sweep direction, giving the slot a CCW
--- recharge animation without needing to mirror the icon everywhere else.
+-- Pre-mirrored wildcard icons: texture_rect={w,0,-w,h} un-flips the visual and makes VertexColorTexturedRadial sweep CCW for the recharge animation.
 local familiar_friend_mirror_file = mod_path .. "assets/gui/items/wildcard/familiar_friend_mirror.dds"
 local familiar_friend_mirror_path = "guis/textures/pd2/crime_spree/csr_familiar_friend_mirror"
 local side_satchel_mirror_file = mod_path .. "assets/gui/items/wildcard/side_satchel_mirror.dds"
@@ -108,18 +93,15 @@ local gage_token_path = "guis/textures/pd2/crime_spree/csr_gage_token"
 local scrap_file = mod_path .. "assets/gui/items/scrap.dds"
 local scrap_path = "guis/textures/pd2/crime_spree/csr_scrap"
 
--- Generic frame (one texture, tinted per rarity at draw time by the logbook /
--- items page / selection popup). Old per-rarity frame variants never existed.
+-- Generic frame (one texture, tinted per rarity at draw time)
 local frame_file = mod_path .. "assets/gui/items/item_frame.dds"
 local frame_path = "guis/textures/pd2/crime_spree/csr_frame"
 
--- Plush Shark guardian-invuln fullscreen vignette (blue pulse). Not an item icon;
--- referenced by lua/items/csr_item_effects_regen.lua.
+-- Plush Shark guardian-invuln fullscreen vignette (blue pulse)
 local guilt_vignette_file = mod_path .. "assets/gui/misc/vignette.texture"
 local guilt_vignette_path = "guis/textures/pd2/crime_spree/csr_guilt_vignette"
 
--- Shocking Surprise taser-burst fullscreen overlay (cyan electric arcs from the
--- screen edges). Referenced by lua/modifiers/loud/shocking_surprise.lua.
+-- Shocking Surprise taser-burst fullscreen overlay (cyan electric arcs)
 local shocking_overlay_file = mod_path .. "assets/gui/misc/shocking_surprise_screen_overlay.texture"
 local shocking_overlay_path = "guis/textures/pd2/crime_spree/csr_shocking_overlay"
 
@@ -203,7 +185,6 @@ if DB and DB.create_entry then
 	DB:create_entry(Idstring("texture"), Idstring(frame_path), frame_file)
 end
 
--- Override init the same way Restoration mod does it
 local old_icons_init = HudIconsTweakData.init
 function HudIconsTweakData:init()
 	old_icons_init(self)
@@ -354,9 +335,7 @@ function HudIconsTweakData:init()
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	-- Pre-mirrored wildcard icons. The HUD slot pairs these with
-	-- texture_rect={w,0,-w,h} so the icon LOOKS un-mirrored on screen but
-	-- VertexColorTexturedRadial sweeps counterclockwise instead of clockwise.
+	-- Pre-mirrored wildcard icons (HUD slot CCW recharge — see DB section above)
 	self.csr_familiar_friend_mirror = {
 		texture = familiar_friend_mirror_path,
 		texture_rect = { 0, 0, 128, 128 },
@@ -393,10 +372,7 @@ function HudIconsTweakData:init()
 		texture_rect = { 0, 0, 128, 128 },
 	}
 
-	-- v2.50: REMOVED vanilla CS modifier icon overrides (lines 220-276 from v2.49)
-	-- Vanilla registers its own icons correctly via DLC system
-	-- Our override broke them because DLC texture paths don't work from mods
+	-- Vanilla CS modifier icons intentionally NOT overridden; DLC texture paths don't work from mods
 end
 
--- Diagnostic load trace (kept per debug policy).
 csr_log("[CSR Logbook] hudicons.lua loaded; DB available=" .. tostring(DB ~= nil and DB.create_entry ~= nil))

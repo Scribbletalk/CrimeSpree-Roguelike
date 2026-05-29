@@ -1,14 +1,4 @@
--- Crime Spree Roguelike - Gage's Services Menu Component.
--- Full-screen menu node (940x600 centered panel), modelled on the U1 logbook
--- component (logbook_menu.lua) — same node+component+open_node lifecycle. Hosts
--- internal tabs (Shop is currently the only one; built for expansion) and a
--- title + close button. The shop page content lives in black_market_shop_page.lua.
---
--- U1 port note: the pre-refactor version also suppressed the end-screen UI when
--- opened over the victory screen. That's dropped here — the U1 shop opens from
--- the lobby sidebar (like the logbook), not the end screen. Re-add a
--- _suppress_endscreen pass (see the logbook component) if/when the shop becomes
--- reachable from the end screen.
+-- Gage's Services full-screen menu component. Shop page content lives in black_market_shop_page.lua.
 
 if not RequiredScript then
 	return
@@ -36,8 +26,7 @@ function CrimeSpreeBlackMarketMenuComponent:init(ws, fullscreen_ws, node)
 
 	self:_setup()
 
-	-- Swap menu music to the vanilla "lets_go_shopping_menu" track for the
-	-- duration of the shop; close() restores whatever was playing before.
+	-- Swap to shopping music; close() restores it.
 	self._prev_music_event = Global and Global.music_manager and Global.music_manager.current_event or nil
 	pcall(function()
 		if managers and managers.music and managers.music.post_event then
@@ -60,9 +49,7 @@ function CrimeSpreeBlackMarketMenuComponent:_setup()
 	})
 
 	local panel_w = 940
-	-- Height matches the vanilla weapon-select grid (BlackMarketGui): a fraction of
-	-- the workspace, so it scales with resolution instead of a fixed number.
-	-- GRID_H_MUL = (6.9 or 6.95)/8; the -70 mirrors BlackMarketGui's grid_size offset.
+	-- Height mirrors BlackMarketGui's grid_size formula so it scales with resolution.
 	local grid_h_mul = (NOT_WIN_32 and 6.9 or 6.95) / 8
 	local panel_h = math.floor((self._panel:h() - 70) * grid_h_mul)
 
@@ -75,7 +62,6 @@ function CrimeSpreeBlackMarketMenuComponent:_setup()
 	self._content_panel:set_center_x(self._panel:w() / 2)
 	self._content_panel:set_center_y(self._panel:h() / 2)
 
-	-- Panel background + border.
 	self._content_panel:rect({
 		color = Color.black,
 		alpha = 0.92,
@@ -85,11 +71,7 @@ function CrimeSpreeBlackMarketMenuComponent:_setup()
 		sides = { 2, 2, 2, 2 },
 	})
 
-	-- Branded header OUTSIDE the content box, in the lobby "CRIME SPREE ROGUELIKE"
-	-- style: a crisp pd2_large foreground over a huge faded-blue pd2_massive ghost.
-	-- Both layers live on the OUTER panel (not the box) and anchor just above the
-	-- box's top-left, so the ghost spills over the backdrop like the lobby title.
-	-- Ghost on a low layer (behind the box) so its lower half is masked by the box.
+	-- pd2_large foreground + faded pd2_massive ghost on the outer panel, matching lobby title style.
 	local header_label = managers.localization:text("csr_black_market_title")
 	local header_ghost = self._panel:text({
 		name = "csr_header_ghost",
@@ -115,21 +97,14 @@ function CrimeSpreeBlackMarketMenuComponent:_setup()
 	})
 	local _, _, header_w, header_h = header:text_rect()
 	header:set_size(header_w, header_h)
-	-- Same spot as the lobby title: (0,0) of the (safe-workspace) outer panel, i.e.
-	-- the safe-area top-left corner. These menus share the lobby's safe self._ws, so
-	-- the lobby's implicit (0,0) maps here 1:1.
 	header:set_left(0)
 	header:set_top(0)
-	-- Exposed so the shop page's owned-items strip can align itself to the header line.
-	self._header = header
+	self._header = header -- exposed so the shop page can align its owned-items strip
 	header_ghost:set_world_left(header:world_left())
 	header_ghost:set_world_center_y(header:world_center_y())
 	header_ghost:move(-13, 9)
 
-	-- PD2-style BACK button at the workspace bottom-right (replaces the old top-right
-	-- close X). Same action -- managers.menu:back() -- the X had. Mirrors vanilla
-	-- BlackMarketGui's back_button (blackmarketgui.lua:2573): pd2_large, button_stage_3,
-	-- flush bottom-right of the outer panel, symmetric with the top-left header.
+	-- BACK button flush bottom-right, mirroring vanilla BlackMarketGui layout.
 	self._back_button = self._panel:text({
 		name = "csr_back_button",
 		vertical = "bottom",
@@ -145,9 +120,7 @@ function CrimeSpreeBlackMarketMenuComponent:_setup()
 	self._back_button:set_right(self._panel:w())
 	self._back_button:set_bottom(self._panel:h())
 
-	-- Single shop "tab": the lone SHOP button was redundant, so no tab bar is
-	-- drawn. _tab_definitions still drives _create_tab_panels / _switch_tab, and
-	-- the (empty) _tab_buttons table keeps the mouse/colour loops as harmless no-ops.
+	-- No tab bar drawn (single tab); _tab_buttons stays empty so hover/click loops are no-ops.
 	self._tab_definitions = {
 		{ id = "shop", label_key = "csr_black_market_tab_shop" },
 	}
@@ -156,8 +129,6 @@ function CrimeSpreeBlackMarketMenuComponent:_setup()
 end
 
 function CrimeSpreeBlackMarketMenuComponent:_create_tab_panels()
-	-- Title now lives OUTSIDE the box, so content starts near the top (was y=60 to
-	-- clear the in-box title) and reclaims that strip. Bottom margin 20px.
 	local panel_w = self._content_panel:w() - 40
 	local panel_x = 20
 	local panel_y = 10
@@ -179,7 +150,6 @@ end
 function CrimeSpreeBlackMarketMenuComponent:_switch_tab(tab_id)
 	self._current_tab = tab_id
 
-	-- Tab button colours: selected = gold bg / black text; others = dim.
 	for id, button in pairs(self._tab_buttons) do
 		if id == tab_id then
 			button.bg:set_color(Color(1, 0.85, 0.7, 0.2))
@@ -194,7 +164,6 @@ function CrimeSpreeBlackMarketMenuComponent:_switch_tab(tab_id)
 		panel:set_visible(id == tab_id)
 	end
 
-	-- Lazy-populate the shop page on first switch to the tab.
 	if tab_id == "shop" and not self._shop_populated then
 		if CrimeSpreeBlackMarketShopPage then
 			self._shop_page = CrimeSpreeBlackMarketShopPage:new(self._tab_panels["shop"], self)
@@ -204,15 +173,13 @@ function CrimeSpreeBlackMarketMenuComponent:_switch_tab(tab_id)
 end
 
 function CrimeSpreeBlackMarketMenuComponent:close()
-	-- Clear the live-instance global before destroying the panel so external
-	-- callers don't refresh a dead Diesel object (C++ access violation).
+	-- Nil the global before panel removal to prevent callers from touching a dead Diesel object.
 	if _G.CSR_BlackMarketShopPageInstance == self._shop_page then
 		_G.CSR_BlackMarketShopPageInstance = nil
 	end
 	if self._panel and alive(self._panel) and self._ws then
 		self._ws:panel():remove(self._panel)
 	end
-	-- Restore whatever ambient music was playing before the shop opened.
 	pcall(function()
 		if managers and managers.music and managers.music.post_event then
 			managers.music:post_event("stop_all_music")
@@ -239,7 +206,6 @@ function CrimeSpreeBlackMarketMenuComponent:mouse_moved(o, x, y)
 	local local_x = x - panel_x
 	local local_y = y - panel_y
 
-	-- Back button hover (bottom-right): brighten on hover, dim otherwise.
 	if self._back_button and alive(self._back_button) then
 		if self._back_button:inside(x, y) then
 			self._back_button:set_color(tweak_data.screen_colors.button_stage_2)
@@ -253,7 +219,6 @@ function CrimeSpreeBlackMarketMenuComponent:mouse_moved(o, x, y)
 		end
 	end
 
-	-- Tab bar hover.
 	for tab_id, button in pairs(self._tab_buttons) do
 		if
 			local_x >= button.x
@@ -271,7 +236,6 @@ function CrimeSpreeBlackMarketMenuComponent:mouse_moved(o, x, y)
 
 	self._last_hovered_id = nil
 
-	-- Delegate to the active tab's page.
 	if self._shop_page and self._current_tab == "shop" and self._shop_page.mouse_moved then
 		return self._shop_page:mouse_moved(o, x, y)
 	end
@@ -289,14 +253,12 @@ function CrimeSpreeBlackMarketMenuComponent:mouse_pressed(button, x, y)
 		return
 	end
 
-	-- Back button click (bottom-right).
 	if self._back_button and alive(self._back_button) and self._back_button:inside(x, y) then
 		managers.menu_component:post_event("menu_back")
 		managers.menu:back()
 		return true
 	end
 
-	-- Delegate to the active tab's page.
 	if self._shop_page and self._current_tab == "shop" and self._shop_page.mouse_pressed then
 		return self._shop_page:mouse_pressed(button, x, y)
 	end
@@ -323,7 +285,6 @@ function CrimeSpreeBlackMarketMenuComponent:mouse_released(o, button, x, y)
 	local local_x = x - panel_x
 	local local_y = y - panel_y
 
-	-- Tab bar click switches the active tab.
 	for tab_id, button_data in pairs(self._tab_buttons) do
 		if
 			local_x >= button_data.x

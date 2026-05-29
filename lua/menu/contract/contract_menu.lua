@@ -1,24 +1,6 @@
--- CSRContractMenuComponent — fork of vanilla CrimeSpreeContractMenuComponent.
---
--- Origin: pd2_source_code/lib/managers/menu/crimespreecontractmenucomponent.lua (815 lines)
--- Strategy: byte-for-byte copy with class names renamed. All managers.crime_spree
--- and tweak_data.crime_spree references intentionally left intact for this slice
--- — they will be swapped to managers.csr / our own tweak data in a follow-up slice.
--- This file existing alone changes nothing player-visible; instantiation is wired
--- in a separate step (Slice 4).
---
--- Class renames:
---   CrimeSpreeContractMenuComponent          -> CSRContractMenuComponent
---   MenuCrimeNetCrimeSpreeContractInitiator  -> MenuCSRContractInitiator
---
--- Diverged from the byte-copy: the vanilla starting-level picker
--- (CrimeSpreeStartingLevelItem) + its continental-coin cost were removed per the
--- locked rebalance (a run always starts at rank 0). In their place the popup now
--- shows a vanilla-style difficulty selector (risk-icon bar + difficulty name +
--- clickable < > cycle arrows). The selector is component-side, NOT a node menu
--- item: the CS contract node returns input_focus=false (menurenderer.lua:350), so
--- node items are non-navigable here -- the same reason vanilla CS keeps its own
--- interactive controls in this component.
+-- Fork of vanilla CrimeSpreeContractMenuComponent. Starting-level picker removed
+-- (runs always start at rank 0); replaced with a component-side difficulty selector
+-- (node items are non-navigable here — CS contract node returns input_focus=false).
 
 CSRContractMenuComponent = CSRContractMenuComponent or class(MenuGuiComponentGeneric)
 
@@ -102,10 +84,6 @@ function CSRContractMenuComponent:_setup()
 
 	blur:animate(func)
 
-	-- Header is always the plain title. The old "...Level $level$" variant (with
-	-- its risk-colored level number) was removed per user request, so the
-	-- show_level branch, the rank lookup, and the range-color highlight all went
-	-- with it -- there is no level number to substitute or color anymore.
 	self._contact_text_header = self._panel:text({
 		vertical = "top",
 		align = "left",
@@ -181,12 +159,7 @@ end
 function CSRContractMenuComponent:_setup_new_crime_spree(text_w, text_h)
 	local padding = tweak_data.gui.crime_net.contract_gui.padding
 
-	-- Difficulty risk-skull preview, on the LEFT just under the Crime Spree
-	-- description (inside the contract description box). The < > selector itself is
-	-- a MenuItemMultiChoice in the GAME SETTINGS box (contract_difficulty.lua);
-	-- this row only shades risk skulls to match. Risk shading mirrors vanilla
-	-- CrimeNetContractGui (active when i <= id - 1). (The vanilla starting-level
-	-- picker + its coin cost were cut per the locked rebalance: run starts rank 0.)
+	-- Risk-skull preview only; the < > selector lives in contract_difficulty.lua (node items non-navigable here).
 	local label = self._contract_panel:text({
 		layer = 1,
 		vertical = "top",
@@ -205,9 +178,7 @@ function CSRContractMenuComponent:_setup_new_crime_spree(text_w, text_h)
 		h = 48,
 	})
 
-	-- risk_pd (i==1) is the no-risk baseline and is not drawn; each higher tier
-	-- lights up once the chosen difficulty reaches it. SKIP_OVERKILL_290 hides the
-	-- two top tiers where the platform disables them, exactly as vanilla.
+	-- risk_pd (i==1) is the no-risk baseline; skip it. SKIP_OVERKILL_290 hides top tiers platform-wide.
 	local risks = {
 		"risk_pd",
 		"risk_swat",
@@ -239,16 +210,11 @@ function CSRContractMenuComponent:_setup_new_crime_spree(text_w, text_h)
 		end
 	end
 
-	-- Stack just under the description, left-aligned: label on top, skulls below.
 	label:set_left(padding)
 	label:set_top(self._desc_text:bottom() + padding)
 	self._difficulty_panel:set_left(padding)
 	self._difficulty_panel:set_top(label:bottom())
 
-	-- Current-run status line, just under the difficulty skulls. is_active() is the
-	-- CSR run flag flipped by start_run / end_run (game_manager.lua), so this
-	-- reads "active" once a run is in flight and "none" before one starts. Read
-	-- once at setup -- the run state can't change while this contract menu is open.
 	local spree_active = managers.csr and managers.csr:is_active()
 	local spree_status =
 		managers.localization:text(spree_active and "csr_current_spree_active" or "csr_current_spree_none")
@@ -266,12 +232,7 @@ function CSRContractMenuComponent:_setup_new_crime_spree(text_w, text_h)
 	spree_line:set_left(padding)
 	spree_line:set_top(self._difficulty_panel:bottom() + padding)
 
-	-- Highlight just the status word (the tail after "CURRENT SPREE: "): ACTIVE in
-	-- crime_spree yellow, NONE in a dimmed white. The status sits at the end of the
-	-- line, so its 0-based start = full length minus status length (set_range_color
-	-- is start-inclusive / end-exclusive -- vanilla, hudmissionbriefing.lua:560).
-	-- status_len uses the lowercase loc value, whose codepoint count matches the
-	-- uppercased render for these ASCII words.
+	-- Color just the status word at the end of the line (set_range_color is start-inclusive / end-exclusive).
 	local full_len = utf8.len(spree_line:text())
 	local status_len = utf8.len(spree_status)
 	local status_color = spree_active and tweak_data.screen_colors.crime_spree_risk or Color.white:with_alpha(0.6)
@@ -280,16 +241,12 @@ function CSRContractMenuComponent:_setup_new_crime_spree(text_w, text_h)
 	self:set_difficulty_id(self:_current_difficulty_id())
 end
 
--- Current difficulty as a tweak_data.difficulties index (2..8 are selectable).
 function CSRContractMenuComponent:_current_difficulty_id()
 	local diff = managers.csr and managers.csr:difficulty() or tweak_data.crime_spree.base_difficulty
 	return tweak_data:difficulty_to_index(diff) or tweak_data.crime_spree.base_difficulty_index
 end
 
--- Refresh the risk-skull shading for a tweak_data.difficulties index. Called once
--- on setup and again by change_csr_contract_difficulty when the player cycles the
--- node's difficulty multichoice. Mirrors vanilla CrimeNetContractGui:set_difficulty_id
--- (active when i <= id - 1).
+-- Called on setup and by change_csr_contract_difficulty when the player cycles difficulty.
 function CSRContractMenuComponent:set_difficulty_id(difficulty_id)
 	if not self._risk_icons then
 		return
@@ -484,9 +441,7 @@ function CSRContractMenuComponent:mouse_wheel_down(x, y)
 end
 
 function CSRContractMenuComponent:special_btn_pressed(button)
-	-- Difficulty is selected via the node's difficulty MenuItemMultiChoice
-	-- (contract_difficulty.lua), so this popup no longer consumes the
-	-- modify/voice special buttons.
+	-- Difficulty is handled by contract_difficulty.lua; nothing to consume here.
 end
 
 function CSRContractMenuComponent:_setup_controller_input()

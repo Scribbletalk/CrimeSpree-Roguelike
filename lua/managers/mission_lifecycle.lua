@@ -1,6 +1,4 @@
--- Post-heist orchestration on MissionEndState:at_enter — rank gain, loot→token
--- accrual, shop restock, new mission set. Failure → mark_failed (run stays active
--- but locked). See csr_vanilla_intercepts.md.
+-- Post-heist: rank gain, loot→token accrual, shop restock, new mission set; failure locks the run.
 
 local function log_csr(msg)
 	if _G.CSR_DEBUG then
@@ -29,18 +27,12 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 		return
 	end
 
-	-- Suppress vanilla's end-screen XP. Vanilla's own CS guard in :update is false
-	-- for CSR. Force _completion_bonus_done so the continue button doesn't stay
-	-- _continue_blocked (skipping the XP block also skips set_completion_bonus_done).
-	-- Set the field directly — the setter's _set_continue_button_text fires too early.
-	-- Cash is suppressed separately in endscreen_economy.lua (must be at the source).
+	-- Suppress vanilla XP and unblock the continue button; cash suppressed in endscreen_economy.lua.
 	self._total_xp_bonus = false
 	self._completion_bonus_done = true
 
 	if self._success then
-		-- Guest playing in a host's lobby PAUSES its own run: rank, mission count,
-		-- loot→rank and mission set do NOT advance. Heist reward banks into bucket B
-		-- (valued at HOST difficulty), paid at the guest's own End Spree as A + B.
+		-- Guest run is paused: progress banks into bucket B, paid out at guest's own End Spree.
 		local guesting = managers.csr.is_guesting and managers.csr:is_guesting()
 		local played_id = managers.csr:current_mission()
 		local gain
@@ -56,7 +48,6 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 			managers.csr:record_mission_completed()
 		end
 
-		-- Looted cash drives BOTH a token stream AND extra rank progress.
 		local loot_cash = 0
 		pcall(function()
 			if managers.money and managers.loot then
@@ -80,8 +71,7 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 			loot_ranks = managers.csr:accrue_loot_rank(loot_cash)
 		end
 
-		-- Stash for the end-screen conversion animation (stage_endscreen.lua reads this).
-		-- Runtime field, not serialized.
+		-- Runtime stash for end-screen conversion animation (stage_endscreen.lua), not serialized.
 		local per_token = managers.csr:reward_per_rank_cash() / ((_G.CSR_Shop and CSR_Shop.TOKENS_PER_RANK) or 5)
 		local reward_entry = managers.csr:peer_entry(pid)
 		managers.csr._last_heist_rewards = {

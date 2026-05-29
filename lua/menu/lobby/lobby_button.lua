@@ -1,11 +1,4 @@
--- CSRMenuComponent — fork of vanilla CrimeSpreeMenuComponent.
---
--- Origin: pd2_source_code/lib/managers/menu/crimespreemenucomponent.lua (252 lines)
--- Strategy: byte-for-byte copy with class names renamed. All managers.crime_spree
--- and tweak_data.crime_spree references intentionally left intact for this slice
--- — they will be swapped to managers.csr / our own tweak data in a follow-up slice.
--- This file existing alone changes nothing player-visible; instantiation is wired
--- in a separate step.
+-- CSRMenuComponent — renamed fork of vanilla CrimeSpreeMenuComponent; managers.crime_spree refs kept intentionally.
 
 CSRMenuComponent = CSRMenuComponent or class(MenuGuiComponentGeneric)
 local padding = 10

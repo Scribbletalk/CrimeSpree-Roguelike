@@ -1,21 +1,10 @@
--- Registers the "csr_copier" interaction tweak used by the in-world printer prop.
--- Referenced from off_prop_copy_machine_smuggle.unit via the `tweak_data` var on
--- the interaction extension, and read by CrimeSpreeCopierInteractionExt at
--- interact time.
---
--- Deliberately NO upgrade_timer_multiplier: the subclass overrides _get_timer to
--- pin the hold at tweak_data.timer unconditionally, but omitting the field is
--- belt-and-braces in case a future base-class change bypasses the override.
+-- Interaction tweak for the in-world printer prop (csr_copier).
 
 if not InteractionTweakData then
 	return
 end
 
--- Yellow contour palette deferred to LocalizationManagerPostInit: a
--- TweakData:init PostHook doesn't work here because InteractionTweakData is
--- required BEFORE the TweakData class itself is declared, so `TweakData` is nil
--- when this script body runs. Idempotent with the matching block in
--- scrapper_interaction.lua (shared palette, registered once).
+-- TweakData is nil at script-load (InteractionTweakData loads before it), so palette registration is deferred. Idempotent with scrapper_interaction.lua.
 Hooks:Add("LocalizationManagerPostInit", "CSR_RegisterYellowContourPaletteCopier", function()
 	if tweak_data and tweak_data.contour and not tweak_data.contour.csr_yellow_interactable then
 		tweak_data.contour.csr_yellow_interactable = {
@@ -33,11 +22,9 @@ Hooks:PostHook(InteractionTweakData, "init", "CSR_CopierInteractionTweak", funct
 		blocked_hint = "csr_copier_no_item",
 		timer = 0.5,
 		interact_distance = 250,
-		-- Yellow contour, gated on distance by copier_spawner.lua's per-frame
-		-- proximity hook (only rendered when the player is within CSR_PROX_RANGE).
+		-- Proximity-gated by copier_spawner.lua (only shown within CSR_PROX_RANGE).
 		contour = "csr_yellow_interactable",
-		-- Electronic keyboard-typing cues, reused from the vanilla hack/ipad
-		-- interactions -- fits the copy-machine prop better than a bag-rustle.
+		-- Keyboard sounds fit the prop better than bag-rustle cues.
 		sound_start = "bar_keyboard",
 		sound_interupt = "bar_keyboard_cancel",
 		sound_done = "bar_keyboard_finished",

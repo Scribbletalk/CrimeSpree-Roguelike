@@ -1,6 +1,4 @@
--- Interaction extension for the in-world evidence shredder. Attached via
--- supermod.xml to pex_prop_evidence_shredder.unit. Arch + MP notes in
--- csr_in_world_props_architecture.md.
+-- Interaction extension for the CSR in-world evidence shredder unit.
 
 if not RequiredScript then
 	return
@@ -44,8 +42,7 @@ function CrimeSpreeScrapperInteractionExt:_interact_blocked(player)
 	if mgr and mgr.is_run_active and not mgr:is_run_active() then
 		return true
 	end
-	-- scrapper_menu.lua stamps a "busy until" timestamp here while the shred anim
-	-- is mid-play, so the player can't re-trigger the interaction.
+	-- Busy flag stamped by scrapper_menu.lua during the shred animation.
 	local busy = _G.CSR_ScrapperBusyUntil and _G.CSR_ScrapperBusyUntil[self._unit:key()]
 	if busy then
 		local now = (Application and Application:time()) or 0
@@ -53,8 +50,7 @@ function CrimeSpreeScrapperInteractionExt:_interact_blocked(player)
 			return true
 		end
 	end
-	-- Empty inventory is deliberately NOT a block — let the menu surface "No items
-	-- to scrap" rather than silently hiding the prompt (which feels broken).
+	-- Empty inventory is not a block; the menu surfaces the "nothing to scrap" message.
 	return false
 end
 
@@ -62,16 +58,11 @@ function CrimeSpreeScrapperInteractionExt:interact(player)
 	if not self:can_interact(player) then
 		return
 	end
-	-- Don't call super.interact: it runs the "interact" sequence (shred animation)
-	-- on hold-complete. We want that animation gated to the actual item pick in
-	-- scrapper_menu:on_pick. Inline the two side effects we still need.
+	-- Skip super.interact — the shred animation must fire from scrapper_menu:on_pick, not here.
 	self._tweak_data_at_interact_start = nil
 	self:_post_event(player, "sound_done")
 	self:remove_interact()
-	-- remove_interact alone isn't enough with keep_active_after_interaction = true;
-	-- vanilla's per-frame raycast re-shows the prompt the moment the menu draws.
-	-- set_active(false) drops us from managers.interaction's active set;
-	-- scrapper_menu.close_menu restores it.
+	-- set_active(false) suppresses the re-shown prompt; scrapper_menu.close_menu restores it.
 	if self.set_active then
 		pcall(function()
 			self:set_active(false)

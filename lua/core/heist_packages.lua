@@ -1,10 +1,5 @@
--- Two fixes for the "heists crash on enemy spawn" bug. Root cause + design
--- in csr_heist_packages_deep_dive.md.
---
---   1. Load each heist's job package on CSR runs. Vanilla GameSetup only loads
---      it under the crime_spree gamemode, which CSR never enables.
---   2. Substitute the default SWAT for any ElementSpawnEnemyDummy that points
---      at an unloaded unit, so the encounter doesn't native-AV.
+-- Fixes "heists crash on enemy spawn": loads the job package CSR never gets (vanilla
+-- gates it on crime_spree gamemode), then substitutes default SWAT for any unloaded unit.
 
 if not RequiredScript then
 	return
@@ -30,8 +25,6 @@ if GameSetup and not _G._CSR_HEIST_PACKAGES_HOOKED then
 
 		self._loaded_job_packages = self._loaded_job_packages or {}
 		local loaded, matched = 0, 0
-		-- Verbose per-job logging: rare event (once per level load), and a missing
-		-- package later shows up as a crash worth diagnosing.
 		for job_id, data in pairs(jobs) do
 			for _, level_data in ipairs(data.chain or {}) do
 				if level_data.level_id == level_id then
@@ -64,9 +57,7 @@ if GameSetup and not _G._CSR_HEIST_PACKAGES_HOOKED then
 	end)
 end
 
--- ElementSpawnEnemyDummy spawn safety. Some heists (e.g. First World Bank) spawn
--- enemies that aren't in ANY loaded package — vanilla safe_spawn_unit native-AVs.
--- Substitute default SWAT instead. Skip only if even default SWAT isn't available.
+-- Substitute default SWAT for any unloaded unit; skip entirely if even SWAT is missing.
 if ElementSpawnEnemyDummy and not _G._CSR_SPAWN_SAFETY_HOOKED then
 	_G._CSR_SPAWN_SAFETY_HOOKED = true
 	local UNIT_EXT = Idstring("unit")
@@ -98,7 +89,7 @@ if ElementSpawnEnemyDummy and not _G._CSR_SPAWN_SAFETY_HOOKED then
 								.. ")"
 						)
 						if params and params.name then
-							-- Group-AI path: vanilla reads params.name.
+							-- Group-AI path uses params.name; scripted path uses self._enemy_name.
 							local p = {}
 							for k, v in pairs(params) do
 								p[k] = v
@@ -106,7 +97,6 @@ if ElementSpawnEnemyDummy and not _G._CSR_SPAWN_SAFETY_HOOKED then
 							p.name = DEFAULT_ENEMY
 							return orig_produce(self, p)
 						end
-						-- Scripted path: vanilla reads self._enemy_name. Save/restore.
 						local saved = self._enemy_name
 						self._enemy_name = DEFAULT_ENEMY
 						local ok, unit = pcall(orig_produce, self, params)

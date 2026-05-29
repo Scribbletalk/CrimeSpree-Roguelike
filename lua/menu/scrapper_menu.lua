@@ -1,21 +1,10 @@
--- Scrapper item-pick menu.
--- ---------------------------------------------------------------------------
--- Fullscreen workspace overlay. Renders the local player's scrappable items as
--- an icon grid styled like the Items panel (csr_frame + icon + stack counter,
--- rarity color tint). Picking a cell converts up to SCRAP_PER_USE_CAP stacks of
--- that item into scrap of the matching tier (via managers.csr add/remove_item),
--- plays the shredder animation, and closes.
--- ---------------------------------------------------------------------------
--- Input: mouse_pointer:use_mouse — last callback in stack receives events
--- (LIFO), so the overlay grabs all clicks until we remove_mouse on close.
--- WASD/Esc close via a per-frame raw-scancode poll (the player controller is
--- disabled while the menu is up, so action-name lookups won't work).
+-- Scrapper item-pick menu: fullscreen overlay, icon grid of scrappable items.
 
 if not RequiredScript then
 	return
 end
 
--- Visual constants -- match the Items panel so the cells look identical.
+-- Visual constants -- match the Items panel cell appearance.
 local FRAME_PX = 74
 local ICON_PX = 38
 local CELL_PX = FRAME_PX + 6
@@ -28,8 +17,7 @@ local BORDER_PX = 2
 local BORDER_COLOR = Color(1, 1, 1, 1) -- opaque white
 local PANEL_COLOR = Color(0.7, 0, 0, 0) -- semi-transparent black (alpha, r, g, b)
 
--- Per-rarity tint of csr_frame.dds (alpha, r, g, b). Only common/uncommon/rare
--- can be scrapped, so the contraband/wildcard tints are never actually used here.
+-- Per-rarity tint for csr_frame.dds; contraband/wildcard included for palette completeness.
 local RARITY_COLOR = {
 	common = Color.white,
 	uncommon = Color(1, 0, 0.95, 0),
@@ -52,10 +40,7 @@ local HOVER_TEXT_ALPHA = 0.9
 local MOUSE_LMB = Idstring("0")
 local MOUSE_RMB = Idstring("1")
 
--- Raw scancodes for "player wants to move/cancel". We disable the player's whole
--- controller on open (the vanilla freeze trick), so action-name lookups all
--- return false; raw scancodes bypass that. Trade-off: rebound movement keys
--- won't close the menu -- those players right-click instead.
+-- Raw scancodes because the player controller is disabled while the menu is up, making action-name lookups return false.
 local CLOSE_ON_KEYS = {
 	Idstring("w"),
 	Idstring("a"),
@@ -80,9 +65,7 @@ local function loc(key, fallback)
 	return fallback or key
 end
 
--- Player-facing display name from a registry def. def.name is the loc key (e.g.
--- "CUP OF JOE"); never fall back to def.type, which is the mechanical id (e.g.
--- "health" for Dog Tags -- see feedback_dog_tags_naming).
+-- def.name is the loc key; never fall back to def.type (mechanical id, not display name).
 local function display_name_for(def)
 	if not def then
 		return "?"
@@ -100,8 +83,7 @@ local function display_name_for(def)
 	return "?"
 end
 
--- Short description from the def's desc loc key (same text as the Items panel
--- tooltip / selection popup -- Critical Rule 15).
+-- Same text as the Items panel tooltip (Critical Rule 15).
 local function desc_for(def)
 	if def and def.desc and managers and managers.localization and managers.localization.text then
 		local s = managers.localization:text(def.desc)
@@ -112,13 +94,7 @@ local function desc_for(def)
 	return ""
 end
 
--- The local player's scrappable items, grouped as { def, type, stacks }. U1
--- ownership is already a per-type count map, so this is a direct read of
--- managers.csr:player_items filtered to scrappable rarities. Gated on a run
--- being active (debug-mode bypass for safehouse testing). Iterates the registry
--- for a stable display order. Only common/uncommon/rare have a scrap output, so
--- contraband/wildcard (and scrap itself) are excluded -- clicking them would
--- have no valid output.
+-- Only common/uncommon/rare have scrap output; contraband/wildcard/scrap-items excluded.
 local SCRAPPABLE_RARITIES = {
 	common = true,
 	uncommon = true,
@@ -146,11 +122,7 @@ local function build_groups()
 	return list
 end
 
--- Fire-grace using PD2's vanilla cooldown field. PlayerStandard owns
--- `_menu_closed_fire_cooldown` (0 in init, set to 0.15 by vanilla after kit
--- menus close); its action-forbidden check already gates primary_attack on it
--- being > 0, and PlayerStandard:update decrements it each frame. Reusing it
--- means no hook, no clock comparison.
+-- Reuses vanilla PlayerStandard._menu_closed_fire_cooldown to block primary_attack after close.
 local POST_CLICK_INPUT_GRACE = 0.25
 
 local function start_fire_grace(grace_s)
@@ -163,16 +135,13 @@ local function start_fire_grace(grace_s)
 		return
 	end
 	local state = mvt:current_state()
-	-- Field only exists on PlayerStandard; skip silently in other states
-	-- (driving, bleed-out, civilian) where shooting isn't possible anyway.
+	-- Field only exists on PlayerStandard; skip silently in other states.
 	if state and state._menu_closed_fire_cooldown ~= nil then
 		state._menu_closed_fire_cooldown = math.max(state._menu_closed_fire_cooldown, grace_s)
 	end
 end
 
--- grace_s: when >0, suppresses LMB-fire for that many seconds (so the closing
--- click doesn't bleed into primary_attack on the frame the controller
--- re-enables). All other input re-enables instantly. nil = no grace.
+-- grace_s > 0 suppresses LMB-fire so the closing click doesn't bleed into primary_attack.
 local function close_menu(grace_s)
 	if not _state then
 		return
@@ -187,15 +156,13 @@ local function close_menu(grace_s)
 		managers.gui_data:destroy_workspace(_state.ws)
 	end
 	_state = nil
-	-- Re-enable the player controller immediately. alive() guards a unit that
-	-- died / level-ended while the menu was up.
+	-- alive() guards a unit that died or level-ended while the menu was up.
 	if controller and player_unit and alive(player_unit) then
 		pcall(function()
 			controller:set_enabled(true)
 		end)
 	end
-	-- Re-activate the scrapper interaction so the F-prompt returns. interact()
-	-- in scrapper_interaction_ext.lua called set_active(false) on hold-complete.
+	-- Restore the F-prompt; scrapper_interaction_ext called set_active(false) on hold-complete.
 	if scrapper_unit and alive(scrapper_unit) then
 		local int_ext = scrapper_unit:interaction()
 		if int_ext and int_ext.set_active then
@@ -209,10 +176,7 @@ local function close_menu(grace_s)
 	end
 end
 
--- Run the shredder's "interact" sequence (its only visible animation) on the
--- unit the menu was opened against, tied to the moment of scrapping. Stamps a
--- "busy until" timestamp the interaction extension reads to block re-entry
--- until the animation finishes.
+-- Plays the shredder animation and stamps a busy-until timestamp to block re-entry.
 local SCRAPPER_ANIM_LOCK_S = 3.0
 
 _G.CSR_ScrapperBusyUntil = _G.CSR_ScrapperBusyUntil or {}
@@ -231,12 +195,10 @@ local function play_scrapper_anim()
 	_G.CSR_ScrapperBusyUntil[unit:key()] = now + SCRAPPER_ANIM_LOCK_S
 end
 
--- Maximum stacks of one item a single scrap action consumes. Extra stacks stay
--- in inventory; the player holds F again to scrap the rest.
+-- Per-use cap; extra stacks stay in inventory.
 local SCRAP_PER_USE_CAP = 10
 
--- Real-item rarity -> matching scrap item type. Contraband/wildcard have no
--- entry (can't be scrapped); build_groups already filters them out.
+-- Rarity to scrap-type mapping; contraband/wildcard absent (build_groups filters them).
 local RARITY_TO_SCRAP_TYPE = {
 	common = "scrap_common",
 	uncommon = "scrap_uncommon",
@@ -271,9 +233,7 @@ local function on_pick(group)
 		mgr:add_item(pid, scrap_type)
 	end
 
-	-- Local chat feedback (mirrors copier_spawner.lua): item name as the
-	-- rarity-colored "author", short action body. Name pulled from the static
-	-- loc key, not current inventory (the last stack may have just been removed).
+	-- Chat feedback: rarity-colored item name as "author" (mirrors copier_spawner.lua).
 	if removed > 0 and managers and managers.chat then
 		local pretty_name = display_name_for(group.def)
 		local color = RARITY_COLOR[rarity] or Color.white
@@ -282,9 +242,7 @@ local function on_pick(group)
 		end)
 	end
 
-	-- MP: our counts changed (real item removed, scrap added) -- tell the other
-	-- peers so their items panel converges. Self-gates on multiplayer (SP no-op).
-	-- Mirrors the copier exchange (copier_spawner.lua use_copier).
+	-- Notify peers so their items panel stays in sync (SP no-op).
 	if removed > 0 and _G.CSR_MP and _G.CSR_MP.broadcast_own_items then
 		_G.CSR_MP.broadcast_own_items()
 	end
@@ -316,8 +274,7 @@ local function set_hover(cell)
 	if _state.hover_label then
 		if cell then
 			_state.hover_label:set_text(cell.label_text)
-			-- Tint the name+rarity line with the cell's rarity color. Set color
-			-- BEFORE making visible so there's no one-frame default-color flash.
+			-- Set color before visible to avoid a one-frame default-color flash.
 			local col = cell.label_color or Color.white
 			if _state.hover_label.set_color then
 				_state.hover_label:set_color(col:with_alpha(HOVER_TEXT_ALPHA))
@@ -349,7 +306,7 @@ local function on_mouse_press(o, button, x, y)
 		return
 	end
 	if button == MOUSE_RMB then
-		-- RMB cancel: no fire-grace (RMB doesn't map to primary_attack).
+		-- RMB cancel: no fire-grace needed.
 		close_menu()
 		return
 	end
@@ -360,16 +317,14 @@ local function on_mouse_press(o, button, x, y)
 	if cell then
 		on_pick(cell.group)
 	else
-		-- Click outside any cell + outside the panel = close (with grace so the
-		-- click doesn't bleed into primary_attack on controller re-enable).
+		-- Click outside any cell + outside the panel = close.
 		if not _state.panel_rect:contains(x, y) then
 			close_menu(POST_CLICK_INPUT_GRACE)
 		end
 	end
 end
 
--- Tiny rect helper for the close-on-outside hit-test (panel:inside would always
--- report inside since the panel covers most of the screen).
+-- Rect helper for outside-click hit-test (panel covers most of the screen so panel:inside won't work).
 local function rect(x, y, w, h)
 	return {
 		x = x,
@@ -386,11 +341,8 @@ local function build_panel(groups)
 	local ws = managers.gui_data:create_fullscreen_workspace()
 	local root = ws:panel()
 
-	-- No backdrop: the world stays visible behind the menu. Input is captured by
-	-- managers.mouse_pointer:use_mouse, not a covering quad.
-
-	-- Clamp grid to 8 cells wide, fit within ~80% screen width. Empty groups
-	-- reserve one row so the "no items" message has somewhere to print.
+	-- No backdrop: world stays visible; input captured by mouse_pointer:use_mouse.
+	-- Clamp grid to 8 cols / 80% width; empty groups reserve one row for the "no items" message.
 	local count = math.max(1, #groups)
 	local max_cols = math.min(8, count)
 	local cols = math.max(1, math.min(max_cols, math.floor(root:w() * 0.8 / CELL_PX)))
@@ -419,14 +371,13 @@ local function build_panel(groups)
 		layer = 10,
 	})
 
-	-- Semi-transparent black fill so the world dims but stays visible. Alpha is
-	-- the FIRST Color arg (Critical Rule 6).
+	-- Semi-transparent black fill; alpha is first Color arg (Critical Rule 6).
 	panel:rect({
 		color = PANEL_COLOR,
 		layer = 0,
 	})
 
-	-- Border lines (4 edge rects; Diesel panels have no native stroke).
+	-- Border: 4 edge rects (Diesel has no native panel stroke).
 	panel:rect({ color = BORDER_COLOR, x = 0, y = 0, w = panel_w, h = BORDER_PX, layer = 5 })
 	panel:rect({ color = BORDER_COLOR, x = 0, y = panel_h - BORDER_PX, w = panel_w, h = BORDER_PX, layer = 5 })
 	panel:rect({ color = BORDER_COLOR, x = 0, y = 0, w = BORDER_PX, h = panel_h, layer = 5 })
@@ -498,7 +449,7 @@ local function build_panel(groups)
 			visible = false,
 		})
 
-		-- Frame (csr_frame, tinted by rarity)
+		-- Frame
 		local frame_data = tweak_data.hud_icons and tweak_data.hud_icons.csr_frame
 		if frame_data then
 			cell_panel:bitmap({
@@ -513,7 +464,7 @@ local function build_panel(groups)
 			})
 		end
 
-		-- Icon (centered in frame)
+		-- Icon
 		local icon_data = group.def.icon and tweak_data.hud_icons and tweak_data.hud_icons[group.def.icon]
 		if icon_data then
 			local icon_scale = (managers.csr.item_icon_scale and managers.csr:item_icon_scale(group.def.type)) or 1
@@ -530,7 +481,7 @@ local function build_panel(groups)
 			})
 		end
 
-		-- Stack counter (top right) with 8-direction black shadow for readability.
+		-- Stack counter with 8-direction shadow for readability.
 		if group.stacks and group.stacks >= 1 then
 			local stack_str = "x" .. tostring(group.stacks)
 			local stack_font = 16
@@ -571,8 +522,7 @@ local function build_panel(groups)
 			})
 		end
 
-		-- Cells track absolute workspace coords for hit-testing against
-		-- mouse_pointer events (same space as the root panel -- fullscreen ws).
+		-- Absolute workspace coords for hit-testing mouse_pointer events.
 		local item_name = display_name_for(group.def)
 		table.insert(cells, {
 			x = panel_x + cx,
@@ -592,7 +542,7 @@ local function build_panel(groups)
 		})
 	end
 
-	-- Hover info area: name+rarity (top) + description (multi-line below).
+	-- Hover info area.
 	local info_y = grid_y + grid_h + PADDING / 2
 	local hover_label = panel:text({
 		text = "",
@@ -660,10 +610,7 @@ _G.CSR_ScrapperMenu_Open = function(unit)
 	end
 	local mouse_id = managers.mouse_pointer:get_id()
 
-	-- Freeze the player: disable their input controller (the same vanilla pattern
-	-- the incapacitated state uses -- locks mouse-look, WASD, shooting, jumping,
-	-- interacting in one call). The menu's own input goes through
-	-- managers.mouse_pointer, a different controller path, so it stays live.
+	-- Freeze the player controller (vanilla incapacitated-state pattern); menu input goes through mouse_pointer, which stays live.
 	local player_unit = managers.player and managers.player:player_unit()
 	local player_controller = nil
 	if player_unit and alive(player_unit) and player_unit:base() and player_unit:base().controller then
@@ -696,8 +643,7 @@ _G.CSR_ScrapperMenu_Open = function(unit)
 	})
 end
 
--- Per-frame keyboard poll for WASD / Esc. Closes on the first frame any is
--- pressed. Installed once; bails immediately (zero cost) when the menu is closed.
+-- Per-frame keyboard poll for WASD/Esc; zero cost when menu is closed.
 Hooks:Add("GameSetupUpdate", "CSR_ScrapperMenu_KeyPoll", function(t, dt)
 	if not _state then
 		return
