@@ -37,28 +37,46 @@ local function build_difficulty_options()
 	return options
 end
 
-local function add_difficulty_item(node)
+local function add_csr_contract_items(node)
 	if node:item("csr_contract_difficulty") then
 		return
 	end
 
-	local params = {
+	local diff_item = node:create_item(build_difficulty_options(), {
 		name = "csr_contract_difficulty",
 		text_id = "csr_contract_difficulty",
 		callback = "change_csr_contract_difficulty",
-	}
-	local item = node:create_item(build_difficulty_options(), params)
+	})
 
 	-- Pre-select remembered difficulty; set_value doesn't fire the callback.
 	local diff = (managers.csr and managers.csr:difficulty()) or tweak_data.crime_spree.base_difficulty
-	item:set_value(tweak_data:difficulty_to_index(diff) or tweak_data.crime_spree.base_difficulty_index)
+	diff_item:set_value(tweak_data:difficulty_to_index(diff) or tweak_data.crime_spree.base_difficulty_index)
+
+	local spree_active = managers.csr and managers.csr:is_active()
 
 	-- Lock once a run is active — difficulty is chosen at run start and stays fixed.
-	if managers.csr and managers.csr:is_active() then
-		item:set_enabled(false)
+	if spree_active then
+		diff_item:set_enabled(false)
 	end
 
-	-- Place above ACCEPT.
+	-- "Start a new spree" — always enabled; shows confirm dialog when a run is already active.
+	local start_item = node:create_item({}, {
+		name = "csr_start_new_spree",
+		text_id = "csr_start_new_spree",
+		callback = "start_new_csr_spree",
+		align = "right",
+	})
+
+	-- "Continue current spree" — grayed when no run is active.
+	local continue_item = node:create_item({}, {
+		name = "csr_continue_spree",
+		text_id = "csr_continue_spree",
+		callback = "accept_csr_contract",
+		align = "right",
+	})
+	continue_item:set_enabled(spree_active == true)
+
+	-- Find the vanilla accept button position, then insert our items before it and hide it.
 	local accept_index = nil
 	for idx, it in ipairs(node:items()) do
 		if it:parameters().name == "accept_contract" then
@@ -68,9 +86,15 @@ local function add_difficulty_item(node)
 	end
 
 	if accept_index then
-		node:insert_item(item, accept_index)
+		-- Insert order: diff → continue → start_new, then hide vanilla accept.
+		node:insert_item(diff_item, accept_index)
+		node:insert_item(continue_item, accept_index + 1)
+		node:insert_item(start_item, accept_index + 2)
+		node:item("accept_contract"):set_visible(false)
 	else
-		node:add_item(item)
+		node:add_item(diff_item)
+		node:add_item(start_item)
+		node:add_item(continue_item)
 	end
 end
 
@@ -111,9 +135,9 @@ local function install_wrap(cls, label, guard_key)
 			)
 
 			-- Defensive pcall: a bug here must not break the shared contract node build.
-			local ok, err = pcall(add_difficulty_item, node)
+			local ok, err = pcall(add_csr_contract_items, node)
 			if not ok then
-				log("[CSR] csr_contract_difficulty: add_difficulty_item failed -> " .. tostring(err))
+				log("[CSR] csr_contract_difficulty: add_csr_contract_items failed -> " .. tostring(err))
 			end
 		end
 

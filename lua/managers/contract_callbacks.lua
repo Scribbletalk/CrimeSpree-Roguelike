@@ -106,6 +106,66 @@ function MenuCallbackHandler:change_csr_contract_difficulty(item)
 	end
 end
 
+function MenuCallbackHandler:start_new_csr_spree(item, node)
+	local is_active = managers.csr and managers.csr:is_active()
+	local function do_start()
+		local mgr = managers.csr
+
+		-- Pay out rewards from the run being replaced (same pattern as _dialog_end_csr_yes).
+		-- Compute reward totals BEFORE start_run resets rank/state.
+		local show_rewards = false
+		if is_active then
+			local own_rank = (mgr.rank and mgr:rank()) or 0
+			local has_b = mgr.has_mp_earnings and mgr:has_mp_earnings()
+			show_rewards = own_rank > 0 or has_b
+			if show_rewards and mgr.projected_rewards then
+				local a = mgr:projected_rewards()
+				local b = (mgr.mp_earnings and mgr:mp_earnings()) or {}
+				mgr._pending_end_rewards = {
+					cash = (a.cash or 0) + (b.cash or 0),
+					experience = (a.experience or 0) + (b.experience or 0),
+					continental_coins = (a.continental_coins or 0) + (b.continental_coins or 0),
+					loot_drop = (a.loot_drop or 0) + (b.loot_drop or 0),
+				}
+			end
+			if mgr.reset_mp_earnings then
+				mgr:reset_mp_earnings()
+			end
+		end
+
+		mgr:start_run()
+		MenuCallbackHandler:save_progress()
+
+		-- Show rewards screen for the ended run; player returns and clicks Continue to lobby.
+		-- Skip straight to lobby when nothing to pay out.
+		if show_rewards then
+			managers.menu:open_node("crime_spree_claim_rewards", {})
+		else
+			MenuCallbackHandler:accept_csr_contract(item, node)
+		end
+	end
+	if is_active then
+		local rank = managers.csr:rank()
+		local dialog_data = {
+			title = managers.localization:text("dialog_warning_title"),
+			text = managers.localization:text("csr_dialog_start_new_while_active", { rank = rank }),
+			id = "csr_start_new_spree",
+		}
+		local yes_button = {
+			text = managers.localization:text("dialog_yes"),
+			callback_func = do_start,
+		}
+		local no_button = {
+			text = managers.localization:text("dialog_no"),
+			cancel_button = true,
+		}
+		dialog_data.button_list = { yes_button, no_button }
+		managers.system_menu:show(dialog_data)
+	else
+		do_start()
+	end
+end
+
 function MenuCallbackHandler:accept_csr_contract(item, node)
 	csr_log(
 		"[CSR] accept_csr_contract body running (single_player=" .. tostring(Global.game_settings.single_player) .. ")"

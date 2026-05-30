@@ -1,6 +1,8 @@
 {
 	"csr_pause_return_to_lobby": "Return to Lobby",
 	"csr_pause_return_to_lobby_desc": "Leave this screen and return to the Crime Spree Roguelike lobby.",
+	"csr_pause_info": "Crime.net Info:",
+	"csr_pause_rank": "Crime Spree Rank:",
 	"dialog_return_to_cs_lobby": "Are you sure you want to return to the Crime Spree Roguelike lobby?",
 	"menu_cs_modifier_player_health": "DOG TAGS\nIncreases your max health.",
 	"menu_cs_modifier_player_damage": "EVIDENCE ROUNDS\nAll your attacks deal more damage.",

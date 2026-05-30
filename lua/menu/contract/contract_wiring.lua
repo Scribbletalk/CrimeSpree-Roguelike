@@ -64,6 +64,10 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_ContractHeaderLocalization", funct
 		csr_current_spree_none = "none",
 		-- CSR-owned key; overriding vanilla's dialog_are_you_sure_you_want_stop_cs would leak into vanilla CS.
 		csr_dialog_end_spree = "End your Crime Spree Roguelike run now and claim your rewards?",
+		csr_start_new_spree = "Start a new spree",
+		csr_continue_spree = "Continue current spree",
+		-- $rank is substituted by MenuCallbackHandler:start_new_csr_spree.
+		csr_dialog_start_new_while_active = "You are at rank $rank. Your rewards will be paid out, then a new spree begins. Continue?",
 	})
 end)
 

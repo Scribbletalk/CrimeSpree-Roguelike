@@ -298,6 +298,10 @@
 			"script_path": "lua/managers/localization.lua"
 		},
 		{
+			"hook_id": "lib/managers/menu/ingamecontractgui",
+			"script_path": "lua/menu/pause_ingame_contract.lua"
+		},
+		{
 			"hook_id": "lib/managers/menumanager",
 			"script_path": "lua/menu/pause_menu_items.lua"
 		},

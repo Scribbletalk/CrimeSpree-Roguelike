@@ -190,8 +190,63 @@ local function load_modifier_defs()
 	csr_log("[CSR][api] modifiers: ran " .. count .. " modifier file(s)")
 end
 
+-- User addon drop-in folder. Lives under mods/saves/ (SavePath) so CSR updates never
+-- wipe it (updates replace the mod folder, not saves). For now we only ensure the
+-- folder + README exist; the loader that reads addons from here lands in a later slice.
+local ADDON_FOLDER_NAME = "CSR Addons"
+local ADDON_README_TEXT = [[CSR Addons
+==========
+
+This folder is where you install add-ons for Crime Spree Roguelike.
+
+How to install an add-on:
+  - Each add-on is its OWN folder placed directly inside this folder.
+  - Example:  CSR Addons/My-Super-CoolAddon/main.lua
+  - Do NOT drop loose files or archives (.zip, .7z, ...) directly here -- they are ignored.
+
+Each add-on folder runs its "main.lua" on launch, which registers the add-on's
+items/modifiers through the CSR API. Restart the game after adding or removing an add-on.
+
+You can safely delete this README. It is only regenerated if the whole "CSR Addons"
+folder is missing on launch.
+]]
+
+-- Idempotent: bails when the folder already exists, so a user-deleted README is not
+-- regenerated unless the whole folder was removed (matches the ACH addon-folder model).
+local function ensure_addon_folder()
+	if not SavePath then
+		log("[CSR][api] addon folder: SavePath unavailable -- skipped")
+		return
+	end
+
+	local base = SavePath .. ADDON_FOLDER_NAME .. "/"
+	if Application and Application.nice_path then
+		base = Application:nice_path(base, true)
+	end
+
+	if file and file.DirectoryExists and file.DirectoryExists(base) then
+		return
+	end
+
+	if not (SystemFS and SystemFS.make_dir) then
+		log("[CSR][api] addon folder: SystemFS:make_dir unavailable -- skipped")
+		return
+	end
+	SystemFS:make_dir(base)
+
+	local readme = io.open(base .. "README.txt", "w+")
+	if readme then
+		readme:write(ADDON_README_TEXT)
+		readme:close()
+		csr_log("[CSR][api] created addon folder + README at " .. base)
+	else
+		log("[CSR][api] addon folder: failed to write README at " .. base)
+	end
+end
+
 load_item_defs()
 load_modifier_defs()
+ensure_addon_folder()
 
 -- Drain scripts buffered before _G.CSR existed (loaded inside lib/entry before this ran).
 if _G.__CSR_pending_reqs then
