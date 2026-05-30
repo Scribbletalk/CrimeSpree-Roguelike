@@ -33,7 +33,7 @@ end
 
 local function on_enemy_die(_cop, attack_data)
 	local mgr = managers and managers.csr
-	if not mgr or not mgr.is_run_active or not mgr:is_run_active() then
+	if not mgr or not mgr.in_csr_heist or not mgr:in_csr_heist() then
 		return
 	end
 	local au = attack_data and attack_data.attacker_unit

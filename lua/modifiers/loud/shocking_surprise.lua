@@ -18,7 +18,7 @@ local OVERLAY_SCALE = 1.25 -- >1 so edge arcs bleed past screen bounds
 -- Host-side only (detection); clients trust the host.
 local function ss_active()
 	local mgr = managers and managers.csr
-	if not (mgr and mgr.is_run_active and mgr:is_run_active() and mgr.active_modifiers) then
+	if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist() and mgr.active_modifiers) then
 		return false
 	end
 	for _, e in ipairs(mgr:active_modifiers("loud")) do

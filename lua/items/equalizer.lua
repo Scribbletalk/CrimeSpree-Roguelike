@@ -38,7 +38,7 @@ local function apply_equalizer(self, attack_data)
 		return
 	end
 	local mgr = managers and managers.csr
-	if not (mgr and mgr.is_run_active and mgr:is_run_active()) then
+	if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 		return
 	end
 	local stacks = mgr:owned("equalizer")

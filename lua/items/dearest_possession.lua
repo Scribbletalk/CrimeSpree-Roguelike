@@ -34,7 +34,7 @@ _G.CSR.register_item({
 					return orig_set_health(self, health)
 				end
 				local mgr = managers.csr
-				if mgr and mgr.is_run_active and mgr:is_run_active() then
+				if mgr and mgr.in_csr_heist and mgr:in_csr_heist() then
 					local stacks = mgr:owned("dearest_possession")
 					if stacks > 0 then
 						local eff_max_hp = self:_max_health() * (self._max_health_reduction or 1)

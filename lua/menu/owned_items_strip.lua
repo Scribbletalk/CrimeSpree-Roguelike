@@ -78,11 +78,11 @@ function CSROwnedItemsStrip:rebuild()
 		by_type[def.type] = def
 	end
 
-	-- Items in acquisition order; duplicates bump the badge count.
+	-- Scrap first (rare->uncommon->common), then acquisition order; duplicates bump the badge count.
 	local pid = mgr:local_peer_id()
 	local counts = mgr:player_items(pid) or {}
 	local items_list = {}
-	for _, item_type in ipairs(mgr:player_items_order(pid) or {}) do
+	for _, item_type in ipairs(mgr:display_items_order(pid) or {}) do
 		local def = by_type[item_type]
 		local count = counts[item_type] or 0
 		if def and count > 0 then

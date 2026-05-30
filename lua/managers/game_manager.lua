@@ -182,6 +182,24 @@ function CSRGameManager:is_active()
 	return self._state.is_active == true
 end
 
+-- True only while the local player is actually INSIDE a CSR heist (temp crime_spree job loaded).
+-- THIS is the gate for every gameplay stat/buff hook so nothing leaks into vanilla heists.
+-- Works for guests too: they load the same crime_spree job, even though is_active() is false for them.
+-- Note: real vanilla Crime Spree also uses job_id "crime_spree"; CSR runs the STANDARD gamemode, so a
+-- truthy crime_spree:is_active() means we're in actual CS (not CSR) -> bail. (Mirrors csr_heist_active().)
+function CSRGameManager:in_csr_heist()
+	if not (managers and managers.job and managers.job.current_job_id) then
+		return false
+	end
+	if managers.job:current_job_id() ~= "crime_spree" then
+		return false
+	end
+	if managers.crime_spree and managers.crime_spree.is_active and managers.crime_spree:is_active() then
+		return false
+	end
+	return true
+end
+
 function CSRGameManager:rank()
 	return self._state.rank or 0
 end
@@ -658,6 +676,45 @@ function CSRGameManager:player_items_order(peer_id)
 	table.sort(missing)
 	for _, item_type in ipairs(missing) do
 		result[#result + 1] = item_type
+	end
+	return result
+end
+
+-- Scrap floats to the front of display lists, ordered rare > uncommon > common.
+local CSR_SCRAP_DISPLAY_RANK = { rare = 1, uncommon = 2, common = 3 }
+
+-- Display order: scrap first (rare->uncommon->common), then everything else in acquisition order.
+-- Used by the items sidebar / owned strip / ESC items panel. Wraps player_items_order without
+-- mutating it, so the network/canonical order (mp_sync) and the scrapper list stay untouched.
+-- table.sort is unstable in LuaJIT, so non-scrap entries carry their original index as a tiebreaker.
+function CSRGameManager:display_items_order(peer_id)
+	local order = self:player_items_order(peer_id)
+	local by_type = self._registry.by_type
+	local decorated = {}
+	for i, item_type in ipairs(order) do
+		local def = by_type[item_type]
+		local scrap_rank = nil
+		if def and def.is_scrap then
+			scrap_rank = CSR_SCRAP_DISPLAY_RANK[def.rarity] or 99
+		end
+		decorated[i] = { item_type = item_type, idx = i, scrap_rank = scrap_rank }
+	end
+	table.sort(decorated, function(a, b)
+		if a.scrap_rank and b.scrap_rank then
+			if a.scrap_rank ~= b.scrap_rank then
+				return a.scrap_rank < b.scrap_rank
+			end
+			return a.idx < b.idx
+		elseif a.scrap_rank then
+			return true
+		elseif b.scrap_rank then
+			return false
+		end
+		return a.idx < b.idx
+	end)
+	local result = {}
+	for i, d in ipairs(decorated) do
+		result[i] = d.item_type
 	end
 	return result
 end
@@ -1206,7 +1263,7 @@ end
 
 -- Additive bonus for a stat across all owned stat_mul items: sum(per_stack * stacks). 0 outside a run.
 function CSRGameManager:sum_stat_mul(stat)
-	if not self:is_run_active() then
+	if not self:in_csr_heist() then
 		return 0
 	end
 	local items = self._registry.by_kind.stat_mul
@@ -1232,7 +1289,7 @@ end
 
 -- Diminishing-returns bonus: each item b=cap*(1-1/(1+k*n)); combined as 1-prod(1-b). 0 outside a run.
 function CSRGameManager:combine_stat_hyperbolic(stat)
-	if not self:is_run_active() then
+	if not self:in_csr_heist() then
 		return 0
 	end
 	local items = self._registry.by_kind.stat_hyperbolic
@@ -1288,7 +1345,7 @@ function CSRGameManager:reconcile_callback_items()
 		return
 	end
 	local pid = self:local_peer_id()
-	local run_active = self:is_run_active()
+	local run_active = self:in_csr_heist()
 	for i = 1, #list do
 		local entry = list[i]
 		local count = self:item_count(pid, entry.type)
@@ -1311,7 +1368,7 @@ function CSRGameManager:reconcile_callback_items()
 end
 
 function CSRGameManager:tick_callback_items(dt)
-	if not self:is_run_active() then
+	if not self:in_csr_heist() then
 		return
 	end
 	local applied = self._applied_callbacks

@@ -28,7 +28,7 @@ _G.CSR.register_item({
 			function PlayerManager:skill_dodge_chance(...)
 				local base = orig(self, ...)
 				local mgr = managers.csr
-				if not (mgr and mgr.is_run_active and mgr:is_run_active()) then
+				if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 					return base
 				end
 				local stacks = mgr:owned("falcogini_keys")

@@ -13,10 +13,11 @@ local BOT_HP_PER_RANK = 0.01
 local BOT_DMG_PER_RANK = 0.10
 
 -- Rank we're playing at. host_rank() so clients scale off the host's synced rank.
--- Returns 0 outside a run, so every wrap below becomes a no-op.
+-- Gated on in_csr_heist() (not is_run_active) so HP/armor/damage never leak into vanilla
+-- heists: returns 0 outside a CSR heist, making every wrap below a no-op there.
 local function run_rank()
 	local mgr = managers and managers.csr
-	if not (mgr and mgr.is_run_active and mgr:is_run_active()) then
+	if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 		return 0
 	end
 	return (mgr.host_rank and mgr:host_rank()) or 0

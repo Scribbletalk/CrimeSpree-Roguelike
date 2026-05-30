@@ -11,7 +11,7 @@ local DODGE_PENALTY = 5 -- display units; /100 for the dodge fraction
 
 local function run_mgr()
 	local mgr = managers and managers.csr
-	if mgr and mgr.is_run_active and mgr:is_run_active() then
+	if mgr and mgr.in_csr_heist and mgr:in_csr_heist() then
 		return mgr
 	end
 	return nil

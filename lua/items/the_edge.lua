@@ -15,7 +15,7 @@ local COOLDOWN = 120
 
 local function csr_mgr()
 	local mgr = managers and managers.csr
-	if mgr and mgr.is_run_active and mgr:is_run_active() then
+	if mgr and mgr.in_csr_heist and mgr:in_csr_heist() then
 		return mgr
 	end
 	return nil

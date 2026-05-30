@@ -38,7 +38,7 @@ end
 
 local function on_assault_end()
 	local mgr = managers and managers.csr
-	if not (mgr and mgr.is_run_active and mgr:is_run_active()) then
+	if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 		return
 	end
 	local stacks = mgr:owned("crooked_badge")
@@ -84,7 +84,7 @@ _G.CSR.register_item({
 			function PlayerDamage:down_time()
 				local base = orig(self)
 				local mgr = managers and managers.csr
-				if not (mgr and mgr.is_run_active and mgr:is_run_active()) or type(base) ~= "number" then
+				if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) or type(base) ~= "number" then
 					return base
 				end
 				local stacks = mgr:owned("crooked_badge")

@@ -440,7 +440,7 @@ function CSRItemSelectionComponent:_setup()
 		vertical = "top",
 		align = "left",
 		layer = 51,
-		text = managers.localization:to_upper_text("menu_cs_select_modifier"),
+		text = managers.localization:to_upper_text("csr_menu_select_item"),
 		font_size = tweak_data.menu.pd2_large_font_size,
 		font = tweak_data.menu.pd2_large_font,
 		color = tweak_data.screen_colors.text,
@@ -513,7 +513,7 @@ function CSRItemSelectionComponent:_setup()
 	if managers.menu:is_pc_controller() then
 		local finalize_btn = CSRItemSelectionActionButton:new(self._button_panel)
 
-		finalize_btn:set_text(managers.localization:to_upper_text("menu_cs_select_modifier"))
+		finalize_btn:set_text(managers.localization:to_upper_text("csr_menu_select_item"))
 		finalize_btn:set_callback(callback(self, self, "_on_finalize_item"))
 		finalize_btn:shrink_wrap_button(0, 0)
 		table.insert(self._buttons, finalize_btn)
@@ -564,7 +564,7 @@ function CSRItemSelectionComponent:_setup()
 		})
 		local legend_string = managers.localization:get_default_macro("BTN_ACCEPT")
 			.. " "
-			.. managers.localization:to_upper_text("menu_cs_select_modifier")
+			.. managers.localization:to_upper_text("csr_menu_select_item")
 			.. "  |  "
 			.. managers.localization:to_upper_text("menu_legend_back")
 

@@ -89,7 +89,7 @@ _G.CSR.register_item({
 			_G._CSR_LOCKES_BERET_HOOKED = true
 			Hooks:PostHook(PlayerManager, "update", "CSR_LockesBeret_Tick", function(self, t, dt)
 				local mgr = managers.csr
-				if not (mgr and mgr.is_run_active and mgr:is_run_active()) then
+				if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 					self._csr_lockes_t = 0
 					return
 				end

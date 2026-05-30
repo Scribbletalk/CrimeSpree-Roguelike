@@ -34,7 +34,7 @@ _G.CSR.register_item({
 					return t
 				end
 				local mgr = managers.csr
-				if not (mgr and mgr.is_run_active and mgr:is_run_active()) then
+				if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 					return t
 				end
 				local bonus = 0.10 * mgr:owned("duct_tape")

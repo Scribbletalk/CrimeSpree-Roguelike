@@ -186,7 +186,7 @@ local function on_damage(self, attack_data)
 		return
 	end
 	local mgr = managers.csr
-	if not (mgr and mgr.is_run_active and mgr:is_run_active()) then
+	if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 		return
 	end
 	-- result == nil → vanilla's early-returns rejected the hit; no real damage = no chain.

@@ -10,7 +10,7 @@ local EXTRA_BONUS = 0.10
 
 local function rebar_apply_first_hit(cop, attack_data)
 	local mgr = managers and managers.csr
-	if not mgr or not mgr.is_run_active or not mgr:is_run_active() then
+	if not mgr or not mgr.in_csr_heist or not mgr:in_csr_heist() then
 		return
 	end
 	if not attack_data or not attack_data.damage then

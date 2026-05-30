@@ -32,7 +32,7 @@ _G.CSR.register_item({
 					return damage
 				end
 				local mgr = managers.csr
-				if not (mgr and mgr.is_run_active and mgr:is_run_active()) then
+				if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 					return damage
 				end
 				local bonus = PER_STACK * mgr:owned("evidence_rounds")
@@ -55,7 +55,7 @@ _G.CSR.register_item({
 			function BlackMarketManager:equipped_melee_weapon_damage_info(lerp_value)
 				local dmg, dmg_effect = orig(self, lerp_value)
 				local mgr = managers.csr
-				if not (mgr and mgr.is_run_active and mgr:is_run_active()) then
+				if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 					return dmg, dmg_effect
 				end
 				local bonus = PER_STACK * mgr:owned("evidence_rounds")

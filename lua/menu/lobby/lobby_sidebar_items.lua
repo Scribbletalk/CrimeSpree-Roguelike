@@ -203,10 +203,10 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 			vertical = "center",
 		})
 
-		-- Acquisition order: duplicate bumps badge count only. player_items_order is self-healing for legacy/remote data.
+		-- Scrap first (rare->uncommon->common), then acquisition order; duplicate bumps badge count only.
 		local counts = mgr:player_items(pid) or {}
 		local items_list = {}
-		for _, item_type in ipairs(mgr:player_items_order(pid)) do
+		for _, item_type in ipairs(mgr:display_items_order(pid)) do
 			local def = by_type[item_type]
 			local count = counts[item_type] or 0
 			if def and count > 0 then

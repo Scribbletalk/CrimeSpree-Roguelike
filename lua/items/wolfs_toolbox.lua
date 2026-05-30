@@ -30,7 +30,7 @@ local SAW_INTERACTIONS = {
 local tracked_drills = {}
 
 local function wolfs_active(mgr)
-	if not mgr or not mgr.is_run_active or not mgr:is_run_active() then
+	if not mgr or not mgr.in_csr_heist or not mgr:in_csr_heist() then
 		return false
 	end
 	return mgr:owned("wolfs_toolbox") > 0
@@ -174,7 +174,7 @@ _G.CSR.register_item({
 
 			Hooks:PostHook(TimerGui, "_start", "CSR_WolfsToolbox_TimerStart", function(self)
 				local mgr = managers and managers.csr
-				if not mgr or not mgr.is_run_active or not mgr:is_run_active() then
+				if not mgr or not mgr.in_csr_heist or not mgr:in_csr_heist() then
 					return
 				end
 				local unit = self._unit

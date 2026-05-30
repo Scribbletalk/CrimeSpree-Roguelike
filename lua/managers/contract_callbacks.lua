@@ -60,7 +60,9 @@ end
 
 function MenuCallbackHandler:return_to_csr_lobby_visible()
 	-- Pause-menu "Return to Lobby" — CSR sessions only, host/SP only.
-	if not (managers.csr and managers.csr.is_run_active and managers.csr:is_run_active()) then
+	-- Gate on is_active() (a CSR run is in flight), NOT is_run_active() (always-true alpha stub),
+	-- so the button never leaks onto a vanilla heist's victory/gameover screen.
+	if not (managers.csr and managers.csr.is_active and managers.csr:is_active()) then
 		return false
 	end
 	if Network and Network.is_client and Network:is_client() then

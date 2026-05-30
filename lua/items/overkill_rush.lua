@@ -34,7 +34,7 @@ end
 
 local function active_bonus()
 	local mgr = managers and managers.csr
-	if not mgr or not mgr.is_run_active or not mgr:is_run_active() then
+	if not mgr or not mgr.in_csr_heist or not mgr:in_csr_heist() then
 		return 0
 	end
 	if streak.kill_stacks <= 0 then
@@ -58,7 +58,7 @@ end
 -- Hook CopDamage:die (not damage_*) so a later hit/DOT on a corpse can't bump the streak.
 local function on_enemy_die(_cop, attack_data)
 	local mgr = managers and managers.csr
-	if not mgr or not mgr.is_run_active or not mgr:is_run_active() then
+	if not mgr or not mgr.in_csr_heist or not mgr:in_csr_heist() then
 		return
 	end
 	local au = attack_data and attack_data.attacker_unit

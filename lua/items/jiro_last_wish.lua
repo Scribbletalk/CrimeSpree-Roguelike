@@ -6,7 +6,7 @@ end
 
 local function csr_owns_jiro()
 	local mgr = managers and managers.csr
-	if not mgr or not mgr.is_run_active or not mgr:is_run_active() then
+	if not mgr or not mgr.in_csr_heist or not mgr:in_csr_heist() then
 		return false
 	end
 	return mgr:owned("jiro_last_wish") > 0
@@ -36,7 +36,7 @@ _G.CSR.register_item({
 			function BlackMarketManager:equipped_melee_weapon_damage_info(lerp_value)
 				local dmg, dmg_effect = orig(self, lerp_value)
 				local mgr = managers.csr
-				if not (mgr and mgr.is_run_active and mgr:is_run_active()) then
+				if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 					return dmg, dmg_effect
 				end
 				local bonus = 0.5 * mgr:owned("jiro_last_wish")

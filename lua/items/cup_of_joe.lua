@@ -24,7 +24,7 @@ _G.CSR.register_item({
 			function PlayerManager:stamina_multiplier()
 				local v = orig(self)
 				local mgr = managers.csr
-				if not (mgr and mgr.is_run_active and mgr:is_run_active()) then
+				if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 					return v
 				end
 				return v + 0.10 * mgr:owned("cup_of_joe")

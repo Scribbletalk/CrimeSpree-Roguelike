@@ -25,7 +25,7 @@ _G.CSR.register_item({
 			local K = (MAX_PCT - FIRST_PCT) / FIRST_PCT
 			Hooks:PostHook(PlayerDamage, "update", "CSR_WornBandaid_Regen", function(self, unit, t, dt)
 				local mgr = managers.csr
-				if not (mgr and mgr.is_run_active and mgr:is_run_active()) then
+				if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 					return
 				end
 				local stacks = mgr:owned("worn_bandaid")

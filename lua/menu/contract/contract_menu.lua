@@ -4,6 +4,21 @@
 
 CSRContractMenuComponent = CSRContractMenuComponent or class(MenuGuiComponentGeneric)
 
+-- Combined difficulty name + reward line: one localization key per difficulty. Keyed by
+-- index (2..8) to dodge the display-name <-> internal-id trap (Critical Rule #9: internal
+-- "overkill" is the display "Very Hard", "overkill_145" is "Overkill", etc.). The text
+-- wraps automatically; CSR-owned in english.json so it is editable without touching the
+-- vanilla difficulty_name_ids.
+local DIFFICULTY_LINE_KEYS = {
+	[2] = "csr_diff_name_reward_normal",
+	[3] = "csr_diff_name_reward_hard",
+	[4] = "csr_diff_name_reward_very_hard",
+	[5] = "csr_diff_name_reward_overkill",
+	[6] = "csr_diff_name_reward_mayhem",
+	[7] = "csr_diff_name_reward_death_wish",
+	[8] = "csr_diff_name_reward_death_sentence",
+}
+
 function CSRContractMenuComponent:init(ws, fullscreen_ws, node)
 	self._ws = ws
 	self._fullscreen_ws = fullscreen_ws
@@ -210,6 +225,26 @@ function CSRContractMenuComponent:_setup_new_crime_spree(text_w, text_h)
 		end
 	end
 
+	-- Difficulty name + reward flavor to the right of the skull row: name on the first
+	-- line, reward on a second line (small font). Refreshed by set_difficulty_id on cycle.
+	-- Same color as the (lit) skulls: screen_colors.risk is gold here, not red --
+	-- Color(255,255,204,0)/255.
+	self._difficulty_name = self._difficulty_panel:text({
+		layer = 1,
+		vertical = "center",
+		align = "left",
+		wrap = true,
+		wrap_word = true,
+		text = "",
+		font_size = tweak_data.menu.pd2_small_font_size,
+		font = tweak_data.menu.pd2_small_font,
+		color = tweak_data.screen_colors.risk,
+		x = rx + 8,
+		y = 0,
+		w = self._difficulty_panel:w() - rx - 8,
+		h = self._difficulty_panel:h(),
+	})
+
 	label:set_left(padding)
 	label:set_top(self._desc_text:bottom() + padding)
 	self._difficulty_panel:set_left(padding)
@@ -257,6 +292,11 @@ function CSRContractMenuComponent:set_difficulty_id(difficulty_id)
 
 		icon:set_color(active and tweak_data.screen_colors.risk or Color.white)
 		icon:set_alpha(active and 1 or 0.25)
+	end
+
+	if alive(self._difficulty_name) then
+		local key = DIFFICULTY_LINE_KEYS[difficulty_id] or "csr_diff_name_reward_normal"
+		self._difficulty_name:set_text(managers.localization:text(key))
 	end
 end
 

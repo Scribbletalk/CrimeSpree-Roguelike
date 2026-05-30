@@ -16,7 +16,7 @@ local guilt_kills = 0
 
 local function guilt_active()
 	local mgr = managers and managers.csr
-	if not (mgr and mgr.is_run_active and mgr:is_run_active() and mgr.active_modifiers) then
+	if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist() and mgr.active_modifiers) then
 		return false
 	end
 	for _, e in ipairs(mgr:active_modifiers("loud")) do
