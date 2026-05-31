@@ -221,32 +221,9 @@
     "CoreMissionScriptElement",
     "ScriptUnitData",
 
-    "CSR_Settings",
-    "CSR_ItemConstants",
-    "CSR_ItemRegistry",
-    "CSR_ITEM_REGISTRY",
-    "CSR_ITEM_BY_TYPE",
-    "CSR_ITEM_BY_PREFIX",
     "CSR_PlayerItems",
-    "CSR_ShopItemsBought",
-    "CSR_CatchupItemsReceived",
-    "CSR_GetLocalItems",
-    "CSR_TransferPlayerItem",
-    "CSR_ClearItemsOnReset",
-    "CSR_CountStacks",
-    "CSR_CurrentDifficulty",
-    "CSR_SelectedDifficulty",
-    "CSR_MOD_VERSION",
-    "CSR_DEBUG_ITEM_WEIGHTS",
     "CSR_IconScale",
     "CSR_BulletsFiredToday",
-    "CSR_BandaidRegenPct",
-    "CSR_RefreshItemBuffFlags",
-    "CSR_ActiveBuffs",
-    "CSR_VHUDPlusEvent",
-    "CSR_WFHudEvent",
-    "CSR_PocoHudEvent",
-    "CSRBaseModifier",
 
     "IR"
   ],
@@ -263,7 +240,11 @@
     "undefined-field",
     "undefined-global"
   ],
-  "workspace.library": [],
+  "workspace.library": [
+    "C:/Users/Candy/.local/bin/projects/Crime Spree Roguelike/pd2_source_code/lib",
+    "C:/Users/Candy/.local/bin/projects/Crime Spree Roguelike/pd2_source_code/core/lib",
+    "C:/Program Files (x86)/Steam/steamapps/common/PAYDAY 2/mods/base"
+  ],
   "workspace.checkThirdParty": false,
   "telemetry.enable": false
 }

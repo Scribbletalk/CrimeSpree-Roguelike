@@ -40,6 +40,8 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_OptionsLocalization", function(loc
 		csr_force_fwb_desc = "Sets your next heist to First World Bank (red2) so you can test it. "
 			.. "Requires an active run: click this, then open the Crime Spree contract -- it will be the only "
 			.. "card. Pick a difficulty and start as usual.",
+		csr_add_tokens_title = "Add 100 Tokens",
+		csr_add_tokens_desc = "Credits 100 Gage Tokens to your account. For testing the shop.",
 	})
 end)
 
@@ -78,6 +80,10 @@ Hooks:Add("MenuManagerInitialize", "CSR_OptionsCallbacks", function(menu_manager
 		if mgr and mgr.debug_force_mission then
 			mgr:debug_force_mission("red2")
 		end
+	end
+
+	MenuCallbackHandler.csr_add_tokens = function(self, item)
+		CSR_Shop.credit(CSR_Shop.local_peer_id(), 100)
 	end
 
 	MenuCallbackHandler.csr_options_back = function(self, item) end
@@ -149,5 +155,14 @@ Hooks:Add("MenuManagerPopulateCustomMenus", "CSR_OptionsPopulate", function(menu
 		callback = "csr_force_fwb",
 		menu_id = "csr_debug_menu",
 		priority = 3,
+	})
+
+	MenuHelper:AddButton({
+		id = "add_tokens",
+		title = "csr_add_tokens_title",
+		desc = "csr_add_tokens_desc",
+		callback = "csr_add_tokens",
+		menu_id = "csr_debug_menu",
+		priority = 4,
 	})
 end)

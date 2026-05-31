@@ -19,6 +19,77 @@ local function csr_heist_active()
 	return true
 end
 
+-- RoR2-style join gate: if the host declared addons this guest lacks, eject to the main menu.
+-- Direction is guest superset of host (guest may hold extra addons). Returns true when it
+-- triggered a kick so the caller stops applying host state. Once per join via a Global flag
+-- (survives the menu<->game Lua reinit); cleared on eject so a fresh join re-checks.
+local function csr_addon_join_gate(host_addons_csv)
+	if not (CSR_MP and CSR_MP.is_client and CSR_MP.is_client()) then
+		return false
+	end
+	if Global.CSR_addon_gate_fired then
+		return true
+	end
+	local mgr = managers and managers.csr
+	if not (mgr and mgr.addon_signature) then
+		return false
+	end
+
+	local local_set = {}
+	for _, name in ipairs(mgr:addon_signature()) do
+		local_set[name] = true
+	end
+
+	local missing = {}
+	for name in tostring(host_addons_csv or ""):gmatch("[^,]+") do
+		if name ~= "" and not local_set[name] then
+			missing[#missing + 1] = name
+		end
+	end
+	if #missing == 0 then
+		return false
+	end
+
+	Global.CSR_addon_gate_fired = true
+	if CSR_MP.log then
+		CSR_MP.log("addon join gate: missing " .. table.concat(missing, ", "))
+	end
+
+	local L = managers.localization
+	local title = (L and L:text("csr_addon_gate_title")) or "MISSING ADD-ONS"
+	local body = (L and L:text("csr_addon_gate_text"))
+		or "This host uses Crime Spree Roguelike add-ons you do not have installed:"
+	local dialog_data = {
+		title = title,
+		text = body .. "\n\n" .. table.concat(missing, "\n"),
+		button_list = {
+			{
+				text = (L and L:text("dialog_ok")) or "OK",
+				callback_func = function()
+					-- Vanilla client-leave sequence (networkmatchmakingsteam WRONG_VERSION path).
+					if managers.network and managers.network.matchmake then
+						managers.network.matchmake:leave_game()
+					end
+					if managers.network and managers.network.voice_chat then
+						managers.network.voice_chat:destroy_voice()
+					end
+					if managers.network and managers.network.queue_stop_network then
+						managers.network:queue_stop_network()
+					end
+					if managers.menu and managers.menu.exit_online_menues then
+						managers.menu:exit_online_menues()
+					end
+					Global.CSR_addon_gate_fired = nil
+				end,
+			},
+		},
+	}
+	if managers.system_menu and managers.system_menu.show then
+		managers.system_menu:show(dialog_data)
+	end
+	return true
+end
+
 local function broadcast_host_state()
 	if not (CSR_MP and CSR_MP.is_host and CSR_MP.is_host() and CSR_MP.is_multiplayer()) then
 		return
@@ -37,6 +108,8 @@ local function broadcast_host_state()
 		host_level_id = (gs and gs.level_id) or false,
 		host_mission = (gs and gs.mission) or "none",
 		host_tokens_gross = (_G.CSR_Shop and _G.CSR_Shop.gross_earned and _G.CSR_Shop.gross_earned()) or 0,
+		-- Addon signature for the MP join-gate (guest missing any of these is blocked).
+		host_addons = table.concat((mgr.addon_signature and mgr:addon_signature()) or {}, ","),
 	})
 	LuaNetworking:SendToPeers(CSR_MP.MSG.HANDSHAKE_OK, payload)
 	-- Mission set rides the same triggers so guest cards match host's.
@@ -61,6 +134,10 @@ if CSR_MP and CSR_MP.register_handler then
 		-- Not gated on csr_heist_active() — it's false in lobby; is_from_host blocks forgery.
 		local ok, payload = pcall(json.decode, data)
 		if not ok or type(payload) ~= "table" then
+			return
+		end
+		-- Block joining a host whose addons we lack before adopting any of its state.
+		if csr_addon_join_gate(payload.host_addons) then
 			return
 		end
 		local mgr = managers and managers.csr

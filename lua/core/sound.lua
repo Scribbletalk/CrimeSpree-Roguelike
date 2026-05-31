@@ -207,4 +207,11 @@ _G.CSR.register_sound("plush_shark_activate", { pattern = "assets/sounds/shark/p
 _G.CSR.register_sound("printer_starting", { path = "assets/sounds/printer/printer_starting.ogg" })
 _G.CSR.register_sound("printer_working", { path = "assets/sounds/printer/printer_working.ogg" })
 
+-- Wildcard actives. Familiar Friend (gup) + Turron.
+_G.CSR.register_sound("gup_attack", { pattern = "assets/sounds/gup/gup_activate_$.ogg", n = 5 })
+_G.CSR.register_sound("gup_charge", { path = "assets/sounds/gup/gup_charge.ogg" })
+_G.CSR.register_sound("gup_cooldown", { pattern = "assets/sounds/gup/gup_cooldown_$.ogg", n = 9 })
+_G.CSR.register_sound("turron_activate", { pattern = "assets/sounds/turron/turron_activate_$.ogg", n = 2 })
+_G.CSR.register_sound("turron_recharge", { path = "assets/sounds/turron/turron_cooldown.ogg" })
+
 snd_dbg("sound.lua loaded (mod_path=" .. tostring(SAVED_MOD_PATH) .. ")")

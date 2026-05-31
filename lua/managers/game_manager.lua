@@ -960,6 +960,32 @@ function CSRGameManager:registered_items()
 	return self._registry.items
 end
 
+-- Sorted unique set of addon names across registered items + modifiers (lowercased).
+-- Reads the raw _G.CSR registration lists (auto-stamped addon field) so a modifier-only
+-- addon is included. Drives the MP join-gate (guest missing any host addon is blocked).
+function CSRGameManager:addon_signature()
+	local seen = {}
+	local function collect(list)
+		if type(list) ~= "table" then
+			return
+		end
+		for _, def in ipairs(list) do
+			local a = def and def.addon
+			if type(a) == "string" and a ~= "" then
+				seen[a:lower()] = true
+			end
+		end
+	end
+	collect(_G.CSR and _G.CSR._registrations)
+	collect(_G.CSR and _G.CSR._modifier_registrations)
+	local out = {}
+	for name in pairs(seen) do
+		out[#out + 1] = name
+	end
+	table.sort(out)
+	return out
+end
+
 -- Icon scale multiplier for one item type (1.0 default). Used by all three icon-drawing surfaces.
 function CSRGameManager:item_icon_scale(item_type)
 	local entry = item_type and self._registry.by_type[item_type]

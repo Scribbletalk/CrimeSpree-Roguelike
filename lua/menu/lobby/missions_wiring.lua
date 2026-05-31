@@ -91,4 +91,117 @@ Hooks:PostHook(MenuComponentManager, "create_lobby_code_gui", "CSR_RepositionLob
 	end
 end)
 
+-- Hide ONLY the mission-cards cluster (cards + their status bar + Start/Reroll/action buttons +
+-- the reminders) when a sub-screen (Options / Edit Game Settings / Player List) is open on top of
+-- the lobby; the sidebar and the "Crime Spree Roguelike" header are siblings and stay visible.
+--
+-- Why a per-frame poll, not an open_node / show_node / set_active_components hook: in-game testing
+-- proved NONE of those fire for these lobby buttons -- they open a separate menu/dialog OVER the
+-- lobby without changing the lobby menu's selected node, so the component stays live underneath.
+-- update() ticks on every live component (MenuComponentManager:run_on_all_live_components), so the
+-- poll runs even while the overlay is up and self-heals against the lobby's ~1Hz rebuild loop.
+if CSRMissionsMenuComponent and not _G._CSR_LOBBY_OVERLAY_HIDE_HOOKED then
+	_G._CSR_LOBBY_OVERLAY_HIDE_HOOKED = true
+
+	-- Always part of the cluster: force-toggled both ways.
+	function CSRMissionsMenuComponent:_csr_always_cluster()
+		local list = {}
+		local function add(p)
+			if p and alive(p) then
+				list[#list + 1] = p
+			end
+		end
+		add(self._buttons_panel)
+		add(self._title_panel)
+		add(self._actions_bg)
+		if self._start_button then
+			add(self._start_button:panel())
+		end
+		if self._reroll_button then
+			add(self._reroll_button:panel())
+		end
+		if self._action_button then
+			add(self._action_button:panel())
+		end
+		return list
+	end
+
+	-- Conditionally-visible members: hidden with the cluster, but on reveal restored to whatever
+	-- their own logic had set (captured at hide time) -- never force-shown.
+	function CSRMissionsMenuComponent:_csr_cond_cluster()
+		local list = {}
+		local function add(p)
+			if p and alive(p) then
+				list[#list + 1] = p
+			end
+		end
+		add(self._unselected_panel)
+		add(self._csr_bm_lobby_panel)
+		add(self._csr_bm_lobby_bg)
+		return list
+	end
+
+	function CSRMissionsMenuComponent:_csr_set_cards_hidden(hidden)
+		if self._csr_overlay_active == nil then
+			self._csr_overlay_active = false
+		end
+
+		if self._csr_overlay_active == hidden then
+			-- Re-assert each frame while hidden so the lobby's ~1Hz rebuild can't reveal the cluster.
+			if hidden then
+				for _, p in ipairs(self:_csr_always_cluster()) do
+					p:set_visible(false)
+				end
+				for _, p in ipairs(self:_csr_cond_cluster()) do
+					p:set_visible(false)
+				end
+			end
+			return
+		end
+
+		self._csr_overlay_active = hidden
+
+		if hidden then
+			self._csr_cond_vis = {}
+			for i, p in ipairs(self:_csr_cond_cluster()) do
+				self._csr_cond_vis[i] = p:visible()
+				p:set_visible(false)
+			end
+			for _, p in ipairs(self:_csr_always_cluster()) do
+				p:set_visible(false)
+			end
+			csr_log("[CSR] lobby cards hidden (sub-screen open)")
+		else
+			for _, p in ipairs(self:_csr_always_cluster()) do
+				p:set_visible(true)
+			end
+			if self._csr_cond_vis then
+				for i, p in ipairs(self:_csr_cond_cluster()) do
+					p:set_visible(self._csr_cond_vis[i] == true)
+				end
+				self._csr_cond_vis = nil
+			end
+			csr_log("[CSR] lobby cards restored (sub-screen closed)")
+		end
+	end
+
+	Hooks:PostHook(CSRMissionsMenuComponent, "update", "CSR_HideUnderSubscreen", function(self)
+		-- Lobby surface only: the end-screen surface reuses this component under node "main".
+		if not self._is_lobby or not alive(self._panel) then
+			return
+		end
+
+		-- Read the top menu's current node. nil-safe: on any read failure default to NOT covered,
+		-- so a glitch can never leave the lobby permanently hidden.
+		local node_name
+		local am = managers.menu and managers.menu:active_menu()
+		if am and am.logic and am.logic.selected_node and am.logic:selected_node() then
+			node_name = am.logic:selected_node():parameters().name
+		end
+
+		local covered = node_name ~= nil and node_name ~= "crime_spree_lobby"
+		self:_csr_set_cards_hidden(covered)
+	end)
+end
+
 csr_log("[CSR] missions_wiring.lua loaded (Slice 8 wiring)")

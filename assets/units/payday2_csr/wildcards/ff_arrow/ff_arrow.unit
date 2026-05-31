@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<unit type="gen" slot="1">
+	<object file="units/pd2_dlc_ecp/weapons/wpn_prj_ecp_arrow/wpn_prj_ecp_arrow" />
+	<network sync="spawn" />
+	<dependencies>
+		<depends_on bnk="soundbanks/regular_weapon_sfx" />
+	</dependencies>
+	<extensions>
+		<extension name="base" class="ArrowBase">
+			<var name="_tweak_projectile_entry" value="csr_ff_arrow" />
+		</extension>
+		<extension name="unit_data" class="ScriptUnitData" />
+		<extension name="damage" class="UnitDamage">
+			<var name="_skip_give_body_collision_damage" value="true" />
+		</extension>
+		<!-- ContourExt kept for material init (the arrow .material_config uses a
+			CONTOUR-enabled render template). With slot=1 and no AmmoClip, the
+			throwable-outline HUD still can't detect us — but the contour material
+			pipeline initializes properly so the arrow renders with full quality. -->
+		<extension name="contour" class="ContourExt" />
+	</extensions>
+	<sounds>
+		<default_soundsource source="rp_wpn_prj_ecp_arrow" />
+		<soundsource name="snd" source="rp_wpn_prj_ecp_arrow" />
+	</sounds>
+</unit>

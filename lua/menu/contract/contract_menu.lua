@@ -251,13 +251,44 @@ function CSRContractMenuComponent:_setup_new_crime_spree(text_w, text_h)
 	self._difficulty_panel:set_top(label:bottom())
 
 	local spree_active = managers.csr and managers.csr:is_active()
-	local spree_status =
-		managers.localization:text(spree_active and "csr_current_spree_active" or "csr_current_spree_none")
+	local spree_text
+	-- Ranges (0-based, end-exclusive) to paint gold: the values only, not their labels.
+	local gold_ranges = {}
+	if spree_active then
+		-- Header keeps the "active" status word; completed count and rank follow on their own lines.
+		local active = managers.localization:text("csr_current_spree_active")
+		local header = managers.localization:to_upper_text("csr_current_spree", { status = active })
+		local count_num = tostring(managers.csr:missions_completed())
+		local completed = managers.localization:to_upper_text("csr_current_spree_completed", { count = count_num })
+		local rank_num = tostring(managers.csr:rank())
+		local rank_label = managers.localization:to_upper_text("csr_current_spree_rank", { rank = rank_num })
+		-- CS spree glyph after the rank number (vanilla pattern: cash_string .. BTN_SPREE_TICKET).
+		local rank_line = rank_label .. managers.localization:get_default_macro("BTN_SPREE_TICKET")
+
+		-- Blank line between the header and the data lines.
+		spree_text = header .. "\n\n" .. completed .. "\n" .. rank_line
+
+		-- $status / $count / $rank sit at the tail of their segment, so value start = seg_len - value_len.
+		local h_len = utf8.len(header)
+		gold_ranges[#gold_ranges + 1] = { h_len - utf8.len(active), h_len }
+		local c_base = h_len + 2 -- skip the "\n\n" (header + blank line)
+		local c_len = utf8.len(completed)
+		gold_ranges[#gold_ranges + 1] = { c_base + c_len - utf8.len(count_num), c_base + c_len }
+		local r_base = c_base + c_len + 1 -- skip the "\n"
+		-- Gold spans the rank number through the trailing CS glyph (end = full rank line length).
+		local rank_start = r_base + utf8.len(rank_label) - utf8.len(rank_num)
+		gold_ranges[#gold_ranges + 1] = { rank_start, r_base + utf8.len(rank_line) }
+	else
+		local none = managers.localization:text("csr_current_spree_none")
+		spree_text = managers.localization:to_upper_text("csr_current_spree", { status = none })
+		gold_ranges[#gold_ranges + 1] = { utf8.len(spree_text) - utf8.len(none), utf8.len(spree_text) }
+	end
+
 	local spree_line = self._contract_panel:text({
 		layer = 1,
 		vertical = "top",
 		align = "left",
-		text = managers.localization:to_upper_text("csr_current_spree", { status = spree_status }),
+		text = spree_text,
 		font_size = tweak_data.menu.pd2_medium_font_size,
 		font = tweak_data.menu.pd2_medium_font,
 		color = tweak_data.screen_colors.text,
@@ -267,11 +298,12 @@ function CSRContractMenuComponent:_setup_new_crime_spree(text_w, text_h)
 	spree_line:set_left(padding)
 	spree_line:set_top(self._difficulty_panel:bottom() + padding)
 
-	-- Color just the status word at the end of the line (set_range_color is start-inclusive / end-exclusive).
-	local full_len = utf8.len(spree_line:text())
-	local status_len = utf8.len(spree_status)
+	-- Paint each value range: gold (crime_spree_risk) when active, dim white when idle.
+	-- (set_range_color is start-inclusive / end-exclusive.)
 	local status_color = spree_active and tweak_data.screen_colors.crime_spree_risk or Color.white:with_alpha(0.6)
-	spree_line:set_range_color(full_len - status_len, full_len, status_color)
+	for _, r in ipairs(gold_ranges) do
+		spree_line:set_range_color(r[1], r[2], status_color)
+	end
 
 	self:set_difficulty_id(self:_current_difficulty_id())
 end

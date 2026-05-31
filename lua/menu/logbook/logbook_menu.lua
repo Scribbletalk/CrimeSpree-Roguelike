@@ -1023,11 +1023,24 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 		text_y = text_y + community_h + 4
 	end
 
+	-- Effect-gate: detailed effects are readable only between runs (0 missions completed).
+	-- MP-correct: host's mirrored count when guesting, else own count (same getter as the lobby counter).
+	local csr_mgr = managers.csr
+	local missions_done = (csr_mgr and csr_mgr.mp_host_missions_completed and csr_mgr:mp_host_missions_completed())
+		or (csr_mgr and csr_mgr:missions_completed())
+		or 0
+	local effects_sealed = missions_done > 0
+
 	local loc_key = "csr_logbook_" .. item_data.id .. "_effect"
-	local effect_text = managers.localization:text(loc_key)
-	-- :text() returns "ERROR <key>" for unknown keys; fall back to the list entry's desc.
-	if not effect_text or effect_text == "" or effect_text == loc_key or effect_text:find("^ERROR") then
-		effect_text = item_data.effect_en or ""
+	local effect_text
+	if effects_sealed then
+		effect_text = managers.localization:text("csr_logbook_effect_sealed")
+	else
+		effect_text = managers.localization:text(loc_key)
+		-- :text() returns "ERROR <key>" for unknown keys; fall back to the list entry's desc.
+		if not effect_text or effect_text == "" or effect_text == loc_key or effect_text:find("^ERROR") then
+			effect_text = item_data.effect_en or ""
+		end
 	end
 	local effect_panel = self._details_panel:panel({
 		x = text_x,
@@ -1041,7 +1054,8 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 		text = effect_text,
 		font = tweak_data.menu.pd2_small_font,
 		font_size = tweak_data.menu.pd2_small_font_size,
-		color = tweak_data.screen_colors.text,
+		-- Sealed placeholder gets a muted blue-grey so it reads as "locked", not a real effect line.
+		color = effects_sealed and Color(1, 0.7, 0.75, 0.85) or tweak_data.screen_colors.text,
 		x = 0,
 		y = 0,
 		w = text_w,
@@ -1050,51 +1064,54 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 		layer = 5,
 	})
 
-	-- Color tags: {g}/{r}/{b} → green/red/blue; stripped from text, applied via set_range_color.
-	local COLOR_POS = Color(0.7, 1, 0.7)
-	local COLOR_NEG = Color(1, 0.5, 0.5)
-	local COLOR_INFO = Color(0.6, 0.8, 1.0)
-	local TAG_COLORS = { g = COLOR_POS, r = COLOR_NEG, b = COLOR_INFO }
-	local ranges = {}
-	local clean = ""
-	local i = 1
-	local current_color = nil
-	local color_start = nil
-	while i <= #effect_text do
-		local tag = effect_text:match("^{(/?[grb]?)}", i)
-		if tag then
-			if tag == "/" then
-				if current_color and color_start then
-					table.insert(ranges, { s = color_start, e = #clean, color = current_color })
+	-- Sealed placeholder carries no {g}/{r}/{b} tags or parens; skip the colorizer entirely.
+	if not effects_sealed then
+		-- Color tags: {g}/{r}/{b} → green/red/blue; stripped from text, applied via set_range_color.
+		local COLOR_POS = Color(0.7, 1, 0.7)
+		local COLOR_NEG = Color(1, 0.5, 0.5)
+		local COLOR_INFO = Color(0.6, 0.8, 1.0)
+		local TAG_COLORS = { g = COLOR_POS, r = COLOR_NEG, b = COLOR_INFO }
+		local ranges = {}
+		local clean = ""
+		local i = 1
+		local current_color = nil
+		local color_start = nil
+		while i <= #effect_text do
+			local tag = effect_text:match("^{(/?[grb]?)}", i)
+			if tag then
+				if tag == "/" then
+					if current_color and color_start then
+						table.insert(ranges, { s = color_start, e = #clean, color = current_color })
+					end
+					current_color = nil
+					color_start = nil
+				else
+					current_color = TAG_COLORS[tag]
+					color_start = #clean
 				end
-				current_color = nil
-				color_start = nil
+				i = i + #tag + 2
 			else
-				current_color = TAG_COLORS[tag]
-				color_start = #clean
+				clean = clean .. effect_text:sub(i, i)
+				i = i + 1
 			end
-			i = i + #tag + 2
-		else
-			clean = clean .. effect_text:sub(i, i)
-			i = i + 1
 		end
-	end
-	effect_desc:set_text(clean)
-	for _, r in ipairs(ranges) do
-		effect_desc:set_range_color(r.s, r.e, r.color)
-	end
-	local COLOR_DIM = Color(0.55, 0.55, 0.55)
-	local depth = 0
-	for ci = 1, #clean do
-		local ch = clean:sub(ci, ci)
-		if ch == "(" then
-			depth = depth + 1
+		effect_desc:set_text(clean)
+		for _, r in ipairs(ranges) do
+			effect_desc:set_range_color(r.s, r.e, r.color)
 		end
-		if depth > 0 then
-			effect_desc:set_range_color(ci - 1, ci, COLOR_DIM)
-		end
-		if ch == ")" then
-			depth = depth - 1
+		local COLOR_DIM = Color(0.55, 0.55, 0.55)
+		local depth = 0
+		for ci = 1, #clean do
+			local ch = clean:sub(ci, ci)
+			if ch == "(" then
+				depth = depth + 1
+			end
+			if depth > 0 then
+				effect_desc:set_range_color(ci - 1, ci, COLOR_DIM)
+			end
+			if ch == ")" then
+				depth = depth - 1
+			end
 		end
 	end
 

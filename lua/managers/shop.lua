@@ -619,7 +619,13 @@ function CSR_Shop.pick_reroll_line()
 	return "csr_gage_line_reroll_" .. tostring(math.random(1, REROLL_COUNT))
 end
 
-function CSR_Shop.pick_purchase_line()
+function CSR_Shop.pick_purchase_line(item_type, rarity)
+	if rarity == "contraband" and item_type then
+		if math.random(2) == 1 then
+			return "csr_gage_line_purchase_" .. item_type
+		end
+		return "csr_gage_line_purchase_contraband"
+	end
 	return "csr_gage_line_purchase_" .. tostring(math.random(1, PURCHASE_COUNT))
 end
 

@@ -691,7 +691,10 @@ function CrimeSpreeBlackMarketShopPage:_on_reroll()
 end
 
 function CrimeSpreeBlackMarketShopPage:_on_buy(slot_index)
-	local ok = CSR_Shop.buy(CSR_Shop.local_peer_id(), slot_index)
+	local peer_id = CSR_Shop.local_peer_id()
+	local lineup = CSR_Shop.get_lineup(peer_id)
+	local slot = lineup and lineup[slot_index]
+	local ok = CSR_Shop.buy(peer_id, slot_index)
 	if not ok then
 		if managers.menu_component and managers.menu_component.post_event then
 			managers.menu_component:post_event("menu_error")
@@ -705,6 +708,6 @@ function CrimeSpreeBlackMarketShopPage:_on_buy(slot_index)
 	end
 
 	-- The bought slot stays SOLD until the next mission restocks the lineup; no free restock here.
-	self:_set_dialogue_line(CSR_Shop.pick_purchase_line(), true)
+	self:_set_dialogue_line(CSR_Shop.pick_purchase_line(slot and slot.type, slot and slot.rarity), true)
 	self:refresh()
 end

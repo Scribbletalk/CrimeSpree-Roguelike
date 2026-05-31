@@ -901,7 +901,10 @@ function CSRMissionsMenuComponent:mouse_moved(o, x, y)
 		return
 	end
 
-	local host = self:_is_host()
+	-- When a sub-screen covers the cards (self._csr_overlay_active), the sidebar + open feature
+	-- panel stay interactive, but card/button hover is suppressed by folding it into `host` (cards
+	-- and Start/Reroll/Action all gate on host). The unselected reminder is guarded separately.
+	local host = self:_is_host() and not self._csr_overlay_active
 	local used, pointer = nil
 
 	if self._sidebar then
@@ -953,7 +956,8 @@ function CSRMissionsMenuComponent:mouse_moved(o, x, y)
 	end
 
 	local was_unselected_hover = self._unselected_items_hover == true
-	self._unselected_items_hover = self._unselected_visible == true
+	self._unselected_items_hover = not self._csr_overlay_active
+		and self._unselected_visible == true
 		and self._unselected_panel ~= nil
 		and alive(self._unselected_panel)
 		and self._unselected_panel:inside(x, y)
@@ -989,6 +993,7 @@ end
 
 -- 3-arg signature required: MenuComponentManager dispatches as (button, x, y) not (o, button, x, y).
 function CSRMissionsMenuComponent:mouse_pressed(button, x, y)
+	-- Sidebar + open feature panel stay clickable even while a sub-screen covers the cards.
 	if self._sidebar and self._sidebar:mouse_pressed(x, y) then
 		return true
 	end
@@ -999,6 +1004,11 @@ function CSRMissionsMenuComponent:mouse_pressed(button, x, y)
 
 	if self:_modifiers_scroll_visible() and self._modifiers_scroll:mouse_pressed(button, x, y) then
 		return true
+	end
+
+	-- Cards/buttons are hidden under the sub-screen: don't act on clicks over them.
+	if self._csr_overlay_active then
+		return false
 	end
 
 	return self:confirm_pressed()

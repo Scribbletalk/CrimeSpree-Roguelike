@@ -619,8 +619,12 @@ function MenuCallbackHandler:show_peer_kicked_csr_dialog(params)
 	Global.on_remove_peer_message = nil
 end
 
+-- Reroll costs continental coins = max(1, missions completed this spree). Confirm modal warns the cost first.
+function MenuCallbackHandler:csr_reroll_cost()
+	return math.max(1, (managers.csr and managers.csr:missions_completed()) or 0)
+end
+
 function MenuCallbackHandler:csr_reroll()
-	-- Free reroll; vanilla's escalating cost is dropped.
 	local mission_gui = managers.menu_component:crime_spree_missions_gui()
 
 	if mission_gui and mission_gui:is_randomizing() then
@@ -629,16 +633,65 @@ function MenuCallbackHandler:csr_reroll()
 		return
 	end
 
+	local cost = self:csr_reroll_cost()
+	local can_afford = managers.custom_safehouse and managers.custom_safehouse:coins() >= cost
+
+	local dialog_data = {
+		title = managers.localization:text("csr_reroll_confirm_title"),
+		id = "csr_reroll_confirm",
+	}
+
+	if can_afford then
+		dialog_data.text = managers.localization:text("csr_reroll_confirm_text", { cost = cost })
+		dialog_data.button_list = {
+			{
+				text = managers.localization:text("dialog_yes"),
+				callback_func = callback(self, self, "_csr_reroll_confirm_yes"),
+			},
+			{
+				text = managers.localization:text("dialog_no"),
+				callback_func = callback(self, self, "_csr_reroll_confirm_no"),
+				cancel_button = true,
+			},
+		}
+	else
+		dialog_data.text = managers.localization:text("csr_reroll_confirm_cant_afford", { cost = cost })
+		dialog_data.button_list = {
+			{
+				text = managers.localization:text("dialog_ok"),
+				callback_func = callback(self, self, "_csr_reroll_confirm_no"),
+				cancel_button = true,
+			},
+		}
+	end
+
+	managers.system_menu:show(dialog_data)
+end
+
+function MenuCallbackHandler:_csr_reroll_confirm_yes()
+	-- Re-resolve cost at confirm time; rank can't change in the lobby, but stay defensive.
+	local cost = self:csr_reroll_cost()
+	if managers.custom_safehouse then
+		managers.custom_safehouse:deduct_coins(cost, TelemetryConst.economy_origin.crime_spree_reroll)
+	end
+
 	if managers.csr then
 		managers.csr:reroll_mission_set()
 	end
 
+	local mission_gui = managers.menu_component:crime_spree_missions_gui()
 	if mission_gui then
 		mission_gui:randomize_crimespree()
 	end
 
+	if WalletGuiObject then
+		WalletGuiObject.refresh()
+	end
+
 	MenuCallbackHandler:save_progress()
 end
+
+function MenuCallbackHandler:_csr_reroll_confirm_no() end
 
 function MenuCallbackHandler:csr_select_modifier()
 	if self:show_csr_select_modifier() then

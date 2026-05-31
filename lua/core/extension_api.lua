@@ -85,11 +85,19 @@ local function index_item_hooks(def)
 	end
 end
 
+-- Stamp the addon currently being loaded onto a def (load-order safe; nil outside addon load).
+local function autostamp_addon(def)
+	if def.addon == nil and _G.CSR._current_addon then
+		def.addon = _G.CSR._current_addon
+	end
+end
+
 function _G.CSR.register_item(def)
 	if type(def) ~= "table" then
 		log("[CSR][api] register_item: definition must be a table -- ignored")
 		return false
 	end
+	autostamp_addon(def)
 	table.insert(_G.CSR._registrations, def)
 	if manager_ready() then
 		managers.csr:register_item(def)
@@ -103,6 +111,7 @@ function _G.CSR.register_modifier(def)
 		log("[CSR][api] register_modifier: definition must be a table -- ignored")
 		return false
 	end
+	autostamp_addon(def)
 	table.insert(_G.CSR._modifier_registrations, def)
 	if managers and managers.csr and managers.csr.register_modifier then
 		managers.csr:register_modifier(def)
@@ -142,6 +151,39 @@ function _G.CSR.play_sound(name, opts)
 		return _G.CSR._play_sound(name, opts)
 	end
 	return nil
+end
+
+-- Set while an addon's main.lua runs (see load_addons); nil otherwise.
+function _G.CSR.addon_dir()
+	return _G.CSR._current_addon_dir
+end
+
+function _G.CSR.addon_name()
+	return _G.CSR._current_addon
+end
+
+-- Register an addon icon into the texture DB. db_path = the string the author puts in their
+-- item's `icon` field (must contain "/" so icon surfaces treat it as a full DB path); rel_file
+-- = .dds path RELATIVE to the addon folder. Addon-load-time only. Returns db_path on success.
+function _G.CSR.register_texture(db_path, rel_file)
+	if type(db_path) ~= "string" or type(rel_file) ~= "string" then
+		log("[CSR][api] register_texture: (db_path string, rel_file string) required -- ignored")
+		return nil
+	end
+	if not _G.CSR._current_addon_dir then
+		log("[CSR][api] register_texture: no addon context (call from main.lua) -- ignored")
+		return nil
+	end
+	local abs = _G.CSR._current_addon_dir .. rel_file
+	if Application and Application.nice_path then
+		abs = Application:nice_path(abs, false)
+	end
+	if DB and DB.create_entry then
+		DB:create_entry(Idstring("texture"), Idstring(db_path), abs)
+	else
+		log("[CSR][api] register_texture: DB unavailable for '" .. db_path .. "' -- icon will be missing")
+	end
+	return db_path
 end
 
 -- Recursively dofile every .lua under `dir`; files self-register via register_item/modifier.
@@ -207,6 +249,9 @@ How to install an add-on:
 Each add-on folder runs its "main.lua" on launch, which registers the add-on's
 items/modifiers through the CSR API. Restart the game after adding or removing an add-on.
 
+For item icons, call CSR.register_texture("your/db/path", "icons/your_icon.dds") in main.lua
+(the file path is relative to your add-on folder) and set icon = "your/db/path" on the item.
+
 You can safely delete this README. It is only regenerated if the whole "CSR Addons"
 folder is missing on launch.
 ]]
@@ -244,9 +289,64 @@ local function ensure_addon_folder()
 	end
 end
 
+-- Run each user addon's main.lua from mods/saves/<ADDON_FOLDER_NAME>/<addon>/. One main.lua
+-- per addon folder (NOT recursive); the addon dofiles its own helpers via CSR.addon_dir().
+-- Runs at hudiconstweakdata time, so DB is ready for register_texture inside main.lua.
+local function load_addons()
+	if not (file and file.GetDirectories and SavePath) then
+		log("[CSR][api] addons: file API or SavePath unavailable -- skipped")
+		return
+	end
+
+	local base = SavePath .. ADDON_FOLDER_NAME .. "/"
+	if Application and Application.nice_path then
+		base = Application:nice_path(base, true)
+	end
+
+	local dirs = file.GetDirectories(base)
+	if not dirs then
+		return
+	end
+
+	local count = 0
+	for _, name in pairs(dirs) do
+		if type(name) == "string" then
+			local dir = base .. name .. "/"
+
+			-- Skip folders without a main.lua so stray folders don't spam dofile errors.
+			local has_main = false
+			local names = file.GetFiles and file.GetFiles(dir)
+			if names then
+				for _, f in pairs(names) do
+					if f == "main.lua" then
+						has_main = true
+						break
+					end
+				end
+			end
+
+			if has_main then
+				_G.CSR._current_addon = name
+				_G.CSR._current_addon_dir = dir
+				local ok, err = pcall(dofile, dir .. "main.lua")
+				if ok then
+					count = count + 1
+				else
+					log("[CSR][api] addon '" .. name .. "': main.lua failed: " .. tostring(err))
+				end
+				_G.CSR._current_addon = nil
+				_G.CSR._current_addon_dir = nil
+			end
+		end
+	end
+
+	csr_log("[CSR][api] addons: ran " .. count .. " addon main.lua file(s)")
+end
+
 load_item_defs()
 load_modifier_defs()
 ensure_addon_folder()
+load_addons()
 
 -- Drain scripts buffered before _G.CSR existed (loaded inside lib/entry before this ran).
 if _G.__CSR_pending_reqs then
