@@ -249,6 +249,16 @@ How to install an add-on:
 Each add-on folder runs its "main.lua" on launch, which registers the add-on's
 items/modifiers through the CSR API. Restart the game after adding or removing an add-on.
 
+IMPORTANT: call CSR.register_item() / CSR.register_modifier() at the TOP LEVEL of main.lua
+(i.e. not inside a Hooks:PostHook or DelayedCall). Items registered from deferred callbacks
+run after the addon context is cleared and will NOT appear in the multiplayer add-on signature
+check, so guests missing your add-on could join without being blocked. If you must defer,
+pass addon = CSR.addon_name() explicitly in the definition table BEFORE the hook fires:
+  local MY_ADDON = CSR.addon_name()   -- capture at top-level while context is set
+  Hooks:PostHook(SomeClass, "init", "my_id", function()
+    CSR.register_item({ addon = MY_ADDON, ... })
+  end)
+
 For item icons, call CSR.register_texture("your/db/path", "icons/your_icon.dds") in main.lua
 (the file path is relative to your add-on folder) and set icon = "your/db/path" on the item.
 

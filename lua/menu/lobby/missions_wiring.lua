@@ -148,11 +148,21 @@ if CSRMissionsMenuComponent and not _G._CSR_LOBBY_OVERLAY_HIDE_HOOKED then
 
 		if self._csr_overlay_active == hidden then
 			-- Re-assert each frame while hidden so the lobby's ~1Hz rebuild can't reveal the cluster.
+			-- Use cached lists to avoid allocating tables every frame; rebuild the cache if the first
+			-- panel died (lobby rebuild replaces all panels atomically).
 			if hidden then
-				for _, p in ipairs(self:_csr_always_cluster()) do
+				local always = self._csr_always_cache
+				local cond = self._csr_cond_cache
+				if not always or (always[1] ~= nil and not alive(always[1])) then
+					always = self:_csr_always_cluster()
+					cond = self:_csr_cond_cluster()
+					self._csr_always_cache = always
+					self._csr_cond_cache = cond
+				end
+				for _, p in ipairs(always) do
 					p:set_visible(false)
 				end
-				for _, p in ipairs(self:_csr_cond_cluster()) do
+				for _, p in ipairs(cond) do
 					p:set_visible(false)
 				end
 			end
@@ -162,25 +172,37 @@ if CSRMissionsMenuComponent and not _G._CSR_LOBBY_OVERLAY_HIDE_HOOKED then
 		self._csr_overlay_active = hidden
 
 		if hidden then
+			local always = self:_csr_always_cluster()
+			local cond = self:_csr_cond_cluster()
+			self._csr_always_cache = always
+			self._csr_cond_cache = cond
 			self._csr_cond_vis = {}
-			for i, p in ipairs(self:_csr_cond_cluster()) do
+			for i, p in ipairs(cond) do
 				self._csr_cond_vis[i] = p:visible()
 				p:set_visible(false)
 			end
-			for _, p in ipairs(self:_csr_always_cluster()) do
+			for _, p in ipairs(always) do
 				p:set_visible(false)
 			end
 			csr_log("[CSR] lobby cards hidden (sub-screen open)")
 		else
-			for _, p in ipairs(self:_csr_always_cluster()) do
-				p:set_visible(true)
+			local always = self._csr_always_cache or self:_csr_always_cluster()
+			for _, p in ipairs(always) do
+				if alive(p) then
+					p:set_visible(true)
+				end
 			end
 			if self._csr_cond_vis then
-				for i, p in ipairs(self:_csr_cond_cluster()) do
-					p:set_visible(self._csr_cond_vis[i] == true)
+				local cond = self._csr_cond_cache or self:_csr_cond_cluster()
+				for i, p in ipairs(cond) do
+					if alive(p) then
+						p:set_visible(self._csr_cond_vis[i] == true)
+					end
 				end
 				self._csr_cond_vis = nil
 			end
+			self._csr_always_cache = nil
+			self._csr_cond_cache = nil
 			csr_log("[CSR] lobby cards restored (sub-screen closed)")
 		end
 	end

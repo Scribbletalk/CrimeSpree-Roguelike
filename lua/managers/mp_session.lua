@@ -27,9 +27,6 @@ local function csr_addon_join_gate(host_addons_csv)
 	if not (CSR_MP and CSR_MP.is_client and CSR_MP.is_client()) then
 		return false
 	end
-	if Global.CSR_addon_gate_fired then
-		return true
-	end
 	local mgr = managers and managers.csr
 	if not (mgr and mgr.addon_signature) then
 		return false
@@ -47,7 +44,15 @@ local function csr_addon_join_gate(host_addons_csv)
 		end
 	end
 	if #missing == 0 then
+		-- Clear any stale flag left by a previously dismissed dialog (e.g. host disconnected
+		-- before the guest clicked OK) so a clean rejoin to a different host works correctly.
+		Global.CSR_addon_gate_fired = nil
 		return false
+	end
+
+	-- Gate already fired for this join session (dialog already shown); don't re-show.
+	if Global.CSR_addon_gate_fired then
+		return true
 	end
 
 	Global.CSR_addon_gate_fired = true

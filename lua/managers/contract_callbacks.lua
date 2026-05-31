@@ -669,6 +669,12 @@ function MenuCallbackHandler:csr_reroll()
 end
 
 function MenuCallbackHandler:_csr_reroll_confirm_yes()
+	-- Guard against a second spin if the user clicks Yes while the animation is already running.
+	local mission_gui = managers.menu_component:crime_spree_missions_gui()
+	if mission_gui and mission_gui:is_randomizing() then
+		managers.menu:post_event("menu_error")
+		return
+	end
 	-- Re-resolve cost at confirm time; rank can't change in the lobby, but stay defensive.
 	local cost = self:csr_reroll_cost()
 	if managers.custom_safehouse then
@@ -679,7 +685,7 @@ function MenuCallbackHandler:_csr_reroll_confirm_yes()
 		managers.csr:reroll_mission_set()
 	end
 
-	local mission_gui = managers.menu_component:crime_spree_missions_gui()
+	mission_gui = managers.menu_component:crime_spree_missions_gui()
 	if mission_gui then
 		mission_gui:randomize_crimespree()
 	end
