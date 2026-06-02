@@ -79,6 +79,7 @@
     "PlayerInventory",
     "PlayerCarry",
     "PlayerBase",
+    "HuskPlayerBase",
     "CharacterDamage",
     "CivilianDamage",
     "CopDamage",
@@ -224,6 +225,7 @@
     "CSR_PlayerItems",
     "CSR_IconScale",
     "CSR_BulletsFiredToday",
+    "CSR_MP",
 
     "IR"
   ],

@@ -32,6 +32,20 @@ _G.CSR._hooks_by_req = _G.CSR._hooks_by_req or {} -- [req_lower] = { {type=, fn=
 _G.CSR._installed_hooks = _G.CSR._installed_hooks or {} -- ["type|req"] = true
 _G.CSR._loaded_reqs = _G.CSR._loaded_reqs or {} -- [req_lower] = true
 
+-- Active-wildcard registry. DEFINED HERE (not in wildcard_dispatcher.lua) because
+-- items register their active from a lib/managers/playermanager hook, which fires
+-- during lib/entry's body (PlayerManager is required in setup.lua) — BEFORE the
+-- dispatcher's own lib/entry POST-hook loads. extension_api bootstraps first, so
+-- defining the registrar here guarantees it exists when item hooks run. The
+-- dispatcher only READS CSR_WildcardActives at key-press time (CSR_TriggerWildcard).
+_G.CSR_WildcardActives = _G.CSR_WildcardActives or {}
+function _G.CSR_RegisterWildcardActive(item_type, activate)
+	if not item_type or type(activate) ~= "function" then
+		return
+	end
+	_G.CSR_WildcardActives[item_type] = activate
+end
+
 local function manager_ready()
 	return managers and managers.csr and managers.csr.register_item ~= nil
 end

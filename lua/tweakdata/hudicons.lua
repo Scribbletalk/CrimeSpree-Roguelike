@@ -97,6 +97,11 @@ local scrap_path = "guis/textures/pd2/crime_spree/csr_scrap"
 local frame_file = mod_path .. "assets/gui/items/item_frame.dds"
 local frame_path = "guis/textures/pd2/crime_spree/csr_frame"
 
+-- Mission-card atlas for extra vanilla heists added to the CS pool (see extra_heists.lua).
+-- Ported 1:1 from "More Heists In Crime Spree". 7-col grid of 280x140 cells.
+local mission_atlas_file = mod_path .. "assets/gui/missions/mission_atlas.texture"
+local mission_atlas_path = "guis/textures/pd2/crime_spree/csr_mission_atlas"
+
 -- Plush Shark guardian-invuln fullscreen vignette (blue pulse)
 local guilt_vignette_file = mod_path .. "assets/gui/misc/vignette.texture"
 local guilt_vignette_path = "guis/textures/pd2/crime_spree/csr_guilt_vignette"
@@ -183,6 +188,9 @@ if DB and DB.create_entry then
 
 	-- Generic frame
 	DB:create_entry(Idstring("texture"), Idstring(frame_path), frame_file)
+
+	-- Mission-card atlas (extra vanilla heists)
+	DB:create_entry(Idstring("texture"), Idstring(mission_atlas_path), mission_atlas_file)
 end
 
 local old_icons_init = HudIconsTweakData.init
@@ -371,6 +379,51 @@ function HudIconsTweakData:init()
 		texture = shocking_surprise_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
+
+	-- Mission-card icons for the extra vanilla heists (see extra_heists.lua).
+	-- {col, row} into the 280x140-cell atlas; keys are "csm_<stage_id>" to match
+	-- the mission.icon field. Mapping is 1:1 with "More Heists In Crime Spree".
+	local csm_w, csm_h = 280, 140
+	local atlas_cells = {
+		vit = { 2, 0 },
+		family = { 3, 0 },
+		kenaz = { 4, 0 },
+		jewelry_store = { 5, 0 },
+		gallery = { 6, 0 },
+		nightclub = { 1, 1 },
+		mallcrasher = { 4, 1 },
+		shoutout_raid = { 5, 1 },
+		crojob2_d = { 0, 2 },
+		bph = { 1, 2 },
+		nmh = { 2, 2 },
+		des = { 3, 2 },
+		peta_1 = { 4, 2 },
+		peta_2 = { 5, 2 },
+		watchdogs_2_d = { 6, 2 },
+		election_day_3 = { 0, 3 },
+		mex = { 1, 3 },
+		mex_cooking = { 2, 3 },
+		fex = { 5, 3 },
+		chas = { 6, 3 },
+		sand = { 0, 4 },
+		chca = { 1, 4 },
+		pent = { 2, 4 },
+		ranc = { 3, 4 },
+		trai = { 4, 4 },
+		corp = { 5, 4 },
+		deep = { 6, 4 },
+	}
+	for id, cell in pairs(atlas_cells) do
+		self["csm_" .. id] = {
+			texture = mission_atlas_path,
+			texture_rect = { csm_w * cell[1], csm_h * cell[2], csm_w, csm_h },
+		}
+	end
+	-- Extras that reuse an existing vanilla card icon (atlas has no cell for them).
+	self.csm_ukrainian_job = self.csm_jewelry_store
+	self.csm_welcome_to_the_jungle_1_d = self.csm_bigoil_1
+	self.csm_election_day_1 = self.csm_election_1
+	-- dah reuses vanilla self.csm_dah (no entry needed).
 
 	-- Vanilla CS modifier icons intentionally NOT overridden; DLC texture paths don't work from mods
 end

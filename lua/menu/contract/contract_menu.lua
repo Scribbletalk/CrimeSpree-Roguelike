@@ -179,7 +179,7 @@ function CSRContractMenuComponent:_setup_new_crime_spree(text_w, text_h)
 		layer = 1,
 		vertical = "top",
 		align = "left",
-		text = managers.localization:to_upper_text("csr_contract_difficulty"),
+		text = managers.localization:to_upper_text("csr_lobby_difficulty") .. ":",
 		font_size = tweak_data.menu.pd2_medium_font_size,
 		font = tweak_data.menu.pd2_medium_font,
 		color = tweak_data.screen_colors.text,
@@ -259,7 +259,7 @@ function CSRContractMenuComponent:_setup_new_crime_spree(text_w, text_h)
 		local active = managers.localization:text("csr_current_spree_active")
 		local header = managers.localization:to_upper_text("csr_current_spree", { status = active })
 		local count_num = tostring(managers.csr:missions_completed())
-		local completed = managers.localization:to_upper_text("csr_current_spree_completed", { count = count_num })
+		local completed = managers.localization:to_upper_text("csr_lobby_missions_completed") .. ": " .. count_num
 		local rank_num = tostring(managers.csr:rank())
 		local rank_label = managers.localization:to_upper_text("csr_current_spree_rank", { rank = rank_num })
 		-- CS spree glyph after the rank number (vanilla pattern: cash_string .. BTN_SPREE_TICKET).

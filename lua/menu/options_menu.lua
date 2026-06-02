@@ -18,6 +18,15 @@ local function csr_read_setting(key, default)
 	return v
 end
 
+-- Wildcard grant buttons (Debug Tools). Wildcards are carry-1, so granting one
+-- replaces any wildcard already held -- handled inside managers.csr:add_item.
+local CSR_WILDCARD_GRANTS = {
+	{ type = "familiar_friend", callback = "csr_grant_wc_familiar_friend", title = "csr_grant_wc_ff_title" },
+	{ type = "side_satchel", callback = "csr_grant_wc_side_satchel", title = "csr_grant_wc_ss_title" },
+	{ type = "turron", callback = "csr_grant_wc_turron", title = "csr_grant_wc_tu_title" },
+	{ type = "hippocratic_oath", callback = "csr_grant_wc_hippocratic_oath", title = "csr_grant_wc_ho_title" },
+}
+
 Hooks:Add("LocalizationManagerPostInit", "CSR_OptionsLocalization", function(loc)
 	loc:add_localized_strings({
 		csr_options_menu_title = "Crime Spree Roguelike",
@@ -42,6 +51,12 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_OptionsLocalization", function(loc
 			.. "card. Pick a difficulty and start as usual.",
 		csr_add_tokens_title = "Add 100 Tokens",
 		csr_add_tokens_desc = "Credits 100 Gage Tokens to your account. For testing the shop.",
+		csr_grant_wildcard_desc = "Gives this wildcard to your character. Wildcards are carry-1: "
+			.. "granting one replaces any wildcard you already hold.",
+		csr_grant_wc_ff_title = "Grant Wildcard: Familiar Friend",
+		csr_grant_wc_ss_title = "Grant Wildcard: Side Satchel",
+		csr_grant_wc_tu_title = "Grant Wildcard: Turron",
+		csr_grant_wc_ho_title = "Grant Wildcard: Hippocratic Oath",
 	})
 end)
 
@@ -84,6 +99,15 @@ Hooks:Add("MenuManagerInitialize", "CSR_OptionsCallbacks", function(menu_manager
 
 	MenuCallbackHandler.csr_add_tokens = function(self, item)
 		CSR_Shop.credit(CSR_Shop.local_peer_id(), 100)
+	end
+
+	for _, w in ipairs(CSR_WILDCARD_GRANTS) do
+		MenuCallbackHandler[w.callback] = function(self, item)
+			local mgr = managers.csr
+			if mgr and mgr.add_item then
+				mgr:add_item(mgr:local_peer_id(), w.type)
+			end
+		end
 	end
 
 	MenuCallbackHandler.csr_options_back = function(self, item) end
@@ -165,4 +189,15 @@ Hooks:Add("MenuManagerPopulateCustomMenus", "CSR_OptionsPopulate", function(menu
 		menu_id = "csr_debug_menu",
 		priority = 4,
 	})
+
+	for i, w in ipairs(CSR_WILDCARD_GRANTS) do
+		MenuHelper:AddButton({
+			id = "grant_" .. w.type,
+			title = w.title,
+			desc = "csr_grant_wildcard_desc",
+			callback = w.callback,
+			menu_id = "csr_debug_menu",
+			priority = 4 + i,
+		})
+	end
 end)

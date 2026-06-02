@@ -411,12 +411,14 @@ function CSRMissionsMenuComponent:_create_feature_panels()
 		modifiers = build(),
 		rewards = build(),
 		heister = build(),
+		preferences = build(),
 	}
 
 	self:_populate_items_panel()
 	self:_populate_modifiers_panel()
 	self:_populate_rewards_panel()
 	self:_populate_heister_panel()
+	self:_populate_preferences_panel()
 end
 
 function CSRMissionsMenuComponent:toggle_feature_panel(key)
@@ -460,6 +462,8 @@ function CSRMissionsMenuComponent:toggle_feature_panel(key)
 		self:_populate_rewards_panel()
 	elseif show and key == "heister" then
 		self:_populate_heister_panel()
+	elseif show and key == "preferences" then
+		self:_populate_preferences_panel()
 	end
 end
 
@@ -988,6 +992,11 @@ function CSRMissionsMenuComponent:mouse_moved(o, x, y)
 		used = true
 	end
 
+	if self:_preferences_panel_mouse_moved(x, y) then
+		pointer = "link"
+		used = true
+	end
+
 	return used, pointer
 end
 
@@ -999,6 +1008,10 @@ function CSRMissionsMenuComponent:mouse_pressed(button, x, y)
 	end
 
 	if self:_modifiers_panel_mouse_pressed(x, y) then
+		return true
+	end
+
+	if self:_preferences_panel_mouse_pressed(x, y) then
 		return true
 	end
 
@@ -1697,6 +1710,13 @@ CSRSidebar.ITEMS = {
 	{ text = "Black Market", icon = "sidebar_gage", callback = csr_open_shop },
 	{ separator = true },
 	{ text = "Logbook", icon = "sidebar_codex", callback = csr_open_logbook },
+	{ separator = true },
+	{
+		text = "Preferences",
+		icon = "sidebar_filters",
+		key = "preferences",
+		callback = csr_feature_toggle("preferences"),
+	},
 }
 
 function CSRSidebar:init(parent, top, bottom, owner)

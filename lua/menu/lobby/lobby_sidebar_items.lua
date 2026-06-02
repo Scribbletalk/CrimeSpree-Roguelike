@@ -18,7 +18,7 @@ local items_panel_rarity_colors = {
 -- Cell size (hit-test + grid step). Frame deliberately overflows cell to read as a "card".
 local items_panel_icon_size = 64
 local items_panel_frame_size = 72
-local items_panel_icon_gap = 8
+local items_panel_icon_gap = 4
 -- Readability floor for csr_adaptive_grid; full 31-type inventory still fits a quarter at typical heights.
 local items_panel_min_icon_size = 28
 local items_panel_peer_header_h = 22
@@ -203,23 +203,34 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 			vertical = "center",
 		})
 
-		-- Scrap first (rare->uncommon->common), then acquisition order; duplicate bumps badge count only.
+		-- Scrap first (rare->uncommon->common), then acquisition order; the carry-1 wildcard is split
+		-- off into its own fixed slot and never joins the grid (it can never stack).
 		local counts = mgr:player_items(pid) or {}
 		local items_list = {}
+		local wildcard_entry = nil
 		for _, item_type in ipairs(mgr:display_items_order(pid)) do
 			local def = by_type[item_type]
 			local count = counts[item_type] or 0
 			if def and count > 0 then
-				items_list[#items_list + 1] = { def = def, count = count }
+				if def.rarity == "wildcard" then
+					wildcard_entry = { def = def, count = count }
+				else
+					items_list[#items_list + 1] = { def = def, count = count }
+				end
 			end
 		end
 
-		if #items_list > 0 then
-			local grid_y = section_top + items_panel_padding + items_panel_peer_header_h + 10
-			local grid_h = section_top + section_h - grid_y - items_panel_padding
+		local grid_y = section_top + items_panel_padding + items_panel_peer_header_h + 10
+		local grid_h = section_top + section_h - grid_y - items_panel_padding
+		-- Wildcard owns a square slot at the right edge, full items-area height; the grid keeps the rest.
+		local wc_slot = math.max(items_panel_min_icon_size, math.min(grid_h, section_w))
+		local wc_x = items_panel_padding + section_w - wc_slot
+		local grid_w = section_w - wc_slot - items_panel_icon_gap
+
+		if #items_list > 0 and grid_w > 0 then
 			local cell_size, per_row = csr_adaptive_grid(
 				#items_list,
-				section_w,
+				grid_w,
 				grid_h,
 				items_panel_icon_size,
 				items_panel_min_icon_size,
@@ -314,6 +325,60 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 					def = entry.def,
 					count = entry.count,
 				}
+			end
+		end
+
+		-- Wildcard slot (carry-1): a filled card when held, else a translucent wildcard-tinted placeholder.
+		do
+			local wc_color = items_panel_rarity_colors.wildcard or Color.white
+			local frame_tex, frame_rect = tweak_data.hud_icons:get_icon_data("csr_frame")
+			local slot_frame = content:bitmap({
+				name = "wildcard_frame",
+				texture = frame_tex,
+				texture_rect = frame_rect,
+				x = wc_x,
+				y = grid_y,
+				w = wc_slot,
+				h = wc_slot,
+				layer = 5,
+			})
+			if wildcard_entry then
+				slot_frame:set_color(wc_color)
+				local cell = content:panel({
+					x = wc_x,
+					y = grid_y,
+					w = wc_slot,
+					h = wc_slot,
+					layer = 10,
+				})
+				local raw_icon = wildcard_entry.def.icon or "dog_tags"
+				local icon_tex, icon_rect
+				if type(raw_icon) == "string" and raw_icon:find("/", 1, true) then
+					icon_tex, icon_rect = raw_icon, { 0, 0, 128, 128 }
+				else
+					icon_tex, icon_rect = tweak_data.hud_icons:get_icon_data(raw_icon)
+				end
+				local glyph =
+					math.floor(wc_slot * (1 - 28 / items_panel_icon_size) * (wildcard_entry.def.icon_scale or 1))
+				local glyph_inset = math.floor((wc_slot - glyph) / 2)
+				cell:bitmap({
+					name = "item_icon",
+					texture = icon_tex,
+					texture_rect = icon_rect,
+					x = glyph_inset,
+					y = glyph_inset,
+					w = glyph,
+					h = glyph,
+					layer = 10,
+				})
+				-- No stack badge: wildcards are always exactly one.
+				self._items_hit_targets[#self._items_hit_targets + 1] = {
+					panel = cell,
+					def = wildcard_entry.def,
+					count = 1,
+				}
+			else
+				slot_frame:set_color(wc_color:with_alpha(0.3))
 			end
 		end
 	end

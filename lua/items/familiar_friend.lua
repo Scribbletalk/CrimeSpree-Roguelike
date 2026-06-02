@@ -241,6 +241,9 @@ local function activate_spike_nova(player_unit)
 	end
 
 	cooldown_end = now + COOLDOWN
+	if _G.CSR_SetWildcardCooldown then
+		_G.CSR_SetWildcardCooldown("familiar_friend", cooldown_end, COOLDOWN)
+	end
 
 	-- Charge SFX immediately on press as the wind-up.
 	if _G.CSR and _G.CSR.play_sound then
@@ -279,6 +282,9 @@ _G.CSR.register_item({
 			-- Reset cooldown on spawn (per-heist).
 			Hooks:PostHook(PlayerManager, "spawned_player", "CSR_FamiliarFriendInit", function()
 				cooldown_end = 0
+				if _G.CSR_SetWildcardCooldown then
+					_G.CSR_SetWildcardCooldown("familiar_friend", 0, COOLDOWN)
+				end
 			end)
 
 			-- Register with the wildcard dispatcher (idempotent — keyed by type).

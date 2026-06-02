@@ -1,4 +1,4 @@
--- Apply CSR's active LOUD modifiers as real engine effects on heist start.
+-- Apply CSR's active loud + stealth modifiers as real engine effects on heist start.
 -- Routes through vanilla managers.modifiers; aggregation + host gate live in
 -- managers.csr:apply_modifiers. See csr_vanilla_intercepts.md.
 
@@ -19,10 +19,10 @@ local function csr_heist_active()
 	return true
 end
 
-if IngameWaitingForPlayersState and not _G._CSR_COMBAT_MODIFIERS_HOOKED then
-	_G._CSR_COMBAT_MODIFIERS_HOOKED = true
+if IngameWaitingForPlayersState and not _G._CSR_APPLY_MODIFIERS_HOOKED then
+	_G._CSR_APPLY_MODIFIERS_HOOKED = true
 
-	Hooks:PostHook(IngameWaitingForPlayersState, "at_enter", "CSR_ApplyCombatModifiers", function(self)
+	Hooks:PostHook(IngameWaitingForPlayersState, "at_enter", "CSR_ApplyModifiers", function(self)
 		if not managers.csr or not managers.csr.apply_modifiers then
 			return
 		end
@@ -33,4 +33,4 @@ if IngameWaitingForPlayersState and not _G._CSR_COMBAT_MODIFIERS_HOOKED then
 	end)
 end
 
-csr_log("[CSR] combat_modifiers.lua loaded")
+csr_log("[CSR] apply_modifiers.lua loaded")

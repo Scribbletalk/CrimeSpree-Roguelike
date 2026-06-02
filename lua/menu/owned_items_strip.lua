@@ -31,6 +31,24 @@ local function csr_loc(s)
 	return s
 end
 
+-- Largest square cell (≤OWNED_CELL, ≥OWNED_MIN_CELL) + columns/rows so `count` cells fit grid_w×avail_h.
+local function csr_owned_grid(count, grid_w, avail_h)
+	local n = math.max(count, 1)
+	local function rows_for(size)
+		local step = size + OWNED_GAP
+		local per_row = math.max(1, math.min(n, math.floor((grid_w + OWNED_GAP) / step)))
+		return math.ceil(n / per_row)
+	end
+	local cell = OWNED_CELL
+	while cell > OWNED_MIN_CELL and rows_for(cell) * (cell + OWNED_GAP) - OWNED_GAP > avail_h do
+		cell = cell - 2
+	end
+	cell = math.floor(math.max(cell, OWNED_MIN_CELL))
+	local step = cell + OWNED_GAP
+	local per_row = math.max(1, math.min(n, math.floor((grid_w + OWNED_GAP) / step)))
+	return cell, per_row, math.ceil(n / per_row), step
+end
+
 function CSROwnedItemsStrip:init(opts)
 	opts = opts or {}
 	self._parent = opts.parent
@@ -78,55 +96,62 @@ function CSROwnedItemsStrip:rebuild()
 		by_type[def.type] = def
 	end
 
-	-- Scrap first (rare->uncommon->common), then acquisition order; duplicates bump the badge count.
+	-- Split off the carry-1 wildcard: it gets a fixed square slot at the right, never the grid.
 	local pid = mgr:local_peer_id()
 	local counts = mgr:player_items(pid) or {}
 	local items_list = {}
+	local wildcard_entry = nil
 	for _, item_type in ipairs(mgr:display_items_order(pid) or {}) do
 		local def = by_type[item_type]
 		local count = counts[item_type] or 0
 		if def and count > 0 then
-			items_list[#items_list + 1] = { def = def, count = count }
+			if def.rarity == "wildcard" then
+				wildcard_entry = { def = def, count = count }
+			else
+				items_list[#items_list + 1] = { def = def, count = count }
+			end
 		end
 	end
 
-	if #items_list == 0 then
+	if #items_list == 0 and not wildcard_entry then
 		self._panel:set_visible(false)
 		return
 	end
 	self._panel:set_visible(true)
 
-	-- Floored at OWNED_MIN_CELL (not OWNED_CELL) so the shrink loop can reduce below one full row.
 	local count = #items_list
-	local grid_w = self._width - OWNED_PAD * 2
+	local total_avail_w = self._width - OWNED_PAD * 2
 	local avail_h = math.max(OWNED_MIN_CELL, self._max_height - OWNED_PAD * 2)
 
-	local function layout_for(size)
-		local step = size + OWNED_GAP
-		local per_row = math.max(1, math.min(count, math.floor((grid_w + OWNED_GAP) / step)))
-		return per_row, math.ceil(count / per_row), step
+	-- Wildcard square slot sized to the regular block height (full-width pass); one cell if no regulars.
+	-- Slot from the full-width pass is <= the reduced-width block, so it never overlaps the grid.
+	local wc_slot = OWNED_CELL
+	if count > 0 then
+		local _, _, rows0, step0 = csr_owned_grid(count, total_avail_w, avail_h)
+		wc_slot = rows0 * step0 - OWNED_GAP
 	end
+	wc_slot = math.floor(math.max(OWNED_MIN_CELL, math.min(wc_slot, total_avail_w)))
+	local wc_x = OWNED_PAD + total_avail_w - wc_slot
 
-	-- Shrink cell until all rows fit avail_h; stop at OWNED_MIN_CELL.
-	local cell = OWNED_CELL
-	local per_row, rows, step = layout_for(cell)
-	while cell > OWNED_MIN_CELL and rows * (cell + OWNED_GAP) - OWNED_GAP > avail_h do
-		cell = cell - 2
-		per_row, rows, step = layout_for(cell)
+	-- Regular grid on the width left of the slot (kept clear by one gap).
+	local grid_w = total_avail_w - wc_slot - OWNED_GAP
+	local cell, per_row, rows, step = OWNED_CELL, 1, 0, OWNED_CELL + OWNED_GAP
+	if count > 0 then
+		cell, per_row, rows, step = csr_owned_grid(count, grid_w, avail_h)
 	end
-	cell = math.floor(math.max(cell, OWNED_MIN_CELL))
-	per_row, rows, step = layout_for(cell)
 
 	local frame_size = math.floor(cell * OWNED_FRAME / OWNED_CELL)
 	local frame_overflow = (frame_size - cell) / 2
 
-	local used_cols = math.min(count, per_row)
-	local block_w = used_cols * step - OWNED_GAP
+	local used_cols = (count > 0) and math.min(count, per_row) or 0
+	local reg_block_w = (used_cols > 0) and (used_cols * step - OWNED_GAP) or 0
+	local reg_block_h = (rows > 0) and (rows * step - OWNED_GAP) or 0
+	-- Regulars left-align at OWNED_PAD; centered within their own region only when not left-aligned.
 	local grid_left = OWNED_PAD
-	if self._align ~= "left" then
-		grid_left = grid_left + math.max(0, math.floor((self._width - OWNED_PAD * 2 - block_w) / 2))
+	if self._align ~= "left" and grid_w > 0 then
+		grid_left = grid_left + math.max(0, math.floor((grid_w - reg_block_w) / 2))
 	end
-	local strip_h = rows * step - OWNED_GAP + OWNED_PAD * 2
+	local strip_h = math.max(reg_block_h, wc_slot) + OWNED_PAD * 2
 	self._panel:set_size(self._width, strip_h)
 	if self._anchor then
 		self._anchor(self._panel)
@@ -244,6 +269,57 @@ function CSROwnedItemsStrip:rebuild()
 			def = entry.def,
 			count = entry.count,
 		}
+	end
+
+	-- Wildcard slot (carry-1): filled card when held, else a translucent wildcard-tinted placeholder.
+	do
+		local wc_color = OWNED_RARITY_COLORS.wildcard or Color.white
+		local slot_frame = content:bitmap({
+			name = "wildcard_frame",
+			texture = frame_tex,
+			texture_rect = frame_rect,
+			x = wc_x,
+			y = OWNED_PAD,
+			w = wc_slot,
+			h = wc_slot,
+			layer = 5,
+		})
+		if wildcard_entry then
+			slot_frame:set_color(wc_color)
+			local cell_panel = content:panel({
+				x = wc_x,
+				y = OWNED_PAD,
+				w = wc_slot,
+				h = wc_slot,
+				layer = 10,
+			})
+			local raw_icon = wildcard_entry.def.icon or "dog_tags"
+			local icon_tex, icon_rect
+			if type(raw_icon) == "string" and raw_icon:find("/", 1, true) then
+				icon_tex, icon_rect = raw_icon, { 0, 0, 128, 128 }
+			else
+				icon_tex, icon_rect = tweak_data.hud_icons:get_icon_data(raw_icon)
+			end
+			local glyph = math.floor(wc_slot * OWNED_GLYPH_RATIO * (wildcard_entry.def.icon_scale or 1))
+			local glyph_inset = math.floor((wc_slot - glyph) / 2)
+			cell_panel:bitmap({
+				name = "item_icon",
+				texture = icon_tex,
+				texture_rect = icon_rect,
+				x = glyph_inset,
+				y = glyph_inset,
+				w = glyph,
+				h = glyph,
+				layer = 10,
+			})
+			self._hit_targets[#self._hit_targets + 1] = {
+				panel = cell_panel,
+				def = wildcard_entry.def,
+				count = 1,
+			}
+		else
+			slot_frame:set_color(wc_color:with_alpha(0.3))
+		end
 	end
 end
 

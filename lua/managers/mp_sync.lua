@@ -32,6 +32,7 @@ CSR_MP.ITEM_MSG = {
 	CHIP_KILL = "CSR_ChipKill",
 	WOLF_KILL = "CSR_WolfKill",
 	SHOCK = "CSR_ShockingSurprise",
+	OATH_HEAL = "CSR_OathHeal", -- host -> remote oath owner: heal your own player (aura tick)
 }
 
 local MAX_PAYLOAD = 200

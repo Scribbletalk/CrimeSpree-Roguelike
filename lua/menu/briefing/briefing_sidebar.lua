@@ -40,6 +40,7 @@ local METHODS_TO_BORROW = {
 	"_modifiers_scroll_visible",
 	"_populate_rewards_panel",
 	"_populate_heister_panel",
+	"_populate_preferences_panel",
 }
 
 local function ensure_methods_borrowed()

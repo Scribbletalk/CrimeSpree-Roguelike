@@ -80,7 +80,6 @@ function CSRItemSelectionButton:init(parent, data)
 	})
 
 	local top_padding = padding * 4
-	local desc_top_gap = padding * 6
 	-- Base icon size; final size = _image_size * _size_modifier (idle) or _image_size (hover).
 	self._image_size = 96
 	self._size_modifier = 0.8
@@ -113,6 +112,24 @@ function CSRItemSelectionButton:init(parent, data)
 		name = "icon",
 		layer = 10,
 	})
+	-- Anchor the name below the largest (hover) frame extent so the rarity border never crosses it.
+	-- update() grows the frame to _image_size * FRAME_SCALE on hover; clear that, not the idle size.
+	local label_gap = 4
+	local frame_bottom_max = self._image_pos.y + self._image_size * FRAME_SCALE / 2
+	self._name = self._panel:text({
+		vertical = "top",
+		wrap = false,
+		align = "center",
+		text = "",
+		x = padding,
+		y = frame_bottom_max + label_gap,
+		w = self._panel:w() - padding * 2,
+		h = tweak_data.menu.pd2_small_font_size,
+		font_size = tweak_data.menu.pd2_small_font_size,
+		font = tweak_data.menu.pd2_small_font,
+		color = tweak_data.screen_colors.text,
+	})
+	local desc_y = self._name:bottom() + label_gap
 	self._desc = self._panel:text({
 		vertical = "top",
 		wrap = true,
@@ -120,9 +137,9 @@ function CSRItemSelectionButton:init(parent, data)
 		wrap_word = true,
 		text = "",
 		x = padding,
-		y = self._image:bottom() + desc_top_gap,
+		y = desc_y,
 		w = self._panel:w() - padding * 2,
-		h = self._panel:h() - self._image:bottom() - desc_top_gap - padding,
+		h = self._panel:h() - desc_y - padding,
 		font_size = tweak_data.menu.pd2_small_font_size,
 		font = tweak_data.menu.pd2_small_font,
 		color = tweak_data.screen_colors.text,
@@ -179,6 +196,7 @@ function CSRItemSelectionButton:set_item(data)
 	self._item_image:set_texture_rect(unpack(rect))
 	self._icon_scale = self._data.icon_scale or 1
 	self:_size_icon(self._image:w())
+	self._name:set_text(self._data.name or "")
 	self._desc:set_text(self._data.desc or "")
 
 	local frame_tex, frame_rect = tweak_data.hud_icons:get_icon_data("csr_frame")
@@ -624,9 +642,30 @@ function CSRItemSelectionComponent:_on_finalize_item()
 	local item_type = data.id
 	local mgr = managers and managers.csr
 
+	-- Wildcards are carry-1: replacing an already-held wildcard needs confirmation first.
+	if data.rarity == "wildcard" and mgr and mgr.held_wildcard and mgr.local_peer_id then
+		local held = mgr:held_wildcard(mgr:local_peer_id())
+		if held and held ~= item_type then
+			self:_confirm_wildcard_replace(held, data, mgr)
+			return
+		end
+	end
+
+	self:_grant_picked(item_type, mgr)
+end
+
+-- Grant the picked item, broadcast for MP, then advance to the next pick (or flag close).
+function CSRItemSelectionComponent:_grant_picked(item_type, mgr)
 	if mgr and mgr.add_item and mgr.local_peer_id and item_type then
 		local pid = mgr:local_peer_id()
+		-- A wildcard pick while one is already held is net-zero on the item count (carry-1 swap
+		-- or re-pick), so the owed-pick quota wouldn't advance. Flag it before add_item mutates state.
+		local def = mgr.item_def and mgr:item_def(item_type)
+		local net_zero = def and def.rarity == "wildcard" and mgr.held_wildcard and mgr:held_wildcard(pid) ~= nil
 		mgr:add_item(pid, item_type)
+		if net_zero and mgr.note_net_zero_rank_pick then
+			mgr:note_net_zero_rank_pick(pid)
+		end
 		-- pop_offer discards the whole 3-card set; the unchosen cards never carry over.
 		if mgr.pop_offer then
 			mgr:pop_offer(pid)
@@ -647,6 +686,33 @@ function CSRItemSelectionComponent:_on_finalize_item()
 	managers.menu_component:post_event("item_buy")
 
 	self:_advance_pick()
+end
+
+-- Confirm swapping the held wildcard for the newly-picked one. On cancel the pick stays highlighted
+-- so the player can choose differently; on confirm add_item performs the carry-1 swap.
+function CSRItemSelectionComponent:_confirm_wildcard_replace(held_type, new_data, mgr)
+	local old_def = mgr.item_def and mgr:item_def(held_type)
+	local old_name = (old_def and old_def.name and csr_loc(old_def.name)) or string.upper(tostring(held_type))
+	local new_name = new_data.name or string.upper(tostring(new_data.id))
+	local new_type = new_data.id
+
+	local dialog_data = {
+		title = csr_loc("csr_wildcard_replace_title"),
+		text = managers.localization:text("csr_wildcard_replace_text", { OLD = old_name, NEW = new_name }),
+		id = "csr_wildcard_replace",
+	}
+	local yes_button = {
+		text = csr_loc("dialog_yes"),
+		callback_func = function()
+			self:_grant_picked(new_type, mgr)
+		end,
+	}
+	local no_button = {
+		text = csr_loc("dialog_no"),
+		cancel_button = true,
+	}
+	dialog_data.button_list = { yes_button, no_button }
+	managers.system_menu:show(dialog_data)
 end
 
 function CSRItemSelectionComponent:_update_counter_text()

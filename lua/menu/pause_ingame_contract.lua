@@ -41,18 +41,6 @@ local PEER_HEADER_H = 22
 local FRAME_TO_CELL = 72 / 64 -- frame overflows the cell symmetrically (same ratio as the sidebar)
 -- 4-direction 1px offsets for the stack-count outline; Diesel text has no native stroke.
 local BADGE_OUTLINE = { { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } }
--- Full risk-skull icons (risk_pd is the no-risk baseline, skipped). Matches the lobby creation
--- screen (contract_menu.lua) so the pause difficulty row looks identical.
-local DIFFICULTY_RISKS = {
-	"risk_pd",
-	"risk_swat",
-	"risk_fbi",
-	"risk_death_squad",
-	"risk_easy_wish",
-	"risk_murder_squad",
-	"risk_sm_wish",
-}
-
 -- CSR heist marker: STANDARD gamemode + a temporary "crime_spree" job. Same
 -- signal heist_packages.lua uses; holds for host, guest and single-player.
 local function csr_heist_active()
@@ -153,16 +141,12 @@ end
 -- full risk_* icons (active = red, inactive = white@0.25) exactly like the lobby creation screen.
 -- The live heist difficulty is Global.game_settings.difficulty (internal id), with managers.csr as
 -- fallback; both the skull count and the name derive from it so they never disagree. Returns bottom y.
-local function csr_render_difficulty_row(parent, x, top)
+local function csr_render_difficulty_row(parent, x, top, rank)
 	local diff = (Global.game_settings and Global.game_settings.difficulty)
 		or (managers.csr and managers.csr:difficulty())
 		or "normal"
 	local difficulty_id = (tweak_data.difficulty_to_index and tweak_data:difficulty_to_index(diff)) or 2
 	local stars = math.max(0, difficulty_id - 2)
-
-	-- Probe one risk icon's height so the label/name center to the icon row.
-	local _, probe_rect = tweak_data.hud_icons:get_icon_data("risk_swat")
-	local icon_h = (probe_rect and probe_rect[4]) or 32
 
 	local label = parent:text({
 		text = managers.localization:to_upper_text("csr_pause_difficulty"),
@@ -173,34 +157,13 @@ local function csr_render_difficulty_row(parent, x, top)
 		layer = 1,
 	})
 	managers.hud:make_fine_text(label)
-	local row_h = math.max(icon_h, label:h())
+	local row_h = label:h()
 	local center_y = top + row_h / 2
 	label:set_left(x)
 	label:set_center_y(center_y)
 
-	-- Skip the no-risk baseline (i==1); SKIP_OVERKILL_290 hides the top two tiers platform-wide.
-	local skip_top = Global.SKIP_OVERKILL_290 and true or false
-	local sx = label:right() + 8
-	local last_right = sx
-	for i = 2, #DIFFICULTY_RISKS do
-		if not (skip_top and i >= 6) then
-			local texture, rect = tweak_data.hud_icons:get_icon_data(DIFFICULTY_RISKS[i])
-			local active = i <= difficulty_id - 1
-			local icon = parent:bitmap({
-				texture = texture,
-				texture_rect = rect,
-				x = sx,
-				layer = 1,
-				color = active and tweak_data.screen_colors.risk or Color.white,
-				alpha = active and 1 or 0.25,
-			})
-			icon:set_center_y(center_y)
-			sx = sx + icon:w() + 2
-			last_right = icon:right()
-		end
-	end
-
-	-- Difficulty name after the skulls; red above normal (matches crimenet), white otherwise.
+	-- Difficulty name; red above normal (matches crimenet), white otherwise.
+	local last_right = label:right()
 	local name_id = tweak_data.difficulty_name_ids and tweak_data.difficulty_name_ids[diff]
 	if name_id then
 		local name = parent:text({
@@ -214,6 +177,24 @@ local function csr_render_difficulty_row(parent, x, top)
 		managers.hud:make_fine_text(name)
 		name:set_left(last_right + 8)
 		name:set_center_y(center_y)
+		last_right = name:right()
+	end
+
+	if rank then
+		local prefix = managers.localization:to_upper_text("csr_pause_rank") .. " "
+		local cs_glyph = utf8.char(0xE018)
+		local rank_t = parent:text({
+			text = prefix .. tostring(rank) .. " " .. cs_glyph,
+			font = tweak_data.menu.pd2_medium_font,
+			font_size = tweak_data.menu.pd2_medium_font_size,
+			color = tweak_data.screen_colors.text,
+			align = "left",
+			layer = 1,
+		})
+		managers.hud:make_fine_text(rank_t)
+		rank_t:set_left(last_right + 16)
+		rank_t:set_center_y(center_y)
+		rank_t:set_range_color(utf8.len(prefix), utf8.len(rank_t:text()), tweak_data.screen_colors.crime_spree_risk)
 	end
 
 	return top + row_h
@@ -242,17 +223,23 @@ local function csr_render_peer_items(ctx, peer, section_top, section_h)
 		layer = 2,
 	})
 
-	-- Scrap first (rare->uncommon->common), then acquisition order; duplicate picks bump the stack badge only.
+	-- Scrap first (rare->uncommon->common), then acquisition order; the carry-1 wildcard is split
+	-- off into its own fixed slot and never joins the grid (it can never stack).
 	local counts = mgr:player_items(peer.id) or {}
 	local items_list = {}
+	local wildcard_entry = nil
 	for _, item_type in ipairs(mgr:display_items_order(peer.id)) do
 		local def = by_type[item_type]
 		local count = counts[item_type] or 0
 		if def and count > 0 then
-			items_list[#items_list + 1] = { def = def, count = count }
+			if def.rarity == "wildcard" then
+				wildcard_entry = { def = def, count = count }
+			else
+				items_list[#items_list + 1] = { def = def, count = count }
+			end
 		end
 	end
-	if #items_list == 0 then
+	if #items_list == 0 and not wildcard_entry then
 		return
 	end
 
@@ -262,7 +249,11 @@ local function csr_render_peer_items(ctx, peer, section_top, section_h)
 		return
 	end
 
-	local grid_w = avail_w - GRID_MARGIN * 2
+	-- Wildcard owns a square slot at the right edge, full grid height; the grid keeps the rest.
+	local avail_grid_w = avail_w - GRID_MARGIN * 2
+	local wc_slot = math.max(ITEM_ICON_MIN, math.min(grid_h, avail_grid_w))
+	local wc_x = GRID_MARGIN + avail_grid_w - wc_slot
+	local grid_w = avail_grid_w - wc_slot - ITEM_GAP
 	local cell, per_row = csr_adaptive_grid(#items_list, grid_w, grid_h, ITEM_ICON_MAX, ITEM_ICON_MIN, ITEM_GAP)
 	local step = cell + ITEM_GAP
 	local frame_size = math.floor(cell * FRAME_TO_CELL)
@@ -334,6 +325,45 @@ local function csr_render_peer_items(ctx, peer, section_top, section_h)
 		local hit = parent:panel({ x = ix, y = iy, w = cell, h = cell, layer = 7 })
 		targets[#targets + 1] = { panel = hit, def = entry.def, count = entry.count }
 	end
+
+	-- Wildcard slot (carry-1): a filled card when held, else a translucent wildcard-tinted placeholder.
+	do
+		local wc_color = RARITY_COLORS.wildcard or Color.white
+		local slot_frame = parent:bitmap({
+			texture = frame_tex,
+			texture_rect = frame_rect,
+			x = wc_x,
+			y = grid_top,
+			w = wc_slot,
+			h = wc_slot,
+			layer = 3,
+		})
+		if wildcard_entry then
+			slot_frame:set_color(wc_color)
+			local raw = wildcard_entry.def.icon or "dog_tags"
+			local icon_tex, icon_rect
+			if type(raw) == "string" and raw:find("/", 1, true) then
+				icon_tex, icon_rect = raw, { 0, 0, 128, 128 }
+			else
+				icon_tex, icon_rect = tweak_data.hud_icons:get_icon_data(raw)
+			end
+			local glyph = math.floor(wc_slot * (1 - 28 / 64) * (wildcard_entry.def.icon_scale or 1))
+			local glyph_inset = math.floor((wc_slot - glyph) / 2)
+			parent:bitmap({
+				texture = icon_tex,
+				texture_rect = icon_rect,
+				x = wc_x + glyph_inset,
+				y = grid_top + glyph_inset,
+				w = glyph,
+				h = glyph,
+				layer = 4,
+			})
+			local hit = parent:panel({ x = wc_x, y = grid_top, w = wc_slot, h = wc_slot, layer = 7 })
+			targets[#targets + 1] = { panel = hit, def = wildcard_entry.def, count = 1 }
+		else
+			slot_frame:set_color(wc_color:with_alpha(0.3))
+		end
+	end
 end
 
 -- Every player's inventory, one quarter-height section per peer (stable up to 4 players).
@@ -345,8 +375,9 @@ local function csr_render_items(parent, top, avail_w, avail_h, mgr)
 	end
 
 	local peers = csr_collect_peers(mgr)
-	local num = math.max(1, math.min(#peers, 4))
-	local section_h = math.floor(avail_h / num)
+	-- Fixed quarter per peer (mirror the lobby sidebar): keeps the wildcard square modestly sized
+	-- in SP/duo instead of ballooning to fill the whole items area when there are fewer than 4 peers.
+	local section_h = math.floor(avail_h / 4)
 	local frame_tex, frame_rect = tweak_data.hud_icons:get_icon_data("csr_frame")
 
 	local targets = {}
@@ -528,26 +559,9 @@ Hooks:PostHook(IngameContractGui, "init", "CSR_IngameContract_Relayout", functio
 	info_body:set_h(body_h)
 	info_body:set_top(info_title:bottom())
 
-	-- "CRIME SPREE RANK: N <glyph>" -- label white, number yellow, then the CS
-	-- glyph. The icon is a font glyph (copied 1:1 from the lobby mission cards):
-	-- U+E018 in pd2_medium_font carries the Crime Spree emblem.
 	local rank = managers.csr and managers.csr:rank() or 0
-	local prefix = managers.localization:to_upper_text("csr_pause_rank") .. " "
-	local cs_glyph = utf8.char(0xE018) -- Crime Spree glyph U+E018
-	local rank_text = text_panel:text({
-		text = prefix .. tostring(rank) .. " " .. cs_glyph,
-		font = tweak_data.menu.pd2_medium_font,
-		font_size = tweak_data.menu.pd2_medium_font_size,
-		color = tweak_data.screen_colors.text,
-		align = "left",
-	})
-	managers.hud:make_fine_text(rank_text)
-	-- Color the number AND the CS glyph yellow; keep the "CRIME SPREE RANK:" label white.
-	rank_text:set_range_color(utf8.len(prefix), utf8.len(rank_text:text()), tweak_data.screen_colors.crime_spree_risk)
-	rank_text:set_top(info_body:bottom() + padding)
-
-	-- Difficulty row ("DIFFICULTY:" + risk skulls + difficulty name) under the rank line.
-	local diff_bottom = csr_render_difficulty_row(text_panel, 0, rank_text:bottom() + 6)
+	-- Difficulty row: "DIFFICULTY: [skulls] NAME    RANK: N <glyph>" all on one line.
+	local diff_bottom = csr_render_difficulty_row(text_panel, 0, info_body:bottom() + padding, rank)
 
 	-- "ITEMS:" + every player's inventory below the difficulty row (like the lobby sidebar).
 	-- Only drawn when there's vertical room for at least the header + one peer section,

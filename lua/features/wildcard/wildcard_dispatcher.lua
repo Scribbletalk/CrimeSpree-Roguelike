@@ -1,7 +1,7 @@
 -- Wildcard Active Dispatcher (U1)
 -- Shared keybind handler for active-use wildcard items. Each active wildcard
 -- registers an `activate(player_unit)` callback keyed by its item type.
--- The BLT keybind script (lua/keybinds/csr_activate_wildcard.lua) calls
+-- The BLT keybind script (lua/features/wildcard/activate_wildcard.lua) calls
 -- _G.CSR_TriggerWildcard() on key press, which scans owned items and routes
 -- to the first owned active wildcard.
 --
@@ -20,6 +20,19 @@ _G.CSR_WILDCARD_DISPATCHER_LOADED = true
 
 _G.CSR_WildcardActives = _G.CSR_WildcardActives or {}
 
+-- Active wildcards publish their cooldown here so the HUD slot can draw the radial
+-- recharge. cooldown_end lives as a file-local in each item file (unreadable from the
+-- HUD), so each active reports it via CSR_SetWildcardCooldown on activate AND on reset.
+--   { [item_type] = { ends = game_time, duration = seconds } }
+_G.CSR_WildcardCooldowns = _G.CSR_WildcardCooldowns or {}
+
+function _G.CSR_SetWildcardCooldown(item_type, ends, duration)
+	if not item_type then
+		return
+	end
+	_G.CSR_WildcardCooldowns[item_type] = { ends = ends or 0, duration = duration or 0 }
+end
+
 local function dbg(msg)
 	local mgr = managers and managers.csr
 	if mgr and mgr.debug_enabled and mgr:debug_enabled() then
@@ -27,15 +40,9 @@ local function dbg(msg)
 	end
 end
 
--- Public: register an active wildcard.
---   item_type: bare type, e.g. "familiar_friend" (matches managers.csr:owned)
---   activate:  function(player_unit) — runs on key press if owned
-function _G.CSR_RegisterWildcardActive(item_type, activate)
-	if not item_type or type(activate) ~= "function" then
-		return
-	end
-	_G.CSR_WildcardActives[item_type] = activate
-end
+-- CSR_RegisterWildcardActive is defined in lua/core/extension_api.lua (it must
+-- exist before this lib/entry POST-hook loads, since items register their active
+-- from a playermanager hook that fires earlier — see the comment there).
 
 local function get_local_player()
 	if not managers or not managers.player then

@@ -35,7 +35,7 @@ local LID_ANIM = Idstring("open_lid")
 
 _G.CSR_Copiers = _G.CSR_Copiers or {}
 
--- CSR-heist gate; shared with scrapper_spawner / combat_modifiers.
+-- CSR-heist gate; shared with scrapper_spawner / apply_modifiers.
 local function csr_heist_active()
 	if not managers or not managers.job then
 		return false

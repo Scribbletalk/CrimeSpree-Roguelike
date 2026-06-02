@@ -57,16 +57,15 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_ContractHeaderLocalization", funct
 		csr_header_title = "Crime Spree Roguelike",
 		csr_end_spree = "End Spree",
 		csr_return_to_lobby = "Return to Lobby",
-		csr_contract_difficulty = "Difficulty",
 		-- SuperBLT macro syntax: $name with optional ";" terminator (single $, not closing).
 		csr_current_spree = "Current Spree: $status",
 		csr_current_spree_active = "active",
 		csr_current_spree_none = "none",
-		-- Active-run readout: completed-mission count and rank on their own lines under the header.
-		csr_current_spree_completed = "Completed missions: $count",
+		-- Active-run readout: rank on its own line under the header; mission count uses csr_lobby_missions_completed.
 		csr_current_spree_rank = "Rank: $rank",
 		-- CSR-owned key; overriding vanilla's dialog_are_you_sure_you_want_stop_cs would leak into vanilla CS.
 		csr_dialog_end_spree = "End your Crime Spree Roguelike run now and claim your rewards?",
+		csr_contract_difficulty = "Difficulty",
 		csr_start_new_spree = "Start a new spree",
 		csr_continue_spree = "Continue current spree",
 		-- $rank is substituted by MenuCallbackHandler:start_new_csr_spree.

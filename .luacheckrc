@@ -31,10 +31,10 @@ globals = {
     -- PD2 global state
     "managers", "tweak_data", "Global",
     -- PD2 engine singletons
-    "Application", "World", "Network", "Input", "DB", "Workspace",
+    "Application", "World", "Network", "Input", "DB", "Workspace", "Draw",
     "TimerManager", "PackageManager", "DynamicResourceManager",
     "game_state_machine", "GameSetup", "Setup", "setup",
-    "SoundDevice", "LocalizationManager",
+    "SoundDevice", "LocalizationManager", "SystemInfo",
     -- PD2 AI / placement
     "is_placement_in_seg_walkable", "is_placement_los_from_player",
     -- PD2 telemetry
@@ -46,24 +46,26 @@ globals = {
     "MenuCallbackHandler", "MenuComponentManager", "MenuManager",
     "MissionBriefingGui", "StageEndScreenGui", "StatsTabItem",
     "SkirmishBriefingProgress",
+    -- PD2 ingame UI
+    "IngameContractGui",
     -- PD2 HUD
     "HudIconsTweakData", "HUDInteraction", "HUDManager", "HUDMissionBriefing",
     "HUDStageEndCrimeSpreeScreen", "HUDStageEndScreen",
     -- PD2 player / weapon / enemy
     "BaseNetworkSession",
     "BaseInteractionExt", "UseInteractionExt", "InteractionTweakData",
-    "PlayerBase", "PlayerDamage", "PlayerManager", "PlayerStandard",
+    "PlayerBase", "HuskPlayerBase", "PlayerDamage", "PlayerManager", "PlayerStandard",
     "CopDamage", "CivilianDamage",
     "NewRaycastWeaponBase", "RaycastWeaponBase", "SentryGunWeapon",
     "GageAssignmentBase",
     -- PD2 AI / mission
-    "GroupAIStateBesiege", "IngameWaitingForPlayersState",
+    "GroupAIStateBase", "GroupAIStateBesiege", "IngameWaitingForPlayersState",
     "MissionEndState", "MissionManager",
     "ElementAreaTrigger", "ElementSpawnEnemyDummy",
     -- PD2 economy / black market
     "MoneyManager", "BlackMarketGui", "BlackMarketManager",
     -- PD2 crime spree (vanilla base classes CSR extends)
-    "CrimeNetGui", "GamemodeCrimeSpree", "CrimeSpreeManager",
+    "CrimeNetGui", "GamemodeCrimeSpree", "CrimeSpreeManager", "CrimeSpreeTweakData",
     "CrimeSpreeBlackMarketMenuComponent", "CrimeSpreeBlackMarketShopPage",
     "CrimeSpreeContractBoxGui",
     "CrimeSpreeCopierInteractionExt", "CrimeSpreeScrapperInteractionExt",
@@ -78,10 +80,13 @@ globals = {
     "CSRSidebar", "CSRSidebarItem", "CSRSidebarSeparator",
     "CSRMissionButton", "CSRStartButton",
     "CSRItemSelectionComponent", "CSRItemSelectionButton", "CSRItemSelectionActionButton",
+    "CSROwnedItemsStrip",
     -- CSR contract
     "CSRContractMenuComponent", "MenuCSRContractInitiator",
     -- CSR module tables / singletons
-    "CSR_Shop", "CSR_LogbookProgress", "CSR_MetaProgress",
+    "CSR_Shop", "CSR_LogbookProgress", "CSR_MetaProgress", "CSR_MP",
+    -- CSR global helpers
+    "csr_log",
     -- CSR callbacks
     "CSR_CloseItemSelection",
 }

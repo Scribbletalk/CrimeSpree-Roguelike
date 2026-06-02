@@ -156,6 +156,9 @@ local function activate_turron(player_unit)
 
 	dr_end = now + DR_DURATION
 	cooldown_end = now + COOLDOWN
+	if _G.CSR_SetWildcardCooldown then
+		_G.CSR_SetWildcardCooldown("turron", cooldown_end, COOLDOWN)
+	end
 
 	show_dr_vignette(DR_DURATION)
 	DelayedCalls:Add("CSR_Turron_CooldownReady", COOLDOWN, play_cooldown_ready)
@@ -211,6 +214,9 @@ _G.CSR.register_item({
 			Hooks:PostHook(PlayerManager, "spawned_player", "CSR_TurronInit", function()
 				cooldown_end = 0
 				dr_end = 0
+				if _G.CSR_SetWildcardCooldown then
+					_G.CSR_SetWildcardCooldown("turron", 0, COOLDOWN)
+				end
 			end)
 
 			-- Register with the wildcard dispatcher (idempotent — keyed by type).
