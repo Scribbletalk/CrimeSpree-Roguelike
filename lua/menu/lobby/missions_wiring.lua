@@ -136,6 +136,7 @@ if CSRMissionsMenuComponent and not _G._CSR_LOBBY_OVERLAY_HIDE_HOOKED then
 			end
 		end
 		add(self._unselected_panel)
+		add(self._unselected_bg)
 		add(self._csr_bm_lobby_panel)
 		add(self._csr_bm_lobby_bg)
 		return list

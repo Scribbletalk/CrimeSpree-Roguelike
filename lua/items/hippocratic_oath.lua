@@ -1,5 +1,6 @@
 -- Hippocratic Oath (wildcard, passive) — on loud, a Medic enemy spawns offscreen,
--- is converted to a joker (vanilla AI: runs to the owner), and pulses a heal aura.
+-- is converted to a joker on a tight leash (prioritises following its owner, fights only
+-- once near; the host yanks it out of any fight if it strays), and pulses a heal aura.
 -- While the owner is within 5m of their medic, they regen 5% max HP every 5s. On
 -- medic death a 6-minute respawn timer ticks, then a fresh medic spawns. No cap.
 --
@@ -32,6 +33,9 @@ local SPAWN_MIN_DIST = 1500 -- spawn 15-40m from the owner (offscreen, but reach
 local SPAWN_MAX_DIST = 4000
 local SPAWN_CHECK_INTERVAL = 2.0
 local MEDIC_DR = 0.80 -- 80% incoming damage reduction on the medic
+local FOLLOW_DISTANCE = 300 -- idle follow leash: medic re-paths to its owner once it drifts past 3m
+local LEASH_DISTANCE = AURA_RADIUS -- host yanks the medic out of any fight the instant it leaves heal range (follow-first)
+local LEASH_CHECK_INTERVAL = 0.5 -- leash check cadence: frequent yank keeps the medic glued instead of brawling
 local PULSE_DURATION = 0.5 -- expanding-ring visual lifetime per heal pulse
 local PULSE_ALPHA = 0.06 -- peak ring opacity (opacity_add blend; vanilla glows sit 0.07-0.15)
 local VOICE_EVENT = "f47" -- medic heal shout (vanilla priority_shout)
@@ -47,6 +51,7 @@ local pulse = { active = false, start_t = 0, medic_unit = nil }
 local last_voice_t = 0
 local next_aura_t = 0
 local next_spawn_t = 0
+local next_leash_t = 0
 
 -- =====================================================
 -- Helpers
@@ -224,6 +229,25 @@ end
 -- Host-authoritative medic lifecycle
 -- =====================================================
 
+-- Re-path the medic to its owner on a tight follow leash. A fresh "follow" objective runs through
+-- CopLogicIdle.on_new_objective and exits to "travel" (coplogicidle.lua:504), so calling this from
+-- attack state yanks the medic out of the fight and back toward its owner. `distance` is the idle
+-- relocate threshold (coplogicidle.lua:1087): the medic re-paths once it drifts past FOLLOW_DISTANCE.
+local function set_follow_objective(medic_unit, owner_unit)
+	if not (alive(medic_unit) and medic_unit:brain() and alive(owner_unit)) then
+		return
+	end
+	pcall(function()
+		medic_unit:brain():set_objective({
+			type = "follow",
+			follow_unit = owner_unit,
+			scan = true,
+			is_default = true,
+			distance = FOLLOW_DISTANCE,
+		})
+	end)
+end
+
 -- Spawn one medic for the given peer and convert it to a joker. Returns nothing.
 local function spawn_medic_for(peer_id)
 	if not Network:is_server() or not is_playing() then
@@ -289,6 +313,8 @@ local function spawn_medic_for(peer_id)
 		end
 		state[peer_id] = { medic_unit = spawned, medic_unit_key = spawned:key(), respawn_at = nil }
 		set_hud_cooldown(peer_id, 0) -- medic alive -> radial full
+		-- Install the tight follow leash so the joker prioritises sticking to its owner.
+		set_follow_objective(spawned, get_peer_player_unit(peer_id))
 	end)
 end
 
@@ -351,6 +377,27 @@ local function host_aura_tick()
 	end
 end
 
+-- Tight-leash tick: if a medic strays beyond LEASH_DISTANCE while not already travelling,
+-- re-issue its follow objective. The fresh "follow" forces on_new_objective into "travel"
+-- (coplogicidle.lua:504), pulling the medic out of any fight back to its owner. The "travel"
+-- guard avoids re-pathing every tick while it is already running home (would stutter).
+local function host_leash_tick()
+	if not Network:is_server() or not is_playing() then
+		return
+	end
+	for peer_id, s in pairs(state) do
+		if s and s.medic_unit and alive(s.medic_unit) and s.medic_unit:movement() and s.medic_unit:brain() then
+			local owner_unit = get_peer_player_unit(peer_id)
+			if alive(owner_unit) and owner_unit:movement() then
+				local d = mvector3.distance(owner_unit:movement():m_pos(), s.medic_unit:movement():m_pos())
+				if d > LEASH_DISTANCE and s.medic_unit:brain()._current_logic_name ~= "travel" then
+					set_follow_objective(s.medic_unit, owner_unit)
+				end
+			end
+		end
+	end
+end
+
 -- A minion died: if it was an Oath medic, start its respawn timer.
 local function on_minion_died(minion_unit)
 	if not Network:is_server() or not alive(minion_unit) then
@@ -374,6 +421,7 @@ local function reset_state()
 	last_voice_t = 0
 	next_aura_t = 0
 	next_spawn_t = 0
+	next_leash_t = 0
 	set_hud_cooldown(local_peer_id(), 0)
 end
 
@@ -416,6 +464,9 @@ local function ensure_mp_handler()
 		if not (cdmg and cdmg.restore_health) then
 			return
 		end
+		if managers.csr and managers.csr:item_heal_blocked() then
+			return
+		end
 		local hp_before = cdmg.get_real_health and cdmg:get_real_health() or nil
 		pcall(cdmg.restore_health, cdmg, HEAL_PCT, false)
 		local hp_after = cdmg.get_real_health and cdmg:get_real_health() or nil
@@ -447,6 +498,10 @@ local function install_global_hooks()
 		if t >= next_spawn_t then
 			next_spawn_t = t + SPAWN_CHECK_INTERVAL
 			pcall(host_check_spawns)
+		end
+		if t >= next_leash_t then
+			next_leash_t = t + LEASH_CHECK_INTERVAL
+			pcall(host_leash_tick)
 		end
 	end)
 
@@ -488,7 +543,7 @@ _G.CSR.register_item({
 	full_desc = "csr_logbook_hippocratic_oath_effect",
 	notes = "csr_logbook_hippocratic_oath_notes",
 	icon = "csr_hippocratic_oath",
-	icon_scale = 1.0,
+	icon_scale = 0.9,
 
 	hooks = {
 		["lib/managers/playermanager"] = function()

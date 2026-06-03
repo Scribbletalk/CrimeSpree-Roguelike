@@ -1,8 +1,8 @@
 {
-	"name": "Crime Spree Roguelike (U1 refactor)",
-	"description": "Refactor workspace for CSR U1 (full rewrite; version resets to U1). Foundation skeleton + items via the extension API + forked CS contract popup + mission lifecycle + mission select + forked mission briefing + forked end screen. Do not ship.",
+	"name": "Crime Spree Roguelike (U1-beta)",
+	"description": "Turns Crime Spree into a roguelike: climb ranks to earn powerful player buffs, in the spirit of Risk of Rain 2. Items across five rarity tiers, an in-world Printer and Scrapper, a Gage-token item shop, wildcard active abilities, and full co-op support.",
 	"author": "Candy",
-	"version": "U1-alpha",
+	"version": "U1-beta",
 	"blt_version": 2,
 	"hooks": [
 		{

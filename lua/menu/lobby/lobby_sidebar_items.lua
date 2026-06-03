@@ -28,27 +28,23 @@ local items_panel_badge_outline = { { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } }
 local items_panel_badge_top_inset = 9
 local items_panel_padding = 16
 
--- Returns largest square cell size (≤max_size, ≥min_size) and per-row column count so all `count`
--- items fit avail_w×avail_h. Shrinks by 2px steps until rows fit height; left-aligned, fixed gap.
+-- Square cell size and per-row column count for `count` items in avail_w x avail_h. The cell is sized
+-- so a FULL row of `per_row` cells plus fixed `gap`s spans avail_w exactly -- items resize to fill the
+-- row, the gap never changes. Uses the fewest columns (largest cells, capped at max_size) whose rows
+-- still fit avail_h; the partial last row packs left. Dense inventories fall back to min_size by width.
 local function csr_adaptive_grid(count, avail_w, avail_h, max_size, min_size, gap)
 	if count <= 0 then
 		return max_size, 1
 	end
-	local function layout_for(size)
-		local per_row = math.max(1, math.min(count, math.floor((avail_w + gap) / (size + gap))))
-		return per_row, math.ceil(count / per_row)
-	end
-	local size = max_size
-	while size > min_size do
-		local _, rows = layout_for(size)
-		if rows * (size + gap) - gap <= avail_h then
-			break
+	for per_row = 1, count do
+		local cell = math.min(max_size, math.floor((avail_w - (per_row - 1) * gap) / per_row))
+		local rows = math.ceil(count / per_row)
+		if cell >= min_size and rows * (cell + gap) - gap <= avail_h then
+			return cell, per_row
 		end
-		size = size - 2
 	end
-	size = math.floor(math.max(size, min_size))
-	local per_row = layout_for(size)
-	return size, per_row
+	local per_row = math.max(1, math.floor((avail_w + gap) / (min_size + gap)))
+	return min_size, math.min(count, per_row)
 end
 
 -- Uses tweak_data.peer_vector_colors so panel colors match teammate contours and chat.
@@ -222,10 +218,10 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 
 		local grid_y = section_top + items_panel_padding + items_panel_peer_header_h + 10
 		local grid_h = section_top + section_h - grid_y - items_panel_padding
-		-- Wildcard owns a square slot at the right edge, full items-area height; the grid keeps the rest.
+		-- Two columns: items grid (left, left-aligned) + fixed-size wildcard slot pinned to the right edge.
+		-- With few items a natural hole sits between them; grid_w stays maximal to keep that hole small.
 		local wc_slot = math.max(items_panel_min_icon_size, math.min(grid_h, section_w))
-		local wc_x = items_panel_padding + section_w - wc_slot
-		local grid_w = section_w - wc_slot - items_panel_icon_gap
+		local grid_w = section_w - wc_slot
 
 		if #items_list > 0 and grid_w > 0 then
 			local cell_size, per_row = csr_adaptive_grid(
@@ -270,14 +266,8 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 					layer = 10,
 				})
 
-				-- "/" in icon = full DB-mounted texture path (addon .dds); otherwise a hud_icons id.
-				local icon_tex, icon_rect
 				local raw_icon = entry.def.icon or "dog_tags"
-				if type(raw_icon) == "string" and raw_icon:find("/", 1, true) then
-					icon_tex, icon_rect = raw_icon, { 0, 0, 128, 128 }
-				else
-					icon_tex, icon_rect = tweak_data.hud_icons:get_icon_data(raw_icon)
-				end
+				local icon_tex, icon_rect = _G.CSR.icon_data(raw_icon)
 				-- Legacy 36px-in-64px glyph ratio, scaled by optional per-item icon_scale.
 				local glyph = math.floor(cell_size * (1 - 28 / items_panel_icon_size) * (entry.def.icon_scale or 1))
 				local glyph_inset = math.floor((cell_size - glyph) / 2)
@@ -329,17 +319,22 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 		end
 
 		-- Wildcard slot (carry-1): a filled card when held, else a translucent wildcard-tinted placeholder.
+		-- Slot edge sits at the section padding (mirrors the items' left margin); the frame overflows it.
+		local wc_x = items_panel_padding + section_w - wc_slot
 		do
 			local wc_color = items_panel_rarity_colors.wildcard or Color.white
 			local frame_tex, frame_rect = tweak_data.hud_icons:get_icon_data("csr_frame")
+			-- Frame overflows the slot by the 72/64 item ratio so its visible border lands on the slot edge.
+			local wc_frame_size = math.floor(wc_slot * items_panel_frame_size / items_panel_icon_size)
+			local wc_frame_overflow = math.floor((wc_frame_size - wc_slot) / 2)
 			local slot_frame = content:bitmap({
 				name = "wildcard_frame",
 				texture = frame_tex,
 				texture_rect = frame_rect,
-				x = wc_x,
-				y = grid_y,
-				w = wc_slot,
-				h = wc_slot,
+				x = wc_x - wc_frame_overflow,
+				y = grid_y - wc_frame_overflow,
+				w = wc_frame_size,
+				h = wc_frame_size,
 				layer = 5,
 			})
 			if wildcard_entry then
@@ -352,12 +347,8 @@ function CSRMissionsMenuComponent:_populate_items_panel()
 					layer = 10,
 				})
 				local raw_icon = wildcard_entry.def.icon or "dog_tags"
-				local icon_tex, icon_rect
-				if type(raw_icon) == "string" and raw_icon:find("/", 1, true) then
-					icon_tex, icon_rect = raw_icon, { 0, 0, 128, 128 }
-				else
-					icon_tex, icon_rect = tweak_data.hud_icons:get_icon_data(raw_icon)
-				end
+				local icon_tex, icon_rect = _G.CSR.icon_data(raw_icon)
+				-- Wildcard glyph uses the same 0.5625 cell ratio as regular items, centred inside the frame.
 				local glyph =
 					math.floor(wc_slot * (1 - 28 / items_panel_icon_size) * (wildcard_entry.def.icon_scale or 1))
 				local glyph_inset = math.floor((wc_slot - glyph) / 2)

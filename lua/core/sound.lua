@@ -38,15 +38,32 @@ local function master_volume()
 	return v
 end
 
-local function resolve_path(rel)
+-- base_dir (optional) = an add-on folder; sounds bundled with an add-on resolve
+-- relative to it. Built-in CSR sounds pass nil and resolve against the mod folder.
+local function resolve_path(rel, base_dir)
 	local base_path = (Application and Application:base_path()) or ""
 	if base_path ~= "" and base_path:sub(-1) ~= "/" and base_path:sub(-1) ~= "\\" then
 		base_path = base_path .. "/"
 	end
-	local mod_rel = (SAVED_MOD_PATH or "mods/CrimeSpree-Roguelike/") .. rel
+	local fh
 
+	if base_dir then
+		local abs = base_dir .. rel
+		fh = io.open(abs, "rb")
+		if fh then
+			fh:close()
+			return abs
+		end
+		fh = io.open(base_path .. abs, "rb")
+		if fh then
+			fh:close()
+			return base_path .. abs
+		end
+	end
+
+	local mod_rel = (SAVED_MOD_PATH or "mods/CrimeSpree-Roguelike/") .. rel
 	local absolute = base_path .. mod_rel
-	local fh = io.open(absolute, "rb")
+	fh = io.open(absolute, "rb")
 	if fh then
 		fh:close()
 		return absolute
@@ -59,8 +76,8 @@ local function resolve_path(rel)
 	return nil
 end
 
-local function load_buffer_raw(rel_path, sound_id)
-	local resolved = resolve_path(rel_path)
+local function load_buffer_raw(rel_path, sound_id, base_dir)
+	local resolved = resolve_path(rel_path, base_dir)
 	if not resolved then
 		snd_err("FILE NOT FOUND: " .. tostring(rel_path) .. " (id=" .. tostring(sound_id) .. ")")
 		return nil
@@ -96,8 +113,9 @@ function _G.CSR._load_sound(name, def)
 	if not def then
 		return
 	end
+	local base_dir = def._addon_dir -- set for add-on sounds; nil for built-in CSR sounds
 	if def.path then
-		local buf = load_buffer_raw(def.path, name)
+		local buf = load_buffer_raw(def.path, name, base_dir)
 		if buf then
 			loaded_buffers[name] = buf
 			snd_dbg("loaded " .. name)
@@ -106,7 +124,7 @@ function _G.CSR._load_sound(name, def)
 		local buffers = {}
 		for i = 1, def.n do
 			local rel = def.pattern:gsub("%$", tostring(i))
-			local buf = load_buffer_raw(rel, name .. "_" .. i)
+			local buf = load_buffer_raw(rel, name .. "_" .. i, base_dir)
 			if buf then
 				buffers[#buffers + 1] = buf
 			end

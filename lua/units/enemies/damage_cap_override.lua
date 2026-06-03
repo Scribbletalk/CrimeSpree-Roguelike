@@ -73,7 +73,7 @@ if CopDamage then
 		-- Inflate _HEALTH_INIT 20% to lift bullet's HP-granularity quantize ceiling and avoid off-by-1 kills.
 		self.__csr_saved_hinit = self._HEALTH_INIT
 		self._HEALTH_INIT = self._HEALTH_INIT * 1.2
-		self._HEALTH_INIT_PRECENT = self._HEALTH_INIT / 100
+		self._HEALTH_INIT_PRECENT = self._HEALTH_INIT / self._HEALTH_GRANULARITY
 
 		self.__csr_clamp_bullet = self._char_tweak.DAMAGE_CLAMP_BULLET
 		self.__csr_clamp_headshot = self._char_tweak.headshot_dmg_mul
@@ -92,7 +92,7 @@ if CopDamage then
 		end
 		if self.__csr_saved_hinit then
 			self._HEALTH_INIT = self.__csr_saved_hinit
-			self._HEALTH_INIT_PRECENT = self._HEALTH_INIT / 100
+			self._HEALTH_INIT_PRECENT = self._HEALTH_INIT / self._HEALTH_GRANULARITY
 			self.__csr_saved_hinit = nil
 		end
 		if self.__csr_bullet_saved then
@@ -184,7 +184,7 @@ if CopDamage then
 
 		self.__csr_saved_hinit = self._HEALTH_INIT
 		self._HEALTH_INIT = self._HEALTH_INIT * 1.2
-		self._HEALTH_INIT_PRECENT = self._HEALTH_INIT / 100
+		self._HEALTH_INIT_PRECENT = self._HEALTH_INIT / self._HEALTH_GRANULARITY
 
 		self.__csr_clamp_shock = self._char_tweak.DAMAGE_CLAMP_SHOCK
 		self.__csr_shock_saved = true
@@ -199,7 +199,7 @@ if CopDamage then
 		end
 		if self.__csr_saved_hinit then
 			self._HEALTH_INIT = self.__csr_saved_hinit
-			self._HEALTH_INIT_PRECENT = self._HEALTH_INIT / 100
+			self._HEALTH_INIT_PRECENT = self._HEALTH_INIT / self._HEALTH_GRANULARITY
 			self.__csr_saved_hinit = nil
 		end
 		if self.__csr_shock_saved then

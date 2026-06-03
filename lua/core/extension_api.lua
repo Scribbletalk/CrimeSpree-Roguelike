@@ -153,6 +153,11 @@ function _G.CSR.register_sound(name, def)
 		log("[CSR][api] register_sound: (name string, def table) required -- ignored")
 		return false
 	end
+	-- Stamp the add-on folder so the loader resolves sound files relative to it
+	-- (nil for built-in sounds, which resolve against the mod folder).
+	if def._addon_dir == nil and _G.CSR._current_addon_dir then
+		def._addon_dir = _G.CSR._current_addon_dir
+	end
 	_G.CSR._sound_registrations[name] = def
 	if _G.CSR._sound_loader_ready and _G.CSR._load_sound then
 		_G.CSR._load_sound(name, def)
@@ -198,6 +203,16 @@ function _G.CSR.register_texture(db_path, rel_file)
 		log("[CSR][api] register_texture: DB unavailable for '" .. db_path .. "' -- icon will be missing")
 	end
 	return db_path
+end
+
+-- Resolve an item/modifier icon to (texture, rect). A value containing "/" is a full
+-- DB texture path (addon icon from register_texture, drawn whole at 128x128); anything
+-- else is a built-in hud_icons id. Single source of truth for every CSR icon surface.
+function _G.CSR.icon_data(raw)
+	if type(raw) == "string" and raw:find("/", 1, true) then
+		return raw, { 0, 0, 128, 128 }
+	end
+	return tweak_data.hud_icons:get_icon_data(raw)
 end
 
 -- Recursively dofile every .lua under `dir`; files self-register via register_item/modifier.

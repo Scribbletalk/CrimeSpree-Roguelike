@@ -2,7 +2,7 @@
 -- Hierarchical singleton: _meta (persists across runs), _state (active run), _registry (static content).
 
 CSRGameManager = CSRGameManager or class()
-CSRGameManager.VERSION = "U1-alpha"
+CSRGameManager.VERSION = "U1-beta"
 
 local SAVE_FILE = "csr_save.json"
 local LEGACY_SETTINGS_FILE = "crime_spree_roguelike.json"
@@ -103,6 +103,9 @@ function CSRGameManager:init()
 	if _G.CSR and _G.CSR._apply_modifier_registrations then
 		_G.CSR._apply_modifier_registrations(self)
 	end
+	-- Tombstone frozen modifier-seq slots whose modifier is gone, so re-installing an add-on
+	-- does not restore it to an in-progress spree. Runs after registrations replay (by_id current).
+	self:_prune_modifier_seq()
 	-- Drop owned items whose addon is no longer registered; re-arms the lobby pick reminder.
 	self:_drop_orphan_items()
 	self:_prune_expired_sessions()
@@ -295,6 +298,8 @@ function CSRGameManager:start_run()
 	self._state.missions_completed = 0
 	self._state.difficulty = self:_default_difficulty()
 	self._state.seed = math.random(1, 2 ^ 30)
+	-- Fresh spree re-rolls the modifier order with the current pool (picks up new add-ons).
+	self._state.modifier_seq = nil
 	-- Wipe inventory so Items panel doesn't carry stacks from a prior run.
 	self._state.peer_items = {}
 	self._state.loot_rank_cash = 0
@@ -407,13 +412,23 @@ function CSRGameManager:setting(key)
 	return self._meta.settings[key]
 end
 
-function CSRGameManager:set_setting(key, value)
+-- defer_save: update the in-memory setting only (sound.lua etc. read it live) and skip the disk
+-- write. Used by slider drag so we don't write csr_save.json every mouse-moved frame; the caller
+-- commits one save on mouse_released.
+function CSRGameManager:set_setting(key, value, defer_save)
 	self._meta.settings[key] = value
 	if key == "debug_mode" then
 		self._debug = value == true
 		_G.CSR_DEBUG = self._debug
 	end
-	self:save()
+	if not defer_save then
+		self:save()
+	end
+end
+
+-- Preference: when true, CSR items must not restore the local player's HP (Turron exempt).
+function CSRGameManager:item_heal_blocked()
+	return self._meta.settings.block_item_heal == true
 end
 
 -- =====================================================
@@ -573,6 +588,9 @@ function CSRGameManager:load()
 			self._meta[k] = v
 		end
 	end
+	-- version tracks the RUNNING mod, not whatever wrote the save (the merge above would
+	-- otherwise freeze a stale value forever). decoded.version is kept for the log/migration.
+	self._meta.version = CSRGameManager.VERSION
 	if type(decoded.state) == "table" then
 		for k, v in pairs(decoded.state) do
 			self._state[k] = v

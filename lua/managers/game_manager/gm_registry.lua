@@ -274,24 +274,102 @@ function CSRGameManager:modifier_catalog()
 	return self._registry.modifiers
 end
 
--- Active modifiers for the current run, derived from (host_rank, seed). Cumulative: rank R = first R entries.
+-- Build & FREEZE the per-spree modifier order once, then persist it. Before this, the
+-- active set was re-derived from (seed, current pool) on every call -- so adding or
+-- removing a modifier (e.g. installing an add-on) reshuffled an in-progress spree's
+-- already-active modifiers. Freezing the sequence per spree fixes that: new content only
+-- enters on a fresh spree (start_run clears it). loud is stored as ids and re-resolved
+-- through by_id (a since-removed modifier simply drops out); stealth tiers are synthesized
+-- per-tier and not in by_id, so their full self-contained entries are stored.
+-- Deterministic per-spree sequence from a seed: loud stored as ids (re-resolved through by_id so
+-- a since-removed modifier drops out), stealth as full synthesized entries. Host and guest build
+-- the SAME sequence from the same seed value (Park-Miller LCG + Fisher-Yates).
+function CSRGameManager:_build_modifier_seq(seed)
+	seed = seed or 0
+	local mods = self._registry.modifiers
+	local loud = csr_shuffled(csr_sorted_by_id(mods.loud), seed * 2)
+	-- +1 salt keeps loud/stealth orders independent.
+	local stealth = csr_stealth_sequence(csr_sorted_by_id(mods.stealth_families), seed * 2 + 1)
+	local loud_ids = {}
+	for i = 1, #loud do
+		loud_ids[i] = loud[i].id
+	end
+	return { loud = loud_ids, stealth = stealth }
+end
+
+function CSRGameManager:_ensure_modifier_seq()
+	if self._state.modifier_seq then
+		return
+	end
+	self._state.modifier_seq = self:_build_modifier_seq(self:seed())
+	self:save()
+end
+
+-- Resolve the frozen sequence for the run currently shown/applied. While guesting, build it
+-- transiently from the HOST's synced seed (cached per host_seed, NEVER persisted -- the guest's
+-- own _state.modifier_seq belongs to the guest's own spree). Otherwise use the persistent one.
+function CSRGameManager:_resolve_modifier_seq()
+	if self:_is_guesting() then
+		local hseed = self._state.mp_session and self._state.mp_session.host_seed or 0
+		local cache = self._guest_modifier_seq
+		if not (cache and cache.seed == hseed) then
+			cache = { seed = hseed, seq = self:_build_modifier_seq(hseed) }
+			self._guest_modifier_seq = cache
+		end
+		return cache.seq
+	end
+	self:_ensure_modifier_seq()
+	return self._state.modifier_seq
+end
+
+-- Tombstone frozen-seq slots whose loud modifier is no longer registered (add-on removed).
+-- The slot becomes `false` and is persisted, so RE-INSTALLING the add-on does NOT restore it
+-- to an in-progress spree -- it stays dropped until a fresh spree (start_run re-rolls). Run at
+-- init AFTER registrations replay (by_id reflects the currently installed add-ons). No backfill:
+-- a dropped slot is just skipped, the spree keeps one fewer active modifier. (Stealth entries are
+-- full self-contained tables, not by_id-resolved, so they are left as-is.)
+function CSRGameManager:_prune_modifier_seq()
+	local seq = self._state.modifier_seq
+	if not (seq and type(seq.loud) == "table") then
+		return
+	end
+	local by_id = self._registry.modifiers.by_id
+	local changed = false
+	for i = 1, #seq.loud do
+		local id = seq.loud[i]
+		if id and id ~= false and not by_id[id] then
+			seq.loud[i] = false
+			changed = true
+		end
+	end
+	if changed then
+		self:save()
+	end
+end
+
+-- Active modifiers for the current run: the frozen per-spree sequence sliced to rank
+-- (one more unlocks every 2 ranks). Frozen at first use, so pool changes never reshuffle it.
 function CSRGameManager:active_modifiers(category)
 	local rank = self:host_rank() or 0
 	if rank <= 0 then
 		return {}
 	end
-	local seed = self:seed() or 0
-	local mods = self._registry.modifiers
-	local seq
-	if category == "stealth" then
-		seq = csr_stealth_sequence(csr_sorted_by_id(mods.stealth_families), seed * 2 + 1) -- +1 salt keeps loud/stealth orders independent
-	else
-		seq = csr_shuffled(csr_sorted_by_id(mods.loud), seed * 2)
+	local seq_table = self:_resolve_modifier_seq()
+	local seq = seq_table and seq_table[category]
+	if not seq then
+		return {}
 	end
 	local n = math.min(math.ceil(rank / 2), #seq)
+	local by_id = self._registry.modifiers.by_id
 	local out = {}
 	for i = 1, n do
-		out[i] = seq[i]
+		local entry = seq[i]
+		if category == "loud" then
+			entry = by_id[entry] -- stored as id; re-resolve so a since-removed modifier drops out
+		end
+		if entry then
+			out[#out + 1] = entry
+		end
 	end
 	return out
 end
@@ -370,6 +448,48 @@ function CSRGameManager:apply_modifiers()
 				restored
 			)
 		)
+	end
+
+	-- Same trap for modifiers that mutate tweak_data.group_ai in place and never revert:
+	-- special_unit_spawn_limits (more medics/dozers), FBI_tank.unit_types (dozer-type appends),
+	-- marshal_squad.amount (marshal reinforcements). Snapshot once, restore before every apply.
+	local gai = tweak_data and tweak_data.group_ai
+	if gai then
+		local ssl = gai.special_unit_spawn_limits
+		if type(ssl) == "table" then
+			_G.CSR_SpecialSpawnLimitsBaseline = _G.CSR_SpecialSpawnLimitsBaseline or clone(ssl)
+			for key, value in pairs(_G.CSR_SpecialSpawnLimitsBaseline) do
+				ssl[key] = value
+			end
+		end
+
+		local fbi_tank = gai.unit_categories and gai.unit_categories.FBI_tank
+		local unit_types = fbi_tank and fbi_tank.unit_types
+		if type(unit_types) == "table" then
+			_G.CSR_FBITankUnitTypesBaseline = _G.CSR_FBITankUnitTypesBaseline or clone(unit_types)
+			-- Fresh clone per region so a later table.insert can't grow the baseline itself.
+			for region, list in pairs(_G.CSR_FBITankUnitTypesBaseline) do
+				unit_types[region] = clone(list)
+			end
+		end
+
+		local marshal_squad = gai.enemy_spawn_groups and gai.enemy_spawn_groups.marshal_squad
+		if marshal_squad and type(marshal_squad.amount) == "table" then
+			_G.CSR_MarshalSquadAmountBaseline = _G.CSR_MarshalSquadAmountBaseline or clone(marshal_squad.amount)
+			for i, value in pairs(_G.CSR_MarshalSquadAmountBaseline) do
+				marshal_squad.amount[i] = value
+			end
+		end
+
+		-- ModifierShieldPhalanx overwrites these shield categories with a Phalanx clone and never
+		-- restores; snapshot the pristine ones so a later spree WITHOUT phalanx gets normal shields.
+		local uc = gai.unit_categories
+		if uc and uc.CS_shield and uc.FBI_shield then
+			_G.CSR_ShieldCategoryBaseline = _G.CSR_ShieldCategoryBaseline
+				or { CS_shield = clone(uc.CS_shield), FBI_shield = clone(uc.FBI_shield) }
+			uc.CS_shield = clone(_G.CSR_ShieldCategoryBaseline.CS_shield)
+			uc.FBI_shield = clone(_G.CSR_ShieldCategoryBaseline.FBI_shield)
+		end
 	end
 
 	-- Aggregate active loud + stealth modifiers by engine class for vanilla stacking.

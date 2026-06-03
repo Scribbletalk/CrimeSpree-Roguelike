@@ -83,7 +83,10 @@ Hooks:PostHook(CrimeSpreeTweakData, "init_missions", "CSR_ExtraHeists_init_missi
 		local stage = tweak_data.narrative.stages[stage_id]
 		if stage then
 			local add = params.value or 3
-			local ghost = resolve_ghost(tweak_data, stage_id, params.ghost)
+			-- Resolve via the stage's level_id, not stage_id: they differ for several heists
+			-- (e.g. watchdogs_2_d -> watchdogs_2_day), so tweak_data.levels[stage_id] would miss
+			-- the ghost flags and wrongly drop stealth-capable extras from the stealth bucket.
+			local ghost = resolve_ghost(tweak_data, stage.level_id or stage_id, params.ghost)
 			local mission = {
 				stage_id = stage_id,
 				id = stage_id,

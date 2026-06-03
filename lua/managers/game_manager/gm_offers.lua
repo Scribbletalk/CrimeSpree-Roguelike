@@ -79,6 +79,7 @@ function CSRGameManager:roll_item_pool(peer_id, count)
 			wildcards_drawn = wildcards_drawn + 1
 		end
 	end
+
 	return result
 end
 

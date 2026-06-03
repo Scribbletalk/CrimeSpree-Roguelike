@@ -101,6 +101,9 @@ end
 
 -- Cancel bleed-out + grant invuln. Returns true if it fired.
 local function try_plush_guardian(self, mgr, now)
+	if mgr:item_heal_blocked() then
+		return false
+	end
 	if not self._csr_guardian_armed then
 		return false
 	end

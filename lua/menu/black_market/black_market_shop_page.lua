@@ -27,12 +27,9 @@ local RARITY_COLORS = {
 
 local FRAME_KEY = "csr_frame"
 
--- "/" means a full DB-mounted path (addon .dds); else a short hud_icons id.
+-- Delegates to the shared resolver (handles addon "/" paths vs built-in hud ids).
 local function resolve_icon(icon)
-	if type(icon) == "string" and icon:find("/", 1, true) then
-		return icon, { 0, 0, 128, 128 }
-	end
-	return tweak_data.hud_icons:get_icon_data(icon)
+	return _G.CSR.icon_data(icon)
 end
 
 -- :text() returns "ERROR <key>" for unknown keys; blank that out.

@@ -1,11 +1,13 @@
 -- Overkill Rush (uncommon) — kills build a temporary fire-rate + reload streak.
--- bonus = kill_stacks * (item_stacks + 1) * 0.01, applied to fire rate and reload.
+-- fire rate:   kill_stacks * (item_stacks + 1) * 0.005  (max 4% at 4 stacks, 1 item)
+-- reload:      kill_stacks * (item_stacks + 1) * 0.01   (max 8% at 4 stacks, 1 item)
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
 end
 
-local BONUS_PER_KILL = 0.01
+local FIRE_RATE_BONUS_PER_KILL = 0.005
+local RELOAD_BONUS_PER_KILL = 0.01
 local MAX_KILL_STACKS = 4
 local DURATION = 4.0
 
@@ -32,7 +34,7 @@ local function bump_streak(mgr)
 	end
 end
 
-local function active_bonus()
+local function active_bonus(per_kill)
 	local mgr = managers and managers.csr
 	if not mgr or not mgr.in_csr_heist or not mgr:in_csr_heist() then
 		return 0
@@ -52,7 +54,7 @@ local function active_bonus()
 	if stacks <= 0 then
 		return 0
 	end
-	return streak.kill_stacks * (stacks + 1) * BONUS_PER_KILL
+	return streak.kill_stacks * (stacks + 1) * per_kill
 end
 
 -- Hook CopDamage:die (not damage_*) so a later hit/DOT on a corpse can't bump the streak.
@@ -100,7 +102,7 @@ _G.CSR.register_item({
 			if orig_fire_rate then
 				function NewRaycastWeaponBase:fire_rate_multiplier(...)
 					local result = orig_fire_rate(self, ...)
-					local bonus = active_bonus()
+					local bonus = active_bonus(FIRE_RATE_BONUS_PER_KILL)
 					if bonus > 0 and type(result) == "number" then
 						result = result * (1 + bonus)
 					end
@@ -111,10 +113,16 @@ _G.CSR.register_item({
 			local orig_reload_speed = NewRaycastWeaponBase.reload_speed_multiplier
 			if orig_reload_speed then
 				function NewRaycastWeaponBase:reload_speed_multiplier(...)
+					-- PD2 caches this getter in _current_reload_speed_multiplier at reload
+					-- start and early-returns it on later reads. Apply the bonus only on a
+					-- cache MISS, else every cached read re-multiplies it (bonus -> ~bonus^2).
+					local was_cached = self._current_reload_speed_multiplier
 					local result = orig_reload_speed(self, ...)
-					local bonus = active_bonus()
-					if bonus > 0 and type(result) == "number" then
-						result = result * (1 + bonus)
+					if not was_cached and type(result) == "number" then
+						local bonus = active_bonus(RELOAD_BONUS_PER_KILL)
+						if bonus > 0 then
+							result = result * (1 + bonus)
+						end
 					end
 					return result
 				end

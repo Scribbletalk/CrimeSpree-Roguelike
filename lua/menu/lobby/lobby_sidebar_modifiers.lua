@@ -185,7 +185,7 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 		})
 
 		-- Icon (left); y adjusted below to vertically center against the text block.
-		local icon_tex, icon_rect = tweak_data.hud_icons:get_icon_data(entry.icon or "csr_dog_tags")
+		local icon_tex, icon_rect = _G.CSR.icon_data(entry.icon or "csr_dog_tags")
 		local icon = row:bitmap({
 			name = "mod_icon",
 			texture = icon_tex,

@@ -1,5 +1,6 @@
 -- CSR mod options (SuperBLT Mod Options). Adds "Crime Spree Roguelike" under
--- blt_options with Debug Logging, SFX volume, and a Debug Tools sub-menu.
+-- blt_options with Debug Logging and a Debug Tools sub-menu.
+-- (Item Sound Volume lives in the in-game Preferences sidebar, not here.)
 -- Storage routes through managers.csr:set_setting (persisted in csr_save.json).
 
 -- managers.csr doesn't exist yet when MenuManager:init populates these menus,
@@ -34,9 +35,6 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_OptionsLocalization", function(loc
 		csr_debug_mode_title = "Debug Logging",
 		csr_debug_mode_desc = "Writes verbose CSR diagnostics to the BLT log (mods/logs). "
 			.. "Use it to verify items are working. No gameplay effect.",
-		csr_sfx_volume_title = "Item Sound Effects Volume",
-		csr_sfx_volume_desc = "Volume of CSR item sound effects (e.g. Bonnie's Lucky Chip proc). "
-			.. "100% = full volume, 0% = muted.",
 		csr_debug_menu_title = "Debug Tools",
 		csr_debug_menu_desc = "Testing shortcuts for development.",
 		csr_grant_items_title = "Grant All Items",
@@ -65,14 +63,6 @@ Hooks:Add("MenuManagerInitialize", "CSR_OptionsCallbacks", function(menu_manager
 		local mgr = managers.csr
 		if mgr and mgr.set_setting then
 			mgr:set_setting("debug_mode", item:value() == "on")
-		end
-	end
-
-	MenuCallbackHandler.csr_sfx_volume_changed = function(self, item)
-		local mgr = managers.csr
-		if mgr and mgr.set_setting then
-			-- Slider 0..100 → store 0..1 fraction.
-			mgr:set_setting("sfx_volume", item:value() / 100)
 		end
 	end
 
@@ -137,21 +127,6 @@ Hooks:Add("MenuManagerPopulateCustomMenus", "CSR_OptionsPopulate", function(menu
 		value = debug_value,
 		menu_id = "csr_options_menu",
 		priority = 1,
-	})
-
-	local sfx_value = csr_read_setting("sfx_volume", 1.0)
-	MenuHelper:AddSlider({
-		id = "sfx_volume",
-		title = "csr_sfx_volume_title",
-		desc = "csr_sfx_volume_desc",
-		callback = "csr_sfx_volume_changed",
-		value = sfx_value * 100,
-		min = 0,
-		max = 100,
-		step = 5,
-		show_value = true,
-		menu_id = "csr_options_menu",
-		priority = 2,
 	})
 
 	MenuHelper:AddButton({

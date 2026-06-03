@@ -34,9 +34,9 @@ local function apply_team_heal(stacks)
 		return
 	end
 
-	-- Local player.
+	-- Local player (skipped when the block-item-heal preference is on; bots below unaffected).
 	local pu = managers.player and managers.player:player_unit()
-	if pu and alive(pu) then
+	if pu and alive(pu) and not (managers.csr and managers.csr:item_heal_blocked()) then
 		local pd = pu:character_damage()
 		if pd and not pd:dead() and not pd:is_downed() and pd._max_health then
 			local heal = pd:_max_health() * pct

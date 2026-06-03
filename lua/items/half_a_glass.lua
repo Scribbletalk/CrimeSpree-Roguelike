@@ -119,7 +119,13 @@ _G.CSR.register_item({
 			end
 			_G._CSR_HALF_A_GLASS_HOOKED = true
 
-			Hooks:PostHook(GageAssignmentBase, "sync_pickup", "CSR_HalfAGlass_SyncPickup", function(self)
+			Hooks:PostHook(GageAssignmentBase, "sync_pickup", "CSR_HalfAGlass_SyncPickup", function(self, peer)
+				-- Host's OWN pickup only. On a client, sync_pickup fires (peer=nil) for every
+				-- peer's pickup via sync_net_event; on the host a non-nil peer is a remote
+				-- client's relayed pickup. Clients apply their own pickup via the _pickup hook.
+				if Network:is_client() or peer ~= nil then
+					return
+				end
 				if self._picked_up then
 					claim_and_apply(self)
 				end

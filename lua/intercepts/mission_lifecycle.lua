@@ -27,6 +27,12 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 		return
 	end
 
+	-- Idempotency: we set _completion_bonus_done = true just below; on a re-entry of the end state
+	-- it's already true, so don't re-award rank/tokens/loot. Resets per heist (MissionEndState:init).
+	if self._completion_bonus_done then
+		return
+	end
+
 	-- Suppress vanilla XP and unblock the continue button; cash suppressed in endscreen_economy.lua.
 	self._total_xp_bonus = false
 	self._completion_bonus_done = true

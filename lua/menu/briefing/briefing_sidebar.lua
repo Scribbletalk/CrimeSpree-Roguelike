@@ -41,6 +41,9 @@ local METHODS_TO_BORROW = {
 	"_populate_rewards_panel",
 	"_populate_heister_panel",
 	"_populate_preferences_panel",
+	"_preferences_panel_mouse_moved",
+	"_preferences_panel_mouse_pressed",
+	"_preferences_panel_mouse_released",
 }
 
 local function ensure_methods_borrowed()
@@ -156,6 +159,60 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 		self._csr_fp_right_anchor = nil
 	end
 
+	-- Hide all CSR briefing chrome while the item-selection modal is open, restore on close.
+	-- Driven per-frame from update(): forced each frame because the on_item_added refresh
+	-- callbacks (reminder / items panel) can re-show a panel mid-modal after a pick.
+	function MissionBriefingGui:_csr_set_chrome_hidden(hidden)
+		if hidden then
+			if self._sidebar then
+				local p = self._sidebar:panel()
+				if p and alive(p) then
+					p:set_visible(false)
+				end
+			end
+			-- Pinned tab lives in Global._csr_pinned_feature, so hiding all panels is non-destructive.
+			if self.hide_feature_panels then
+				self:hide_feature_panels()
+			end
+			if self._csr_reminder_panel and alive(self._csr_reminder_panel) then
+				self._csr_reminder_panel:set_visible(false)
+			end
+			if self._csr_bm_panel and alive(self._csr_bm_panel) then
+				self._csr_bm_panel:set_visible(false)
+			end
+			-- Missions/rank/difficulty header lives on the HUD-side briefing (separate object).
+			local hud_b = managers and managers.hud and managers.hud._hud_mission_briefing
+			local hdr = hud_b and hud_b._csr_progress_header
+			if hdr and alive(hdr) then
+				hdr:set_visible(false)
+			end
+			self._csr_chrome_hidden = true
+		elseif self._csr_chrome_hidden then
+			self._csr_chrome_hidden = nil
+			if self._sidebar then
+				local p = self._sidebar:panel()
+				if p and alive(p) then
+					p:set_visible(true)
+				end
+			end
+			if self._csr_reopen_pinned_feature_panel then
+				self:_csr_reopen_pinned_feature_panel()
+			end
+			-- Let each reminder recompute its own visibility (unselected count / BM affordability).
+			if self._csr_refresh_reminder then
+				self:_csr_refresh_reminder()
+			end
+			if self._csr_bm_refresh then
+				self:_csr_bm_refresh()
+			end
+			local hud_b = managers and managers.hud and managers.hud._hud_mission_briefing
+			local hdr = hud_b and hud_b._csr_progress_header
+			if hdr and alive(hdr) then
+				hdr:set_visible(true)
+			end
+		end
+	end
+
 	-- MP client crash guard: guest never runs select_mission so the crime_spree chain stays
 	-- empty -> current_level_data() nil -> init nil-crash. Re-derive chain right before init.
 	Hooks:PreHook(MissionBriefingGui, "init", "CSR_BriefingEnsureChain", function(self)
@@ -233,6 +290,9 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 				if self._modifiers_panel_mouse_moved then
 					self:_modifiers_panel_mouse_moved(-9999, -9999)
 				end
+				if self._preferences_panel_mouse_moved then
+					self:_preferences_panel_mouse_moved(-9999, -9999)
+				end
 				return orig_mouse_moved(self, x, y)
 			end
 
@@ -246,6 +306,13 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 			if self._modifiers_panel_mouse_moved then
 				local mods_used = self:_modifiers_panel_mouse_moved(x, y)
 				if mods_used then
+					return true, "link"
+				end
+			end
+
+			if self._preferences_panel_mouse_moved then
+				local pref_used = self:_preferences_panel_mouse_moved(x, y)
+				if pref_used then
 					return true, "link"
 				end
 			end
@@ -287,6 +354,9 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 			if self._modifiers_panel_mouse_pressed and self:_modifiers_panel_mouse_pressed(x, y) then
 				return true
 			end
+			if self._preferences_panel_mouse_pressed and self:_preferences_panel_mouse_pressed(x, y) then
+				return true
+			end
 			return orig_mouse_pressed(self, button, x, y)
 		end
 	end
@@ -294,6 +364,22 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 	Hooks:PostHook(MissionBriefingGui, "update", "CSR_BriefingSidebarUpdate", function(self, t, dt)
 		if self._sidebar and self._sidebar.update then
 			self._sidebar:update(t, dt)
+		end
+		if self._csr_set_chrome_hidden then
+			self:_csr_set_chrome_hidden(_G._csr_item_selection ~= nil)
+		end
+	end)
+end
+
+-- MissionBriefingGui receives mouse_pressed/mouse_moved from MenuComponentManager but NOT
+-- mouse_released (it's a special-cased gui, not a live component routed via mouse_released).
+-- Forward release here so a Preferences slider drag started in the briefing can end.
+if MenuComponentManager and not _G._CSR_BRIEFING_PREF_RELEASE_HOOKED then
+	_G._CSR_BRIEFING_PREF_RELEASE_HOOKED = true
+	Hooks:PostHook(MenuComponentManager, "mouse_released", "CSR_Briefing_PrefRelease", function(self, o, button, x, y)
+		local gui = self._mission_briefing_gui
+		if gui and gui._preferences_panel_mouse_released then
+			gui:_preferences_panel_mouse_released(button, x, y)
 		end
 	end)
 end

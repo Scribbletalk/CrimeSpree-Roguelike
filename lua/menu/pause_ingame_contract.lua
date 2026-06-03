@@ -8,8 +8,6 @@
 --
 -- Layout:
 --   <MISSION NAME>              (big, where vanilla's "CONTRACT" header sat)
---   CRIME.NET INFO:            (section header)
---   <briefing / plan text>
 --   CRIME SPREE RANK: N [CS]    (label white, number yellow, then CS icon)
 --   DIFFICULTY: [skulls] NAME    (risk skulls + difficulty name, like the lobby screen)
 --   ITEMS:                     (section header)
@@ -38,6 +36,7 @@ local ITEM_ICON_MIN = 24 -- readability floor
 local ITEM_GAP = 6
 local GRID_MARGIN = 4 -- keeps the overflowing rarity frame off the left/right edges
 local PEER_HEADER_H = 22
+local PAUSE_SIDEBAR_W = 160 -- mini-sidebar strip width; matches lobby CSRSidebar.WIDTH so "PREFERENCES" fits
 local FRAME_TO_CELL = 72 / 64 -- frame overflows the cell symmetrically (same ratio as the sidebar)
 -- 4-direction 1px offsets for the stack-count outline; Diesel text has no native stroke.
 local BADGE_OUTLINE = { { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } }
@@ -47,27 +46,23 @@ local function csr_heist_active()
 	return managers.job and managers.job:current_job_id() == "crime_spree"
 end
 
--- Largest square cell (<=max, >=min) and column count so `count` items fit avail_w x avail_h.
--- Shrinks by 2px steps until the row count fits the height. Ported from lobby_sidebar_items.lua.
+-- Square cell (<=max, >=min) and column count for `count` items in avail_w x avail_h. The cell is sized
+-- so a FULL row of `per_row` cells plus fixed `gap`s spans avail_w exactly -- items resize to fill the
+-- row, the gap never changes. Fewest columns (largest cells, capped at max) whose rows fit avail_h;
+-- partial last row packs left. Ported from lobby_sidebar_items.lua.
 local function csr_adaptive_grid(count, avail_w, avail_h, max_size, min_size, gap)
 	if count <= 0 then
 		return max_size, 1
 	end
-	local function layout_for(size)
-		local per_row = math.max(1, math.min(count, math.floor((avail_w + gap) / (size + gap))))
-		return per_row, math.ceil(count / per_row)
-	end
-	local size = max_size
-	while size > min_size do
-		local _, rows = layout_for(size)
-		if rows * (size + gap) - gap <= avail_h then
-			break
+	for per_row = 1, count do
+		local cell = math.min(max_size, math.floor((avail_w - (per_row - 1) * gap) / per_row))
+		local rows = math.ceil(count / per_row)
+		if cell >= min_size and rows * (cell + gap) - gap <= avail_h then
+			return cell, per_row
 		end
-		size = size - 2
 	end
-	size = math.floor(math.max(size, min_size))
-	local per_row = layout_for(size)
-	return size, per_row
+	local per_row = math.max(1, math.floor((avail_w + gap) / (min_size + gap)))
+	return min_size, math.min(count, per_row)
 end
 
 -- Teammate colors match contours/chat via tweak_data.peer_vector_colors (Rule #6).
@@ -249,11 +244,12 @@ local function csr_render_peer_items(ctx, peer, section_top, section_h)
 		return
 	end
 
-	-- Wildcard owns a square slot at the right edge, full grid height; the grid keeps the rest.
+	-- Two columns: items grid (left, left-aligned) + wildcard slot pinned to the right edge. With few
+	-- items a natural hole sits between them; grid_w stays maximal to keep that hole as small as possible.
 	local avail_grid_w = avail_w - GRID_MARGIN * 2
 	local wc_slot = math.max(ITEM_ICON_MIN, math.min(grid_h, avail_grid_w))
+	local grid_w = avail_grid_w - wc_slot
 	local wc_x = GRID_MARGIN + avail_grid_w - wc_slot
-	local grid_w = avail_grid_w - wc_slot - ITEM_GAP
 	local cell, per_row = csr_adaptive_grid(#items_list, grid_w, grid_h, ITEM_ICON_MAX, ITEM_ICON_MIN, ITEM_GAP)
 	local step = cell + ITEM_GAP
 	local frame_size = math.floor(cell * FRAME_TO_CELL)
@@ -277,14 +273,8 @@ local function csr_render_peer_items(ctx, peer, section_top, section_h)
 		})
 		frame:set_color(RARITY_COLORS[entry.def.rarity] or Color.white)
 
-		-- "/" in icon = full DB-mounted texture path (addon .dds); otherwise a hud_icons id.
 		local raw = entry.def.icon or "dog_tags"
-		local icon_tex, icon_rect
-		if type(raw) == "string" and raw:find("/", 1, true) then
-			icon_tex, icon_rect = raw, { 0, 0, 128, 128 }
-		else
-			icon_tex, icon_rect = tweak_data.hud_icons:get_icon_data(raw)
-		end
+		local icon_tex, icon_rect = _G.CSR.icon_data(raw)
 		-- Legacy 36px-in-64px glyph ratio, scaled by optional per-item icon_scale.
 		local glyph = math.floor(cell * (1 - 28 / 64) * (entry.def.icon_scale or 1))
 		local glyph_inset = math.floor((cell - glyph) / 2)
@@ -329,24 +319,23 @@ local function csr_render_peer_items(ctx, peer, section_top, section_h)
 	-- Wildcard slot (carry-1): a filled card when held, else a translucent wildcard-tinted placeholder.
 	do
 		local wc_color = RARITY_COLORS.wildcard or Color.white
+		-- Frame overflows the slot by the 72/64 item ratio so its visible border lands on the slot edge.
+		local wc_frame_size = math.floor(wc_slot * FRAME_TO_CELL)
+		local wc_frame_overflow = math.floor((wc_frame_size - wc_slot) / 2)
 		local slot_frame = parent:bitmap({
 			texture = frame_tex,
 			texture_rect = frame_rect,
-			x = wc_x,
-			y = grid_top,
-			w = wc_slot,
-			h = wc_slot,
+			x = wc_x - wc_frame_overflow,
+			y = grid_top - wc_frame_overflow,
+			w = wc_frame_size,
+			h = wc_frame_size,
 			layer = 3,
 		})
 		if wildcard_entry then
 			slot_frame:set_color(wc_color)
 			local raw = wildcard_entry.def.icon or "dog_tags"
-			local icon_tex, icon_rect
-			if type(raw) == "string" and raw:find("/", 1, true) then
-				icon_tex, icon_rect = raw, { 0, 0, 128, 128 }
-			else
-				icon_tex, icon_rect = tweak_data.hud_icons:get_icon_data(raw)
-			end
+			local icon_tex, icon_rect = _G.CSR.icon_data(raw)
+			-- Wildcard glyph uses the same 0.5625 cell ratio as regular items, centred inside the frame.
 			local glyph = math.floor(wc_slot * (1 - 28 / 64) * (wildcard_entry.def.icon_scale or 1))
 			local glyph_inset = math.floor((wc_slot - glyph) / 2)
 			parent:bitmap({
@@ -481,6 +470,77 @@ local function csr_show_item_tooltip(self, target)
 	tip:set_position(tx, ty)
 end
 
+-- Methods borrowed from CSRMissionsMenuComponent so the pause panel drives the SAME Modifiers /
+-- Preferences feature-panel rendering as the lobby & briefing (single source of truth). Items keeps
+-- its own per-peer team grid (csr_render_items), so its populate method is NOT borrowed.
+-- _clear_items_tooltip is pulled in because _populate_modifiers_panel calls it. Lazy: at first build.
+local PAUSE_METHODS_TO_BORROW = {
+	"_clear_items_tooltip",
+	"_populate_modifiers_panel",
+	"_modifiers_panel_mouse_moved",
+	"_modifiers_panel_mouse_pressed",
+	"_modifiers_scroll_visible",
+	"_populate_preferences_panel",
+	"_preferences_panel_mouse_moved",
+	"_preferences_panel_mouse_pressed",
+	"_preferences_panel_mouse_released",
+}
+
+local function ensure_pause_methods_borrowed()
+	if IngameContractGui._csr_methods_borrowed then
+		return true
+	end
+	if not CSRMissionsMenuComponent then
+		return false
+	end
+	for _, name in ipairs(PAUSE_METHODS_TO_BORROW) do
+		IngameContractGui[name] = CSRMissionsMenuComponent[name]
+	end
+	IngameContractGui._csr_methods_borrowed = true
+	return true
+end
+
+-- Pause-sidebar tabs. Items is always present; Modifiers/Preferences only when the borrow
+-- succeeds (their renderers live on CSRMissionsMenuComponent). Order mirrors the lobby sidebar.
+local PAUSE_TABS = {
+	{ key = "items", text = "Items", icon = "sidebar_casino" },
+	{ key = "modifiers", text = "Modifiers", icon = "sidebar_mutators" },
+	{ key = "preferences", text = "Preferences", icon = "sidebar_filters" },
+}
+
+-- Switch the active pause tab: flip content visibility, move the selected-row marker, drop the
+-- Items tooltip, and repopulate the dynamic panel so it reflects current state on (re)open.
+function IngameContractGui:_csr_set_pause_tab(key)
+	if self._csr_items_content and alive(self._csr_items_content) then
+		self._csr_items_content:set_visible(key == "items")
+	end
+	if self._feature_panels then
+		for k, p in pairs(self._feature_panels) do
+			if alive(p) then
+				p:set_visible(k == key)
+			end
+		end
+	end
+
+	-- Leaving Items: clear its floating tooltip (hidden hit panels still pass :inside()).
+	csr_clear_item_tooltip(self)
+	self._csr_item_hover = nil
+
+	if self._csr_sidebar_items then
+		for k, item in pairs(self._csr_sidebar_items) do
+			item:set_selected(k == key)
+		end
+	end
+
+	self._csr_active_tab = key
+
+	if key == "modifiers" and self._populate_modifiers_panel then
+		self:_populate_modifiers_panel()
+	elseif key == "preferences" and self._populate_preferences_panel then
+		self:_populate_preferences_panel()
+	end
+end
+
 Hooks:PostHook(IngameContractGui, "init", "CSR_IngameContract_Relayout", function(self, ws, node)
 	if not csr_heist_active() then
 		return
@@ -531,61 +591,123 @@ Hooks:PostHook(IngameContractGui, "init", "CSR_IngameContract_Relayout", functio
 		h = self._panel:h() - padding * 2,
 	})
 
-	-- "CRIME.NET INFO:" section header.
-	local info_title = text_panel:text({
-		text = managers.localization:to_upper_text("csr_pause_info"),
-		font = tweak_data.menu.pd2_medium_font,
-		font_size = tweak_data.menu.pd2_medium_font_size,
-		color = tweak_data.screen_colors.text,
-		align = "left",
-	})
-	managers.hud:make_fine_text(info_title)
-	info_title:set_top(0)
-
-	-- Plan / briefing body text (the real heist briefing).
-	local info_body = text_panel:text({
-		name = "briefing_description",
-		text = managers.localization:text(level_tweak.briefing_id),
-		font = tweak_data.menu.pd2_small_font,
-		font_size = tweak_data.menu.pd2_small_font_size,
-		color = tweak_data.screen_colors.text,
-		wrap = true,
-		word_wrap = true,
-		align = "left",
-		vertical = "top",
-		w = text_panel:w(),
-	})
-	local _, _, _, body_h = info_body:text_rect()
-	info_body:set_h(body_h)
-	info_body:set_top(info_title:bottom())
-
 	local rank = managers.csr and managers.csr:rank() or 0
 	-- Difficulty row: "DIFFICULTY: [skulls] NAME    RANK: N <glyph>" all on one line.
-	local diff_bottom = csr_render_difficulty_row(text_panel, 0, info_body:bottom() + padding, rank)
+	-- Anchored at the panel top now that the Crime.net info / briefing block is gone.
+	local diff_bottom = csr_render_difficulty_row(text_panel, 0, 0, rank)
 
-	-- "ITEMS:" + every player's inventory below the difficulty row (like the lobby sidebar).
-	-- Only drawn when there's vertical room for at least the header + one peer section,
-	-- so a long briefing never leaves an orphan header.
+	-- Mini sidebar (left) + tabbed content (right). Tabs: Items (per-peer team grid), Modifiers,
+	-- Preferences. Modifiers/Preferences render via methods borrowed from CSRMissionsMenuComponent
+	-- (single source of truth with the lobby/briefing); Items keeps its own grid. Reuses
+	-- CSRSidebarItem so the tabs read 1:1 with the lobby/briefing sidebar. Only drawn when there's
+	-- vertical room for the sidebar + one peer section.
+	self._csr_sidebar_items = nil
+	self._csr_active_tab = nil
+	self._feature_panels = nil
 	local mgr = managers.csr
-	if mgr and mgr.registered_items then
-		local header_top = diff_bottom + padding
+	if mgr and mgr.registered_items and CSRSidebarItem then
+		local section_top = diff_bottom + padding
 		local needed = tweak_data.menu.pd2_medium_font_size + 4 + PEER_HEADER_H + ITEM_ICON_MIN + 8
-		if text_panel:h() - header_top >= needed then
-			local items_title = text_panel:text({
-				text = managers.localization:to_upper_text("csr_pause_items"),
-				font = tweak_data.menu.pd2_medium_font,
-				font_size = tweak_data.menu.pd2_medium_font_size,
-				color = tweak_data.screen_colors.text,
-				align = "left",
+		if text_panel:h() - section_top >= needed then
+			-- Sidebar container: narrow strip, full height of the items panel beside it.
+			local section_h = text_panel:h() - section_top
+			local sb_panel = text_panel:panel({
+				x = 0,
+				y = section_top,
+				w = PAUSE_SIDEBAR_W,
+				h = section_h,
+				layer = 10,
 			})
-			managers.hud:make_fine_text(items_title)
-			items_title:set_top(header_top)
+			sb_panel:rect({ color = Color.black, alpha = 0.4, layer = -1 })
+			sb_panel:bitmap({
+				texture = "guis/textures/test_blur_df",
+				name = "blur_bg",
+				render_template = "VertexColorTexturedBlur3D",
+				layer = -1,
+				halign = "scale",
+				valign = "scale",
+				w = sb_panel:w(),
+				h = sb_panel:h(),
+			})
+			-- Modifiers/Preferences need the borrowed renderers; degrade to Items-only if unavailable.
+			local have_features = ensure_pause_methods_borrowed()
 
-			local items_top = items_title:bottom() + 4
-			self._csr_item_targets =
-				csr_render_items(text_panel, items_top, text_panel:w(), text_panel:h() - items_top, mgr)
+			self._csr_sidebar_items = {}
+			local item_margin = 2
+			local row_y = padding
+			for _, tab in ipairs(PAUSE_TABS) do
+				if tab.key == "items" or have_features then
+					local key = tab.key
+					local item = CSRSidebarItem:new(sb_panel, {
+						position = row_y,
+						text = tab.text,
+						icon = tab.icon,
+						callback = function(gui)
+							gui:_csr_set_pause_tab(key)
+						end,
+					})
+					self._csr_sidebar_items[key] = item
+					row_y = row_y + item:panel():height() + item_margin
+				end
+			end
+			BoxGuiObject:new(sb_panel, { sides = { 1, 1, 1, 1 } })
+
+			-- Items: bordered panel to the right of the sidebar, same height. Mirrors the sidebar's
+			-- bg + blur + BoxGui so the two read as a pair; content sits in a nested panel inset by
+			-- `padding` so the item frames (which overflow their cells) clear the border.
+			local items_x = PAUSE_SIDEBAR_W + padding
+			local items_panel = text_panel:panel({
+				x = items_x,
+				y = section_top,
+				w = text_panel:w() - items_x,
+				h = section_h,
+				layer = 10,
+			})
+			items_panel:rect({ color = Color.black, alpha = 0.4, layer = -1 })
+			items_panel:bitmap({
+				texture = "guis/textures/test_blur_df",
+				name = "blur_bg",
+				render_template = "VertexColorTexturedBlur3D",
+				layer = -1,
+				halign = "scale",
+				valign = "scale",
+				w = items_panel:w(),
+				h = items_panel:h(),
+			})
+			BoxGuiObject:new(items_panel, { sides = { 1, 1, 1, 1 } })
+
+			local content_x, content_y = padding, padding
+			local content_w = items_panel:w() - padding * 2
+			local content_h = items_panel:h() - padding * 2
+
+			-- Items tab content: existing per-peer team grid.
+			self._csr_items_content = items_panel:panel({ x = content_x, y = content_y, w = content_w, h = content_h })
+			self._csr_item_targets = csr_render_items(self._csr_items_content, 0, content_w, content_h, mgr)
+
+			-- Modifiers + Preferences tabs: feature panels filled by the borrowed renderers. Stacked
+			-- on the same rect as the Items grid; _csr_set_pause_tab toggles which one is visible.
+			if have_features then
+				self._feature_panels = {}
+				for _, key in ipairs({ "modifiers", "preferences" }) do
+					local fp = items_panel:panel({
+						x = content_x,
+						y = content_y,
+						w = content_w,
+						h = content_h,
+						layer = 5,
+					})
+					fp:set_visible(false)
+					self._feature_panels[key] = fp
+				end
+				self:_populate_modifiers_panel()
+				self:_populate_preferences_panel()
+			end
+
+			self:_csr_set_pause_tab("items")
 		else
-			csr_log("[CSR] pause panel: no room for team items (avail=" .. tostring(text_panel:h() - header_top) .. ")")
+			csr_log(
+				"[CSR] pause panel: no room for team items (avail=" .. tostring(text_panel:h() - section_top) .. ")"
+			)
 		end
 	end
 
@@ -602,7 +724,7 @@ end)
 -- called across the whole component). Edge-triggered: only rebuild the tip when the target changes.
 -- Guarded by self._csr_item_targets, which is only set on a CSR heist, so non-CSR panels no-op.
 Hooks:PostHook(IngameContractGui, "mouse_moved", "CSR_IngameContract_ItemTooltip", function(self, o, x, y)
-	if not self._csr_item_targets then
+	if not self._csr_item_targets or self._csr_active_tab ~= "items" then
 		return
 	end
 	local hovered
@@ -620,5 +742,109 @@ Hooks:PostHook(IngameContractGui, "mouse_moved", "CSR_IngameContract_ItemTooltip
 		end
 	end
 end)
+
+-- Sidebar tab-row hover highlights + in-panel hover (Modifiers scroll bar / sub-tabs, Preferences
+-- toggle/slider). The panel handlers self-gate on their own panel:visible(), so calling both is
+-- safe regardless of the active tab; all no-op on non-CSR panels and after close.
+Hooks:PostHook(IngameContractGui, "mouse_moved", "CSR_IngameContract_SidebarHover", function(self, o, x, y)
+	if self._csr_sidebar_items then
+		for _, item in pairs(self._csr_sidebar_items) do
+			if alive(item:panel()) then
+				item:set_highlight(item:inside(x, y))
+			end
+		end
+	end
+	if self._modifiers_panel_mouse_moved then
+		self:_modifiers_panel_mouse_moved(x, y)
+	end
+	if self._preferences_panel_mouse_moved then
+		self:_preferences_panel_mouse_moved(x, y)
+	end
+end)
+
+-- Sidebar tab clicks + in-panel clicks (Modifiers sub-tabs, Preferences toggle/slider grab). Left
+-- button only; the wheel arrives via mouse_wheel_up/down, not here. In-panel handlers run first
+-- (each self-gates on visibility) so a click on panel content isn't also read as a tab switch.
+Hooks:PostHook(IngameContractGui, "mouse_pressed", "CSR_IngameContract_SidebarClick", function(self, button, x, y)
+	if button ~= Idstring("0") then
+		return
+	end
+	if self._modifiers_panel_mouse_pressed and self:_modifiers_panel_mouse_pressed(x, y) then
+		return
+	end
+	if self._preferences_panel_mouse_pressed and self:_preferences_panel_mouse_pressed(x, y) then
+		return
+	end
+	-- Grab the Modifiers scroll bar for dragging (_modifiers_panel_mouse_pressed only handles sub-tabs).
+	if
+		self._modifiers_scroll_visible
+		and self:_modifiers_scroll_visible()
+		and self._modifiers_scroll:mouse_pressed(button, x, y)
+	then
+		return
+	end
+	if self._csr_sidebar_items then
+		for _, item in pairs(self._csr_sidebar_items) do
+			if alive(item:panel()) and item:inside(x, y) and item:callback() then
+				managers.menu_component:post_event("menu_enter")
+				item:callback()(self)
+				return
+			end
+		end
+	end
+end)
+
+-- IngameContractGui has no vanilla mouse_released / mouse_wheel_* methods; MenuComponentManager
+-- routes both to live components via run_return_on_all_live_components, which only calls a method
+-- the component actually defines and stops on the first NON-nil return. So we define them and
+-- return nil (never false) when we don't consume, leaving the event for other live components.
+
+-- Preferences slider-drag release + Modifiers scroll-bar release.
+local orig_contract_mouse_released = IngameContractGui.mouse_released
+function IngameContractGui:mouse_released(o, button, x, y)
+	if self._preferences_panel_mouse_released and self:_preferences_panel_mouse_released(button, x, y) then
+		return true
+	end
+	-- Release a grabbed scroll bar (mouse_released -> release_scroll_bar returns true only if grabbed),
+	-- always fed so a bar releases even if the cursor left the panel mid-drag.
+	if self._modifiers_scroll and self._modifiers_scroll:mouse_released(button, x, y) then
+		return true
+	end
+	if orig_contract_mouse_released then
+		return orig_contract_mouse_released(self, o, button, x, y)
+	end
+end
+
+-- Mouse wheel scrolls the Modifiers list (wheel never reaches mouse_pressed here). dir: up=1, down=-1.
+local function csr_pause_scroll_wheel(self, dir, x, y)
+	if self._modifiers_scroll_visible and self:_modifiers_scroll_visible() and self._modifiers_scroll then
+		if self._modifiers_scroll:scroll(x, y, dir) then
+			return true
+		end
+	end
+	return nil
+end
+
+local orig_contract_wheel_up = IngameContractGui.mouse_wheel_up
+function IngameContractGui:mouse_wheel_up(x, y)
+	local used = csr_pause_scroll_wheel(self, 1, x, y)
+	if used then
+		return used
+	end
+	if orig_contract_wheel_up then
+		return orig_contract_wheel_up(self, x, y)
+	end
+end
+
+local orig_contract_wheel_down = IngameContractGui.mouse_wheel_down
+function IngameContractGui:mouse_wheel_down(x, y)
+	local used = csr_pause_scroll_wheel(self, -1, x, y)
+	if used then
+		return used
+	end
+	if orig_contract_wheel_down then
+		return orig_contract_wheel_down(self, x, y)
+	end
+end
 
 csr_log("[CSR] pause_ingame_contract.lua loaded")

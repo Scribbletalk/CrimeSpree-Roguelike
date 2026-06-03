@@ -1,4 +1,4 @@
--- Jiro's Last Wish (rare) — +50%/stack melee damage, and sprint while charging melee.
+-- Jiro's Last Wish (rare) — +100%/stack melee damage, and sprint while charging melee.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -23,7 +23,7 @@ _G.CSR.register_item({
 	icon_scale = 1.0,
 
 	hooks = {
-		-- Melee damage: +50%/stack (multiplies dmg and dmg_effect).
+		-- Melee damage: +100%/stack (multiplies dmg and dmg_effect).
 		["lib/managers/blackmarketmanager"] = function()
 			if _G._CSR_JIRO_MELEE_HOOKED then
 				return
@@ -39,7 +39,7 @@ _G.CSR.register_item({
 				if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 					return dmg, dmg_effect
 				end
-				local bonus = 0.5 * mgr:owned("jiro_last_wish")
+				local bonus = 1.0 * mgr:owned("jiro_last_wish")
 				if bonus ~= 0 and type(dmg) == "number" then
 					local mul = 1 + bonus
 					dmg = dmg * mul

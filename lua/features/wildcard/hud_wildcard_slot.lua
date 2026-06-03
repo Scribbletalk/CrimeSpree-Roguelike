@@ -64,11 +64,8 @@ local function resolve_icon(item_type)
 	local mgr = managers and managers.csr
 	local def = mgr and mgr.item_def and mgr:item_def(item_type)
 	local raw = def and def.icon
-	if type(raw) == "string" and raw:find("/", 1, true) then
-		return raw, { 0, 0, 128, 128 }
-	end
 	if raw then
-		local tex, rect = hud_icons:get_icon_data(raw)
+		local tex, rect = _G.CSR.icon_data(raw)
 		if tex then
 			return tex, rect
 		end

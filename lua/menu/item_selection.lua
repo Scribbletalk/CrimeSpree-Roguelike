@@ -184,13 +184,7 @@ function CSRItemSelectionButton:set_item(data)
 		return
 	end
 
-	-- "/" in icon = full DB texture path (addon); otherwise a hud_icons id (built-in).
-	local texture, rect
-	if type(self._data.icon) == "string" and self._data.icon:find("/", 1, true) then
-		texture, rect = self._data.icon, { 0, 0, 128, 128 }
-	else
-		texture, rect = tweak_data.hud_icons:get_icon_data(self._data.icon)
-	end
+	local texture, rect = _G.CSR.icon_data(self._data.icon)
 
 	self._item_image:set_image(texture)
 	self._item_image:set_texture_rect(unpack(rect))

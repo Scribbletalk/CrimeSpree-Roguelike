@@ -857,7 +857,7 @@ if MenuCallbackHandler and not _G._CSR_START_GAME_WRAPPED then
 	local original_start = MenuCallbackHandler.crime_spree_start_game
 
 	function MenuCallbackHandler:crime_spree_start_game()
-		if self.start_game then
+		if self.csr_start_game then
 			self:csr_start_game()
 		elseif original_start then
 			original_start(self)
@@ -871,7 +871,7 @@ if MenuCallbackHandler and not _G._CSR_REROLL_WRAPPED then
 	local original_reroll = MenuCallbackHandler.crime_spree_reroll
 
 	function MenuCallbackHandler:crime_spree_reroll()
-		if self.reroll then
+		if self.csr_reroll then
 			self:csr_reroll()
 		elseif original_reroll then
 			original_reroll(self)

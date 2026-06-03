@@ -32,7 +32,7 @@ globals = {
     "managers", "tweak_data", "Global",
     -- PD2 engine singletons
     "Application", "World", "Network", "Input", "DB", "Workspace", "Draw",
-    "TimerManager", "PackageManager", "DynamicResourceManager",
+    "SystemFS", "TimerManager", "PackageManager", "DynamicResourceManager",
     "game_state_machine", "GameSetup", "Setup", "setup",
     "SoundDevice", "LocalizationManager", "SystemInfo",
     -- PD2 AI / placement
@@ -50,7 +50,7 @@ globals = {
     "IngameContractGui",
     -- PD2 HUD
     "HudIconsTweakData", "HUDInteraction", "HUDManager", "HUDMissionBriefing",
-    "HUDStageEndCrimeSpreeScreen", "HUDStageEndScreen",
+    "HUDStageEndCrimeSpreeScreen", "HUDStageEndScreen", "HUDTeammate",
     -- PD2 player / weapon / enemy
     "BaseNetworkSession",
     "BaseInteractionExt", "UseInteractionExt", "InteractionTweakData",
@@ -71,6 +71,8 @@ globals = {
     "CrimeSpreeCopierInteractionExt", "CrimeSpreeScrapperInteractionExt",
     "CrimeSpreeLogbookMenuComponent", "CrimeSpreeModifierDetailsPage",
     "MenuCrimeNetContractInitiator", "MenuCrimeNetCrimeSpreeContractInitiator",
+    -- PD2 crime spree modifier classes CSR mutates by name
+    "ModifierAssaultExtender",
     -- CSR core manager
     "CSRGameManager",
     -- CSR UI components

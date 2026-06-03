@@ -28,6 +28,9 @@ _G.CSR.register_item({
 				if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 					return
 				end
+				if mgr:item_heal_blocked() then
+					return
+				end
 				local stacks = mgr:owned("worn_bandaid")
 				if stacks <= 0 then
 					self._csr_bandaid_timer = 0

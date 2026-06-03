@@ -1041,7 +1041,12 @@ function CSRMissionsMenuComponent:mouse_wheel_down(x, y)
 	end
 end
 
-function CSRMissionsMenuComponent:mouse_released(button, x, y)
+-- MenuComponentManager dispatches mouse_released to live components as (o, button, x, y) -- the
+-- panel object comes first, unlike mouse_pressed(button, x, y). Match it so x/y line up.
+function CSRMissionsMenuComponent:mouse_released(o, button, x, y)
+	if self:_preferences_panel_mouse_released(button, x, y) then
+		return true
+	end
 	if self._modifiers_scroll then
 		return self._modifiers_scroll:mouse_released(button, x, y)
 	end

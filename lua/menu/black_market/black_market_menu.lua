@@ -6,6 +6,53 @@ end
 
 CrimeSpreeBlackMarketMenuComponent = CrimeSpreeBlackMarketMenuComponent or class()
 
+-- Hide the briefing's heist-NAME title while Gage's Services is open so it doesn't bleed through
+-- behind the top-left BLACK MARKET header. Two separate elements carry the name:
+--   (1) MissionBriefingGui._panel  -- small description-tab title.
+--   (2) HUDMissionBriefing layers  -- the prominent "CONTACT: JOBNAME" title (solid on
+--       _foreground_layer_one + faded ghost on _background_layer_three), both named "job_text".
+-- Vanilla MissionBriefingGui:hide() only dims to alpha 0.5, and the HUD title isn't touched at
+-- all -- so the name stays readable. No-op when no briefing is present.
+function CrimeSpreeBlackMarketMenuComponent:_suppress_briefing()
+	local mbg = managers.menu_component and managers.menu_component._mission_briefing_gui
+	if mbg and mbg._panel and alive(mbg._panel) then
+		self._mbg = mbg
+		self._mbg_panel_was_visible = mbg._panel:visible()
+		mbg._panel:set_visible(false)
+	end
+
+	local hud = managers.hud and managers.hud._hud_mission_briefing
+	if hud then
+		local fg = hud._foreground_layer_one
+		local bg = hud._background_layer_three
+		self._mb_job_text_fg = fg and alive(fg) and fg:child("job_text") or nil
+		self._mb_job_text_bg = bg and alive(bg) and bg:child("job_text") or nil
+		if self._mb_job_text_fg then
+			self._mb_job_text_fg:set_visible(false)
+		end
+		if self._mb_job_text_bg then
+			self._mb_job_text_bg:set_visible(false)
+		end
+	end
+end
+
+function CrimeSpreeBlackMarketMenuComponent:_restore_briefing()
+	local mbg = self._mbg
+	if mbg and self._mbg_panel_was_visible ~= nil and mbg._panel and alive(mbg._panel) then
+		mbg._panel:set_visible(self._mbg_panel_was_visible)
+	end
+	if self._mb_job_text_fg and alive(self._mb_job_text_fg) then
+		self._mb_job_text_fg:set_visible(true)
+	end
+	if self._mb_job_text_bg and alive(self._mb_job_text_bg) then
+		self._mb_job_text_bg:set_visible(true)
+	end
+	self._mbg = nil
+	self._mbg_panel_was_visible = nil
+	self._mb_job_text_fg = nil
+	self._mb_job_text_bg = nil
+end
+
 function CrimeSpreeBlackMarketMenuComponent:init(ws, fullscreen_ws, node)
 	if not ws or not fullscreen_ws then
 		return
@@ -25,6 +72,7 @@ function CrimeSpreeBlackMarketMenuComponent:init(ws, fullscreen_ws, node)
 	self._last_hovered_id = nil
 
 	self:_setup()
+	self:_suppress_briefing()
 
 	-- Swap to shopping music; close() restores it.
 	self._prev_music_event = Global and Global.music_manager and Global.music_manager.current_event or nil
@@ -177,6 +225,7 @@ function CrimeSpreeBlackMarketMenuComponent:close()
 	if _G.CSR_BlackMarketShopPageInstance == self._shop_page then
 		_G.CSR_BlackMarketShopPageInstance = nil
 	end
+	self:_restore_briefing()
 	if self._panel and alive(self._panel) and self._ws then
 		self._ws:panel():remove(self._panel)
 	end

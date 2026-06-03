@@ -32,6 +32,9 @@ local function edge_cd_ready(self, now)
 end
 
 local function do_edge_heal(self, stacks, now)
+	if managers.csr and managers.csr:item_heal_blocked() then
+		return false
+	end
 	local max_hp = self:_max_health()
 	if not max_hp or max_hp <= 0 then
 		return false

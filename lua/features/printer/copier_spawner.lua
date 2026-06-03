@@ -497,6 +497,8 @@ end
 
 -- Forward decl; assigned further down (used by spawn_at_closest_cover closure).
 local cover_to_placement
+local is_placement_in_seg_walkable
+local is_placement_los_from_player
 
 local MIN_COPIER_SEPARATION = 250
 
@@ -862,7 +864,7 @@ end
 
 -- Multi-sample LOS check within a seg; catches segs that span both walkable + cop-only areas.
 local PLACEMENT_SAMPLE_REJECT_THRESHOLD = 2
-local function is_placement_in_seg_walkable(seg_id, target_pos)
+is_placement_in_seg_walkable = function(seg_id, target_pos)
 	if not (seg_id and target_pos) then
 		return true
 	end
@@ -910,7 +912,7 @@ end
 
 -- Player LOS check; skipped beyond 25m (too far to matter).
 local PLAYER_LOS_RANGE_SQ = 2500 * 2500
-local function is_placement_los_from_player(target_pos)
+is_placement_los_from_player = function(target_pos)
 	if not target_pos then
 		return true
 	end

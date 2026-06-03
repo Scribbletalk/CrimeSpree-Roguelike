@@ -11,6 +11,9 @@ local BASE_FLAT = 4
 local EXTRA_FLAT = 6
 
 local function apply_kill_heal(mgr, stacks)
+	if mgr:item_heal_blocked() then
+		return
+	end
 	local pu = managers.player and managers.player:player_unit()
 	if not pu or not alive(pu) then
 		return

@@ -33,6 +33,7 @@ CSR_MP.ITEM_MSG = {
 	WOLF_KILL = "CSR_WolfKill",
 	SHOCK = "CSR_ShockingSurprise",
 	OATH_HEAL = "CSR_OathHeal", -- host -> remote oath owner: heal your own player (aura tick)
+	BADGE_REVIVE = "CSR_BadgeRevive", -- host -> remote crooked_badge owner: roll your own assault-end revive
 }
 
 local MAX_PAYLOAD = 200
