@@ -35,6 +35,19 @@ Hooks:PostHook(
 			return
 		end
 
+		-- Tear down the leftover end-screen HUD backdrop (the faded mission-name ghost) before the
+		-- lobby header draws. Vanilla relies on a full main-menu rebuild to clear it; CSR's
+		-- return-to-lobby reuses the "menu" workspace, so the backdrop bleeds through under the
+		-- "CRIME SPREE ROGUELIKE" header. Lobby surface only; the end-screen still needs its ghost.
+		if in_lobby and managers.hud and managers.hud._hud_stage_endscreen then
+			local es = managers.hud._hud_stage_endscreen
+			if CSRHUDStageEndScreen and getmetatable(es) == CSRHUDStageEndScreen and es.close then
+				es:close()
+				managers.hud._hud_stage_endscreen = nil
+				csr_log("[CSR] wiring: closed leftover end-screen HUD backdrop on lobby build")
+			end
+		end
+
 		-- Ensure mission set exists (old saves may load with an empty set).
 		if managers.csr.ensure_mission_set then
 			managers.csr:ensure_mission_set()
@@ -53,12 +66,13 @@ Hooks:PostHook(
 		self:register_component("crime_spree_missions", self._crime_spree_missions)
 		csr_log("[CSR] wiring: vanilla CS missions panel swapped for CSRMissionsMenuComponent")
 
-		-- MP only: hosting online enters normal "lobby" first, which builds a vanilla
-		-- ContractBoxGui. Force a rebuild now that _crime_spree_missions is set so
-		-- contract_wiring returns CrimeSpreeContractBoxGui (no crewpage overlap).
-		if in_lobby and not Global.game_settings.single_player and self.create_contract_gui then
+		-- Force a contract-box rebuild now that _crime_spree_missions is set, so contract_wiring's
+		-- _contract_gui_class hook returns CrimeSpreeContractBoxGui (no vanilla "PLANNING PHASE"
+		-- crewpage ghost overlapping the header). Needed in SP too: after a heist->lobby reinit the
+		-- "contract" box is rebuilt with vanilla ContractBoxGui before this swap runs, leaking the ghost.
+		if in_lobby and self.create_contract_gui then
 			self:create_contract_gui()
-			csr_log("[CSR] wiring: forced contract-box rebuild for CSR lobby (MP)")
+			csr_log("[CSR] wiring: forced contract-box rebuild for CSR lobby")
 		end
 
 		-- Sync inventories and pull host-state on both lobby and end screen builds.

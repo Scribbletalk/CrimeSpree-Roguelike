@@ -201,6 +201,9 @@ function CSRMissionsMenuComponent:_populate_preferences_panel()
 	local btn = make_toggle("BLOCK HEALING EFFECTS FROM ITEMS", "block_item_heal")
 	table.insert(self._preferences_buttons, btn)
 
+	local wc_bar = make_toggle("ALTERNATIVE HUD DISPLAY FOR WILDCARDS", "hud_wildcard_use_bar")
+	table.insert(self._preferences_buttons, wc_bar)
+
 	local sfx = make_slider("ITEM SOUND VOLUME", "sfx_volume")
 	table.insert(self._preferences_buttons, sfx)
 end

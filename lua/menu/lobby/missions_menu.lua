@@ -136,9 +136,9 @@ function CSRMissionsMenuComponent:_setup()
 		font = tweak_data.menu.pd2_small_font,
 		font_size = tweak_data.menu.pd2_small_font_size,
 	})
-	local _, _, _, h = self._host_failed_text:text_rect()
+	local _, _, _, fth = self._host_failed_text:text_rect()
 
-	self._host_failed_text:set_h(h)
+	self._host_failed_text:set_h(fth)
 	self._host_failed_text:set_bottom(self._buttons_panel:h())
 
 	self._host_failed = self._buttons_panel:text({
@@ -156,9 +156,9 @@ function CSRMissionsMenuComponent:_setup()
 		font = tweak_data.menu.pd2_medium_font,
 		font_size = tweak_data.menu.pd2_medium_font_size,
 	})
-	local _, _, _, h = self._host_failed:text_rect()
+	local _, _, _, fh = self._host_failed:text_rect()
 
-	self._host_failed:set_h(h)
+	self._host_failed:set_h(fh)
 	self._host_failed:set_bottom(self._host_failed_text:top())
 
 	-- Forked vanilla CrimeSpreeButton for "Start the Heist".
@@ -230,6 +230,14 @@ function CSRMissionsMenuComponent:_setup()
 				self:refresh_for_rank_change()
 			end)
 		)
+	end
+
+	-- End-screen surface: a freshly-unlocked modifier flashes the siren behind the Modifiers sidebar
+	-- icon -- the first thing seen post-heist. One-shot consume; the lobby keeps only the blue tint.
+	if not self._is_lobby and mgr and mgr.consume_modifier_glow and mgr:consume_modifier_glow() then
+		if self._sidebar and self._sidebar.play_modifier_siren then
+			self._sidebar:play_modifier_siren()
+		end
 	end
 end
 
@@ -909,7 +917,9 @@ function CSRMissionsMenuComponent:mouse_moved(o, x, y)
 	-- panel stay interactive, but card/button hover is suppressed by folding it into `host` (cards
 	-- and Start/Reroll/Action all gate on host). The unselected reminder is guarded separately.
 	local host = self:_is_host() and not self._csr_overlay_active
-	local used, pointer = nil
+	-- Failed-lock: Start is hidden AND must be unhoverable/unclickable while Continue is shown.
+	local locked = self:_is_locked()
+	local used, pointer = nil, nil
 
 	if self._sidebar then
 		local s_used, s_pointer = self._sidebar:mouse_moved(x, y)
@@ -933,7 +943,8 @@ function CSRMissionsMenuComponent:mouse_moved(o, x, y)
 	end
 
 	if host and self._start_button then
-		self._start_button:set_selected(self._start_button:inside(x, y))
+		-- Locked run (Continue shown): never let the hidden Start hover/select, so it can't be clicked.
+		self._start_button:set_selected(not locked and self._start_button:inside(x, y))
 
 		if self._start_button:is_selected() then
 			pointer = "link"
@@ -1072,7 +1083,12 @@ function CSRMissionsMenuComponent:confirm_pressed()
 		end
 	end
 
-	if self._start_button and self._start_button:is_selected() and self._start_button:callback() then
+	if
+		self._start_button
+		and not self:_is_locked()
+		and self._start_button:is_selected()
+		and self._start_button:callback()
+	then
 		self._start_button:callback()()
 
 		return true
@@ -1176,10 +1192,10 @@ function CSRMissionButton:init(idx, parent, mission_data)
 
 	self._info_panel:set_top(padding * 0.5)
 
-	local h = CSRMissionsMenuComponent.button_size.title_h
+	local bh = CSRMissionsMenuComponent.button_size.title_h
 	local level_name_bg = self._panel:rect({
-		y = self._panel:h() - h,
-		h = h,
+		y = self._panel:h() - bh,
+		h = bh,
 		color = Color(0.05, 0.05, 0.05),
 	})
 	self._highlight_name = self._panel:rect({
@@ -1897,6 +1913,16 @@ function CSRSidebar:set_active_feature(key)
 	end
 end
 
+-- Flash the new-modifier siren behind the Modifiers row icon (end-screen post-heist cue).
+function CSRSidebar:play_modifier_siren()
+	for _, btn in ipairs(self._buttons) do
+		if btn._feature_key == "modifiers" and btn.play_siren then
+			btn:play_siren()
+			return
+		end
+	end
+end
+
 -- CSRSidebarSeparator — fork of vanilla CrimeNetSidebarSeparator; 10px non-interactive row.
 CSRSidebarSeparator = CSRSidebarSeparator or class()
 CSRSidebarSeparator._type = "CSRSidebarSeparator"
@@ -1928,6 +1954,13 @@ function CSRSidebarSeparator:accepts_interaction()
 end
 
 function CSRSidebarSeparator:update(t, dt) end
+
+-- Red/blue police siren flashed behind the Modifiers sidebar icon on the end screen when a new
+-- modifier just unlocked. Vanilla raid colors; alpha driven from update() so it ticks reliably.
+local sidebar_siren_duration = 3 -- seconds the strobe plays
+local sidebar_siren_glow_size = 56 -- glow diameter behind the 24px icon
+local sidebar_siren_red = Color(255, 255, 0, 0) / 255 -- a, r, g, b
+local sidebar_siren_blue = Color(255, 0, 180, 255) / 255
 
 CSRSidebarItem = CSRSidebarItem or class()
 CSRSidebarItem._type = "CSRSidebarItem"
@@ -2063,6 +2096,59 @@ function CSRSidebarItem:set_text(text)
 	self._text:set_text(text)
 end
 
-function CSRSidebarItem:update(t, dt) end
+-- Arm a one-shot ~3s red/blue siren behind this row's icon. Lazily builds the two additive glow
+-- bitmaps (layer 0, under the layer-1 icon), centered on the icon. update() drives the strobe.
+function CSRSidebarItem:play_siren()
+	if not alive(self._panel) or not alive(self._icon) then
+		return
+	end
+	if not alive(self._siren_glow) then
+		local cx, cy = self._icon:center()
+		self._siren_glow = self._panel:panel({
+			name = "csr_siren_glow",
+			layer = 0,
+			w = sidebar_siren_glow_size,
+			h = sidebar_siren_glow_size,
+		})
+		self._siren_glow:set_center(cx, cy)
+		local function add_glow(color)
+			return self._siren_glow:bitmap({
+				texture = "guis/textures/pd2/crimenet_marker_glow",
+				blend_mode = "add",
+				color = color,
+				alpha = 0,
+				w = self._siren_glow:w(),
+				h = self._siren_glow:h(),
+			})
+		end
+		self._siren_red = add_glow(sidebar_siren_red)
+		self._siren_blue = add_glow(sidebar_siren_blue)
+	end
+	self._siren_t = 0
+end
+
+function CSRSidebarItem:update(t, dt)
+	if not self._siren_t then
+		return
+	end
+	if not alive(self._siren_red) or not alive(self._siren_blue) then
+		self._siren_t = nil
+		return
+	end
+	self._siren_t = self._siren_t + dt
+	local tt = self._siren_t
+	if tt >= sidebar_siren_duration then
+		self._siren_t = nil
+		if alive(self._siren_glow) then
+			self._panel:remove(self._siren_glow)
+		end
+		self._siren_glow, self._siren_red, self._siren_blue = nil, nil, nil
+		return
+	end
+	-- Out-of-phase red/blue strobe; quick fade over the last 0.6s so it trails off.
+	local fade = math.min(1, (sidebar_siren_duration - tt) / 0.6)
+	self._siren_red:set_alpha(math.abs(math.sin(tt * 8)) * 0.55 * fade)
+	self._siren_blue:set_alpha(math.abs(math.cos(tt * 8)) * 0.55 * fade)
+end
 
 csr_log("[CSR] missions_menu.lua loaded (Slice 8 fork + start button)")

@@ -44,6 +44,12 @@ local function default_state()
 		missions_completed = 0,
 		-- A failed run stays active but locked until the player pays Continue or ends the run.
 		failed = false,
+		-- Loss penalty (host/SP). Heist outcome commits on start: in_heist is set at heist start,
+		-- cleared at MissionEndState. After grace, an interruption (crash/quit) marks the run failed.
+		in_heist = false,
+		heist_grace_over = false,
+		-- Monotonic; a fresh token invalidates a pending grace timer from a prior attempt.
+		heist_token = 0,
 		-- Internal difficulty id (e.g. "overkill_145"); nil until start_run seeds it.
 		difficulty = nil,
 		seed = nil,
@@ -72,9 +78,10 @@ local function default_registry()
 		constants = {
 			dog_tags_hp_bonus = 0.10,
 			rank_per_heist = 1,
-			-- Continue cost = continue_cost_base + continue_cost_per_mission * missions_completed
-			continue_cost_base = 10,
-			continue_cost_per_mission = 10,
+			-- Continue cost = continue_cost_per_rank * current rank (a failed run keeps its rank).
+			continue_cost_per_rank = 3,
+			-- Interrupting a live heist (crash / alt-F4 / quit-to-menu) after this many seconds = a loss.
+			heist_grace_seconds = 60,
 		},
 	}
 end
@@ -96,6 +103,9 @@ function CSRGameManager:init()
 	self:load()
 	self._debug = (self._meta.settings and self._meta.settings.debug_mode) == true
 	_G.CSR_DEBUG = self._debug
+	-- Loss penalty: if a heist was in flight when the game last closed (crash/alt-F4/quit), commit
+	-- the outcome now. Runs once per init, right after load() restored in_heist/heist_grace_over.
+	self:_check_interrupted_heist()
 	-- Replay registrations into the fresh _registry every init (idempotent, never drains).
 	if _G.CSR and _G.CSR._apply_registrations then
 		_G.CSR._apply_registrations(self)
@@ -294,12 +304,19 @@ function CSRGameManager:start_run()
 	end
 	self._state.is_active = true
 	self._state.failed = false
+	-- No heist in flight yet; the loss-penalty flag arms on IngameWaitingForPlayersState.
+	self._state.in_heist = false
+	self._state.heist_grace_over = false
 	self._state.rank = 0
 	self._state.missions_completed = 0
 	self._state.difficulty = self:_default_difficulty()
 	self._state.seed = math.random(1, 2 ^ 30)
 	-- Fresh spree re-rolls the modifier order with the current pool (picks up new add-ons).
 	self._state.modifier_seq = nil
+	-- New-modifier highlight: nothing flagged yet; seen-count 0 (not nil) so the first unlock flashes.
+	self._state.modifier_hl_floor = nil
+	self._state.modifier_hl_count = 0
+	self._state.modifier_glow_pending = nil
 	-- Wipe inventory so Items panel doesn't carry stacks from a prior run.
 	self._state.peer_items = {}
 	self._state.loot_rank_cash = 0
@@ -399,9 +416,73 @@ function CSRGameManager:clear_failed()
 end
 
 function CSRGameManager:get_continue_cost()
-	local base = self:constant("continue_cost_base") or 0
-	local per = self:constant("continue_cost_per_mission") or 0
-	return base + per * (self._state.missions_completed or 0)
+	-- Tied to the rank reached (a failed heist grants no rank, so this is the rank at failure).
+	-- base 0 -> rank 0 costs nothing; 3x sits above the 2x/rank end-spree payout for a real sting.
+	local per = self:constant("continue_cost_per_rank") or 0
+	return per * (self._state.rank or 0)
+end
+
+-- =====================================================
+-- Loss penalty: heist commit-on-start flag (host/SP)
+-- =====================================================
+
+-- Arm the in-flight flag on heist start. Returns a fresh token; a later token invalidates any
+-- grace timer still pending from a previous attempt (restart / fast finish).
+function CSRGameManager:begin_heist()
+	self._state.in_heist = true
+	self._state.heist_grace_over = false
+	self._state.heist_token = (self._state.heist_token or 0) + 1
+	self:save()
+	return self._state.heist_token
+end
+
+-- Flip grace_over only if this is still the same heist that armed the timer (token match).
+function CSRGameManager:mark_heist_grace_over(token)
+	if not self._state.in_heist or self._state.heist_token ~= token then
+		return false
+	end
+	self._state.heist_grace_over = true
+	log_csr("mark_heist_grace_over: grace elapsed; interruption now counts as a loss")
+	self:save()
+	return true
+end
+
+-- Heist resolved cleanly (win or wipe) -> clear the flag and bump the token so the pending
+-- grace timer no-ops.
+function CSRGameManager:clear_in_heist()
+	self._state.in_heist = false
+	self._state.heist_grace_over = false
+	self._state.heist_token = (self._state.heist_token or 0) + 1
+	self:save()
+end
+
+function CSRGameManager:in_heist()
+	return self._state.in_heist == true
+end
+
+function CSRGameManager:heist_grace_over()
+	return self._state.heist_grace_over == true
+end
+
+function CSRGameManager:heist_grace_seconds()
+	return self:constant("heist_grace_seconds") or 120
+end
+
+-- A heist in flight at last shutdown (crash / alt-F4 / quit-to-menu) is a loss if its grace had
+-- elapsed; within grace it is forgiven. Either way the flag is cleared so it fires only once.
+function CSRGameManager:_check_interrupted_heist()
+	if not (self._state.is_active and self._state.in_heist) then
+		return
+	end
+	if self._state.heist_grace_over then
+		self._state.failed = true
+		log_csr("_check_interrupted_heist: heist interrupted past grace -> run marked FAILED")
+	else
+		log_csr("_check_interrupted_heist: heist interrupted within grace -> forgiven")
+	end
+	self._state.in_heist = false
+	self._state.heist_grace_over = false
+	self:save()
 end
 
 function CSRGameManager:constant(name)

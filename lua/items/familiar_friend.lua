@@ -1,27 +1,17 @@
--- Familiar Friend (wildcard) — "Spike Nova": on key press, deal a 360° AoE
--- around the player. Cooldown-gated, stealth-blocked. Visual: csr_ff_arrow
--- projectiles fly from the player's chest to each damaged enemy.
---
--- Active item: registered with the wildcard dispatcher (CSR_RegisterWildcardActive).
--- The dispatcher already gates in_csr_heist / down / arrested before calling us.
---
--- Values match the logbook spec (6m radius, 400 dmg @rank0, 60s cooldown).
--- Damage scales with CS rank. Display HP → internal via ×5 (the unit damage_bullet
--- expects), matching the dead_mans_trigger convention.
---
--- MP: damage is dealt locally via damage_bullet (routes through vanilla net, same
--- as dead_mans_trigger). DEFERRED: the cross-peer arrow-cosmetic broadcast (remote
--- peers seeing your nova arrows) — the caster sees their own arrows; damage is
--- unaffected.
+-- Familiar Friend (wildcard) — "Spike Nova": on key press, 360° AoE around the player
+-- (csr_ff_arrow projectiles fly chest→enemy). Cooldown-gated, stealth-blocked. Active
+-- item via the wildcard dispatcher (gates in_csr_heist/down/arrested for us).
+-- 1000 dmg @rank0, +5%/rank; display HP → internal ×5 (dead_mans_trigger convention).
+-- MP: damage dealt locally via damage_bullet (vanilla net); cross-peer arrow cosmetic DEFERRED.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
 end
 
 local RADIUS = 600 -- 6m AoE
-local BASE_DISPLAY_DAMAGE = 400 -- display HP at rank 0
+local BASE_DISPLAY_DAMAGE = 1000 -- display HP at rank 0
 local DISPLAY_SCALE = 5 -- display → internal units for damage_bullet
-local LEVEL_PCT = 0.0035 -- +0.35% damage per CS rank (multiplicative)
+local LEVEL_PCT = 0.05 -- +5% damage per CS rank (matches enemy HP +5%/rank)
 local COOLDOWN = 60
 local CHARGE_DELAY = 0.6 -- wind-up before the nova fires (matches charge SFX)
 

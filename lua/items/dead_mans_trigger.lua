@@ -10,7 +10,7 @@ local BASE_RADIUS = 300
 local RADIUS_PER_STACK = 200
 local BASE_DAMAGE = 2400 -- internal units (BASE 2400 = 480 display)
 local DAMAGE_PER_STACK = 1200
-local LEVEL_DAMAGE = 10
+local LEVEL_DAMAGE = 120 -- internal units (120 = 24 display per rank)
 local ALLY_MULT = 0.20
 local COOLDOWN = 1.0
 

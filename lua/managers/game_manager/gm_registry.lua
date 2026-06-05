@@ -374,6 +374,71 @@ function CSRGameManager:active_modifiers(category)
 	return out
 end
 
+-- ===================================================== New-modifier highlight (Modifiers panel)
+-- Lets the Modifiers panel blue-tint the modifiers unlocked by the MOST RECENT mission and flash a
+-- one-shot red/blue siren. The unlock count is ceil(rank/2) (one new modifier per 2 ranks, mirroring
+-- active_modifiers' slice); modifier_hl_floor is the count that existed BEFORE the latest unlock, so
+-- entries at sequence index > floor are "new". host_rank-driven, so it follows the host while guesting.
+
+-- Number of modifiers unlocked for the current run (matches active_modifiers' rank slice).
+function CSRGameManager:_modifier_unlock_count()
+	local rank = self:host_rank() or 0
+	if rank <= 0 then
+		return 0
+	end
+	return math.ceil(rank / 2)
+end
+
+-- Observe the unlock count; when it GREW since the last observation, move the floor to the pre-growth
+-- count (only the newest batch stays flagged) and arm the glow. Called at mission completion (host/SP,
+-- per-mission precision) and on every panel build (guest + safety net). A nil seen-count means an
+-- in-progress save predating this feature: baseline silently (no retroactive flash). A shrink (fresh
+-- spree, or guesting a lower-rank host) re-baselines without flashing.
+function CSRGameManager:refresh_modifier_highlight()
+	local count = self:_modifier_unlock_count()
+	local seen = self._state.modifier_hl_count
+	if seen == nil then
+		self._state.modifier_hl_count = count
+		self:save()
+		return
+	end
+	if count > seen then
+		self._state.modifier_hl_floor = seen
+		self._state.modifier_hl_count = count
+		self._state.modifier_glow_pending = true
+		self:save()
+	elseif count < seen then
+		self._state.modifier_hl_floor = nil
+		self._state.modifier_hl_count = count
+		self:save()
+	end
+end
+
+-- Sequence-index threshold for the Modifiers panel: entries at index > floor are newly unlocked.
+-- nil (never grew) -> nothing highlighted.
+function CSRGameManager:modifier_highlight_floor()
+	return self._state.modifier_hl_floor
+end
+
+-- One-shot: true the first time after new modifiers unlocked, then cleared (drives the 3s siren).
+function CSRGameManager:consume_modifier_glow()
+	if self._state.modifier_glow_pending then
+		self._state.modifier_glow_pending = nil
+		self:save()
+		return true
+	end
+	return false
+end
+
+-- Retire the blue-tint floor after the panel's 5s fade-out so the highlight never returns. Leaves
+-- modifier_hl_count intact, so the next unlock (count grows past it) re-arms the floor + glow.
+function CSRGameManager:clear_modifier_highlight()
+	if self._state.modifier_hl_floor ~= nil then
+		self._state.modifier_hl_floor = nil
+		self:save()
+	end
+end
+
 -- Per-rank enemy scaling. +5%/rank each (host-only for HP; each client applies damage independently).
 local ENEMY_HEALTH_PCT_PER_RANK = 5
 local ENEMY_DAMAGE_PCT_PER_RANK = 5

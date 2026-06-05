@@ -509,6 +509,11 @@ function CSRCrimeSpreeResultTabItem:_update_token_convert(t, dt)
 				if managers.menu_component then
 					managers.menu_component:post_event("count_1")
 				end
+			elseif cc.remainder > 0 and cc.per_token > 0 then
+				-- No full loot tokens, but leftover cash exists: reveal it as carry + drain to $0.
+				st.phase = "carry_reveal"
+				st.elapsed = 0
+				cc.fg:set_w(0)
 			else
 				st.phase = "hold"
 				st.elapsed = 0
@@ -563,8 +568,13 @@ function CSRCrimeSpreeResultTabItem:_update_token_convert(t, dt)
 		local p = math.min(st.elapsed / 0.6, 1)
 		local end_w = math.floor((cc.remainder / cc.per_token) * cc.bar_w)
 		cc.fg:set_w(math.floor(math.lerp(0, end_w, p)))
+		-- Drain the leftover cash to $0 as it pours into the carry bar.
+		cc.money:set_text(
+			"$" .. managers.experience:cash_string(math.max(0, math.floor(math.lerp(cc.remainder, 0, p))), "")
+		)
 		if p >= 1 then
 			cc.fg:set_w(end_w)
+			cc.money:set_text("$" .. managers.experience:cash_string(0, ""))
 			st.phase = "hold"
 			st.elapsed = 0
 		end

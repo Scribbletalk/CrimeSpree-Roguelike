@@ -111,12 +111,20 @@ local function build_groups()
 	if not (in_run or debug_on) then
 		return {}
 	end
-	local counts = mgr:player_items(mgr:local_peer_id()) -- { [type] = n }
-	local list = {}
+	local pid = mgr:local_peer_id()
+	local counts = mgr:player_items(pid) -- { [type] = n }
+	local by_type = {}
 	for _, def in ipairs(mgr:registered_items()) do
-		local n = counts[def.type] or 0
-		if n > 0 and not def.is_scrap and SCRAPPABLE_RARITIES[def.rarity] then
-			list[#list + 1] = { def = def, type = def.type, stacks = n }
+		by_type[def.type] = def
+	end
+	local list = {}
+	-- Iterate the canonical display order (same as the Items panel / owned strip) instead of
+	-- registry order, so the scrapper grid lists items in the same sequence as everywhere else.
+	for _, item_type in ipairs(mgr:display_items_order(pid) or {}) do
+		local def = by_type[item_type]
+		local n = counts[item_type] or 0
+		if def and n > 0 and not def.is_scrap and SCRAPPABLE_RARITIES[def.rarity] then
+			list[#list + 1] = { def = def, type = item_type, stacks = n }
 		end
 	end
 	return list

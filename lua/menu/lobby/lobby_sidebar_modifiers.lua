@@ -22,6 +22,52 @@ local modifiers_row_text_gap = 12 -- icon right edge -> text column
 local modifiers_row_gap = 12 -- vertical gap between rows
 local modifiers_row_scrollbar_margin = 18 -- reserve space for the scroll bar
 
+-- New-modifier highlight visuals.
+-- PD2 button blue (screen_colors.button_stage_2) so the tint matches the in-menu selected-button look.
+local modifiers_new_bg_color = tweak_data.screen_colors.button_stage_2 -- blue tint behind a freshly-unlocked row
+local modifiers_new_bg_alpha = 0.22
+local modifiers_new_bg_hold = 5 -- seconds the blue tint stays solid after the panel opens
+local modifiers_new_bg_fade = 0.6 -- fade-out duration once the hold elapses
+
+-- Hold the new-modifier blue tint solid for ~5s after the panel opens, fade it out, then clear the
+-- highlight floor so it never returns (until a fresh unlock re-arms it). Driven off `driver` (the
+-- content panel, killed on the next repopulate). dt==0 fallback keeps it ticking on the ESC pause.
+local function csr_fade_new_bgs(driver, rects, mgr)
+	local function animate_fade(o)
+		local t = 0
+		while t < modifiers_new_bg_hold do
+			local dt = coroutine.yield()
+			if dt == 0 then
+				dt = TimerManager:main():delta_time()
+			end
+			t = t + dt
+		end
+		local ft = 0
+		while ft < modifiers_new_bg_fade do
+			local dt = coroutine.yield()
+			if dt == 0 then
+				dt = TimerManager:main():delta_time()
+			end
+			ft = ft + dt
+			local a = modifiers_new_bg_alpha * math.max(0, 1 - ft / modifiers_new_bg_fade)
+			for _, r in ipairs(rects) do
+				if alive(r) then
+					r:set_alpha(a)
+				end
+			end
+		end
+		for _, r in ipairs(rects) do
+			if alive(r) then
+				r:set_alpha(0)
+			end
+		end
+		if mgr and mgr.clear_modifier_highlight then
+			mgr:clear_modifier_highlight()
+		end
+	end
+	driver:animate(animate_fade)
+end
+
 -- Build one Loud/Stealth sub-tab button. Active state is baked in at build time.
 local function csr_build_modifier_subtab(parent, text_str, x, y, w, active)
 	local p = parent:panel({
@@ -60,6 +106,14 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 		return
 	end
 	local panel = self._feature_panels.modifiers
+
+	local mgr = managers and managers.csr
+	-- Flag modifiers unlocked since last seen (host/SP flagged at completion; this also covers guests
+	-- + missed observations). Arms glow_pending (the end-screen sidebar siren consumes it) and the
+	-- highlight floor that drives the blue tint + 5s fade below.
+	if mgr and mgr.refresh_modifier_highlight then
+		mgr:refresh_modifier_highlight()
+	end
 
 	if self._modifiers_content and alive(self._modifiers_content) then
 		panel:remove(self._modifiers_content)
@@ -149,24 +203,34 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 	self._modifiers_scroll = scroll
 	local canvas = scroll:canvas()
 
-	local mgr = managers and managers.csr
 	local list = (mgr and mgr.active_modifiers and mgr:active_modifiers(self._modifiers_subtab)) or {}
 	if #list == 0 then
 		scroll:update_canvas_size()
 		return
 	end
 
+	-- Flag entries unlocked by the latest mission (sequence index > highlight floor) BEFORE the
+	-- view-only reverse; nil floor (none unlocked yet) -> math.huge -> nothing flagged.
+	local hl_floor = (mgr and mgr.modifier_highlight_floor and mgr:modifier_highlight_floor()) or math.huge
+	local is_new = {}
+	for i = 1, #list do
+		is_new[i] = i > hl_floor
+	end
+
 	-- Reverse so the newest-unlocked modifier appears first (view-only; the source list is untouched).
+	-- is_new rides along so each row keeps its new/old flag after the swap.
 	for i = 1, math.floor(#list / 2) do
 		list[i], list[#list - i + 1] = list[#list - i + 1], list[i]
+		is_new[i], is_new[#list - i + 1] = is_new[#list - i + 1], is_new[i]
 	end
 
 	-- Text column reserves a right margin so wrapped lines never run under the scroll bar.
 	local text_x = modifiers_row_icon_size + modifiers_row_text_gap
 	local text_w = math.max(40, canvas:w() - text_x - modifiers_row_scrollbar_margin)
 	local row_y = 0
+	local new_bg_rects = {} -- collected blue tints, faded out together 5s after a real open
 
-	for _, entry in ipairs(list) do
+	for ri, entry in ipairs(list) do
 		-- Combined "Title\nBody" loc string -> name (top) + description (wrapped).
 		local full = (entry.loc and managers.localization and managers.localization:text(entry.loc)) or ""
 		local title, body = full, ""
@@ -235,6 +299,18 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 		local text_block_h = name_h + desc_h
 		local row_h = math.max(modifiers_row_icon_size, text_block_h)
 		row:set_h(row_h)
+		-- Blue semi-transparent fill behind modifiers unlocked by the latest mission (layer 0, under
+		-- the icon/text at layer 1). Persists until the next mission unlocks newer ones (floor moves).
+		if is_new[ri] then
+			new_bg_rects[#new_bg_rects + 1] = row:rect({
+				name = "csr_new_bg",
+				color = modifiers_new_bg_color,
+				alpha = modifiers_new_bg_alpha,
+				w = row:w(),
+				h = row_h,
+				layer = 0,
+			})
+		end
 		icon:set_y(math.floor((row_h - modifiers_row_icon_size) / 2))
 		local text_top = math.floor((row_h - text_block_h) / 2)
 		name_text:set_y(text_top)
@@ -244,6 +320,12 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 	end
 
 	scroll:update_canvas_size()
+
+	-- Real open with at least one freshly-unlocked row: arm the 5s hold -> fade-out -> clear-floor.
+	-- Hidden initial builds are skipped so the highlight isn't consumed before the user ever sees it.
+	if panel:visible() and #new_bg_rects > 0 then
+		csr_fade_new_bgs(content, new_bg_rects, mgr)
+	end
 end
 
 -- True when the modifiers scroll list is visible. Gates wheel/drag routing.

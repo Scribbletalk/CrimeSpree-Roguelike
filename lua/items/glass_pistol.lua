@@ -1,12 +1,13 @@
 -- Glass Pistol (contraband) — glass cannon: huge damage, fraction of survivability.
--- All four wraps multiply per stack (DMG_PER_STACK^stacks, (1/DIV)^stacks).
+-- Linear per stack: damage ×(2*stacks), health & armor ÷(2*stacks).
+-- 1 pistol = ×2 / ÷2, 2 = ×4 / ÷4, 3 = ×6 / ÷6.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
 end
 
-local DMG_PER_STACK = 1.75
-local DIV_PER_STACK = 2
+local DMG_MUL_PER_STACK = 2 -- linear damage factor per stack
+local DIV_PER_STACK = 2 -- linear health/armor divisor per stack
 
 local function run_mgr()
 	local mgr = managers and managers.csr
@@ -48,7 +49,7 @@ _G.CSR.register_item({
 				end
 				local stacks = mgr:owned("glass_pistol")
 				if stacks > 0 then
-					damage = damage * (DMG_PER_STACK ^ stacks)
+					damage = damage * (DMG_MUL_PER_STACK * stacks)
 				end
 				return damage
 			end
@@ -72,7 +73,7 @@ _G.CSR.register_item({
 				end
 				local stacks = mgr:owned("glass_pistol")
 				if stacks > 0 and type(dmg) == "number" then
-					local mul = DMG_PER_STACK ^ stacks
+					local mul = DMG_MUL_PER_STACK * stacks
 					dmg = dmg * mul
 					if type(dmg_effect) == "number" then
 						dmg_effect = dmg_effect * mul
@@ -100,7 +101,7 @@ _G.CSR.register_item({
 				end
 				local stacks = mgr:owned("glass_pistol")
 				if stacks > 0 then
-					v = v * ((1 / DIV_PER_STACK) ^ stacks)
+					v = v / (DIV_PER_STACK * stacks)
 				end
 				return v
 			end
@@ -124,7 +125,7 @@ _G.CSR.register_item({
 				end
 				local stacks = mgr:owned("glass_pistol")
 				if stacks > 0 then
-					v = v * ((1 / DIV_PER_STACK) ^ stacks)
+					v = v / (DIV_PER_STACK * stacks)
 				end
 				return v
 			end

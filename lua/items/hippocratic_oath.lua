@@ -1,30 +1,17 @@
--- Hippocratic Oath (wildcard, passive) — on loud, a Medic enemy spawns offscreen,
--- is converted to a joker on a tight leash (prioritises following its owner, fights only
--- once near; the host yanks it out of any fight if it strays), and pulses a heal aura.
--- While the owner is within 5m of their medic, they regen 5% max HP every 5s. On
--- medic death a 6-minute respawn timer ticks, then a fresh medic spawns. No cap.
---
--- Stealth-blocked: never spawns during whisper_mode.
---
--- Authority: HOST spawns/tracks every owning peer's medic, runs the aura + respawn
--- timer, and applies medic damage-reduction. The owner heals locally — host self
--- heals directly; remote owners receive an OATH_HEAL ping and heal their own player.
--- The medic unit replicates to all peers via vanilla AI sync.
---
--- Joker-cap bump: PostHook on the two upgrade_value paths convert_hostage_to_criminal
--- actually reads (PlayerManager for host-self, HuskPlayerBase for client owners) so the
--- conversion succeeds without Mastermind ace and stacks with it. PlayerBase is NOT read
--- in this host-authoritative flow (verified in groupaistatebase.lua:5244-5248) — omitted.
---
--- HUD: the medic's respawn timer is published via CSR_SetWildcardCooldown so the U1
--- wildcard HUD slot draws it as the CCW radial (replaces the old third-party HUD events).
+-- Hippocratic Oath (wildcard, passive) — on loud, spawns a Medic offscreen, converts it
+-- to a joker on a tight follow leash, and pulses a 5m heal aura (5% max HP / 5s). On medic
+-- death a 6-min respawn timer ticks, then a fresh one spawns. No cap. Stealth-blocked.
+-- Authority: HOST spawns/tracks every owner's medic, runs aura + respawn + medic DR;
+-- owner heals locally (host self-heals, remote owners get an OATH_HEAL ping). Joker-cap
+-- bump via upgrade_value PostHooks — PlayerManager (host-self) + HuskPlayerBase (clients);
+-- PlayerBase isn't read in this flow (groupaistatebase.lua:5244-5248). HUD: respawn timer
+-- via CSR_SetWildcardCooldown (wildcard-slot CCW radial).
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
 end
 
--- Balance constants (authoritative values from the pre-refactor base_modifier, matched
--- to the logbook effect string: 5m aura, 5s pulse, 5% heal, 6-minute respawn).
+-- Balance (matches the logbook string: 5m aura, 5s pulse, 5% heal, 6-min respawn).
 local AURA_RADIUS = 500 -- 5m (PD2 units: 1m = 100)
 local AURA_TICK = 5.0 -- seconds between heal pulses
 local HEAL_PCT = 0.05 -- 5% of max HP per pulse
@@ -229,10 +216,9 @@ end
 -- Host-authoritative medic lifecycle
 -- =====================================================
 
--- Re-path the medic to its owner on a tight follow leash. A fresh "follow" objective runs through
--- CopLogicIdle.on_new_objective and exits to "travel" (coplogicidle.lua:504), so calling this from
--- attack state yanks the medic out of the fight and back toward its owner. `distance` is the idle
--- relocate threshold (coplogicidle.lua:1087): the medic re-paths once it drifts past FOLLOW_DISTANCE.
+-- Re-path the medic to its owner on a tight leash. A fresh "follow" objective runs through
+-- on_new_objective and exits to "travel" (coplogicidle.lua:504), yanking it out of any fight.
+-- `distance` is the idle relocate threshold (coplogicidle.lua:1087).
 local function set_follow_objective(medic_unit, owner_unit)
 	if not (alive(medic_unit) and medic_unit:brain() and alive(owner_unit)) then
 		return
@@ -279,10 +265,9 @@ local function spawn_medic_for(peer_id)
 		return
 	end
 
-	-- A raw World:spawn_unit cop self-activates its brain but has data.team == nil, which
-	-- crashes CopLogicTravel (get_pathing_prio indexes data.team.id) before the 0.1s convert
-	-- runs. Mirror ElementSpawnEnemyDummy:produce — set an idle spawn AI and assign the
-	-- combatant team synchronously so data.team exists before the brain ticks travel logic.
+	-- Raw World:spawn_unit leaves data.team nil → CopLogicTravel crash before convert.
+	-- Mirror ElementSpawnEnemyDummy: idle spawn AI + combatant team, synchronously.
+	-- See pd2_spawn_unit_needs_set_char_team.md.
 	pcall(function()
 		spawned:brain():set_spawn_ai({ init_state = "idle" })
 		managers.groupai:state():set_char_team(spawned, tweak_data.levels:get_default_team_ID("combatant"))
@@ -377,10 +362,9 @@ local function host_aura_tick()
 	end
 end
 
--- Tight-leash tick: if a medic strays beyond LEASH_DISTANCE while not already travelling,
--- re-issue its follow objective. The fresh "follow" forces on_new_objective into "travel"
--- (coplogicidle.lua:504), pulling the medic out of any fight back to its owner. The "travel"
--- guard avoids re-pathing every tick while it is already running home (would stutter).
+-- Tight-leash tick: a medic past LEASH_DISTANCE and not already travelling gets re-issued
+-- a follow (forces on_new_objective → travel, pulling it home). The "travel" guard avoids
+-- re-pathing every tick while it's already running home (would stutter).
 local function host_leash_tick()
 	if not Network:is_server() or not is_playing() then
 		return

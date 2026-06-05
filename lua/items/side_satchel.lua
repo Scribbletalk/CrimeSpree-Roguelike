@@ -1,10 +1,7 @@
 -- Side Satchel (wildcard, passive) — DOUBLES the carry cap of mission specials
--- (C4, keycards, planks, etc.) and grants +20% movement speed while carrying a
--- loot bag. Blacklist excludes items where doubling is meaningless.
---
--- Pure passive: no cooldown, no dispatcher registration. All effects gate on
--- owns_side_satchel() (in_csr_heist + owned). Local-player-scoped; remote
--- Side Satchel owners apply their own bump locally.
+-- (C4, keycards, planks…) and +20% move speed while carrying a loot bag. Blacklist
+-- excludes items where doubling is meaningless. No cooldown/dispatcher; all effects
+-- gate on owns_side_satchel(). Local-player-scoped (remote owners bump locally).
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return

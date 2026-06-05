@@ -1,5 +1,5 @@
 -- Dearest Possession (rare) — overheal at full HP becomes a temporary shield.
--- Shield cap = base MaxArmor * 0.5 * stacks; decays in 5s ticks at 8.33% (1 stack drains ~30s).
+-- Shield cap = base MaxHealth * 0.5 * stacks; decays in 5s ticks at 5% (1 stack drains ~50s).
 -- Drains BEFORE base armor on incoming damage; displays in vanilla's absorb HUD chunk.
 
 if not (_G.CSR and _G.CSR.register_item) then
@@ -7,7 +7,7 @@ if not (_G.CSR and _G.CSR.register_item) then
 end
 
 local CAP_PCT = 0.5
-local DECAY_RATE = 0.01666
+local DECAY_RATE = 0.01
 local DRAIN_INTERVAL = 5.0
 
 _G.CSR.register_item({
@@ -56,7 +56,7 @@ _G.CSR.register_item({
 								return
 							end
 							-- Bank excess into shield (capped).
-							local cap = max_armor * CAP_PCT * stacks
+							local cap = self:_max_health() * CAP_PCT * stacks
 							local cur = self._csr_dp_armor or 0
 							local new_bonus = math.min(cap, cur + (health - eff_max_hp))
 							if new_bonus > cur then
@@ -112,7 +112,7 @@ _G.CSR.register_item({
 				self._csr_dp_drain_timer = (self._csr_dp_drain_timer or 0) + dt
 				if self._csr_dp_drain_timer >= DRAIN_INTERVAL then
 					self._csr_dp_drain_timer = self._csr_dp_drain_timer - DRAIN_INTERVAL
-					local decayed = self:_max_armor() * DECAY_RATE * DRAIN_INTERVAL
+					local decayed = self:_max_health() * DECAY_RATE * DRAIN_INTERVAL
 					self._csr_dp_armor = math.max(0, bonus - decayed)
 				end
 

@@ -81,6 +81,17 @@ function CSRHUDStageEndScreen:show()
 	self._backdrop:show()
 end
 
+-- Destroy the backdrop (mission-name ghost lives on the shared "menu" workspace). Vanilla never
+-- closes the endscreen HUD on a normal exit -- it relies on the full main-menu rebuild. CSR's
+-- return-to-lobby reuses the workspace, so we must tear the backdrop down ourselves; called from
+-- missions_wiring.lua when the lobby surface builds.
+function CSRHUDStageEndScreen:close()
+	if self._backdrop then
+		self._backdrop:close()
+		self._backdrop = nil
+	end
+end
+
 function CSRHUDStageEndScreen:update(t, dt) end
 
 function CSRHUDStageEndScreen:update_layout()

@@ -96,6 +96,9 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 		-- New mission set — host/SP only (guest's lobby is driven by host).
 		if not guesting then
 			managers.csr:generate_mission_set()
+			-- Flag the modifiers THIS mission unlocked for the panel's blue tint + siren (per-mission
+			-- precision; guests detect lazily on panel build once the host's rank syncs).
+			managers.csr:refresh_modifier_highlight()
 		end
 		log_csr(
 			"mission completed: +"
@@ -118,6 +121,28 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 		-- Failed: run stays active but LOCKED until Continue (paid) or End Spree.
 		managers.csr:mark_failed()
 		log("[CSR] mission FAILED: run marked failed (locked until Continue/End Spree)")
+	end
+
+	-- Heist resolved cleanly (win or wipe) -> clear the loss-penalty in-flight flag so the grace
+	-- timer and crash-detect can't fire for a finished heist. Host/SP only (guest never set it).
+	if managers.csr.clear_in_heist and not (managers.csr.is_guesting and managers.csr:is_guesting()) then
+		managers.csr:clear_in_heist()
+	end
+end)
+
+-- Destroy the CSR end-screen backdrop (mission-name ghost) while its Lua handle is still alive.
+-- Returning to the menu runs Setup:load_start_menu -> init_managers, which rebuilds HUDManager
+-- (so _hud_stage_endscreen goes nil) but leaves the MenuBackdropGUI panel orphaned on the C++
+-- fullscreen_workspace. The lobby/on_enter_lobby teardowns run AFTER that reinit and find nil,
+-- so the ghost bled under the "CRIME SPREE ROGUELIKE" header. at_exit fires pre-reinit. Gate on
+-- our metatable so non-CSR endscreens are untouched.
+Hooks:PostHook(MissionEndState, "at_exit", "CSR_MissionLifecycle_TeardownEndscreenBackdrop", function()
+	local es = managers.hud and managers.hud._hud_stage_endscreen
+	local is_csr = es ~= nil and CSRHUDStageEndScreen ~= nil and getmetatable(es) == CSRHUDStageEndScreen
+	if is_csr and es.close then
+		es:close()
+		managers.hud._hud_stage_endscreen = nil
+		log_csr("at_exit: CSR end-screen backdrop torn down (pre-reinit)")
 	end
 end)
 

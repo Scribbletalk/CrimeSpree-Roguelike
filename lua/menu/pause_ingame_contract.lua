@@ -132,65 +132,74 @@ local function csr_collect_peers(mgr)
 	return out
 end
 
--- Difficulty row: "DIFFICULTY:"  [risk skulls]  <NAME>, all on one centered line. Skulls use the
--- full risk_* icons (active = red, inactive = white@0.25) exactly like the lobby creation screen.
--- The live heist difficulty is Global.game_settings.difficulty (internal id), with managers.csr as
--- fallback; both the skull count and the name derive from it so they never disagree. Returns bottom y.
-local function csr_render_difficulty_row(parent, x, top, rank)
-	local diff = (Global.game_settings and Global.game_settings.difficulty)
-		or (managers.csr and managers.csr:difficulty())
-		or "normal"
-	local difficulty_id = (tweak_data.difficulty_to_index and tweak_data:difficulty_to_index(diff)) or 2
-	local stars = math.max(0, difficulty_id - 2)
+-- Status header, identical to the lobby's row above the mission cards (_create_status_bar):
+-- MISSIONS COMPLETED (left) | RANK: N <glyph> (center) | DIFFICULTY: NAME (right), one row.
+-- White label + yellow value via set_range_color; reuses the lobby loc keys + getters so the
+-- wording and values read 1:1 with the lobby (guest sees the host's figures). Returns bottom y.
+local function csr_render_status_header(parent, top, w)
+	local mgr = managers.csr
+	local highlight = Color(1, 1, 1, 0)
+	local cs_glyph = utf8.char(0xE018)
+	local row_h = tweak_data.menu.pd2_medium_font_size
+	local font = tweak_data.menu.pd2_medium_font
+	local font_size = tweak_data.menu.pd2_medium_font_size
 
-	local label = parent:text({
-		text = managers.localization:to_upper_text("csr_pause_difficulty"),
-		font = tweak_data.menu.pd2_medium_font,
-		font_size = tweak_data.menu.pd2_medium_font_size,
-		color = tweak_data.screen_colors.text,
+	local missions_prefix = managers.localization:to_upper_text("csr_lobby_missions_completed") .. ": "
+	local missions_done = (mgr.mp_host_missions_completed and mgr:mp_host_missions_completed())
+		or mgr:missions_completed()
+	local missions_str = missions_prefix .. tostring(missions_done)
+	local missions_text = parent:text({
+		x = 0,
+		y = top,
+		w = w,
+		h = row_h,
+		vertical = "bottom",
 		align = "left",
+		text = missions_str,
+		color = Color.white,
+		font = font,
+		font_size = font_size,
 		layer = 1,
 	})
-	managers.hud:make_fine_text(label)
-	local row_h = label:h()
-	local center_y = top + row_h / 2
-	label:set_left(x)
-	label:set_center_y(center_y)
+	missions_text:set_range_color(utf8.len(missions_prefix), utf8.len(missions_str), highlight)
 
-	-- Difficulty name; red above normal (matches crimenet), white otherwise.
-	local last_right = label:right()
-	local name_id = tweak_data.difficulty_name_ids and tweak_data.difficulty_name_ids[diff]
-	if name_id then
-		local name = parent:text({
-			text = managers.localization:to_upper_text(name_id),
-			font = tweak_data.menu.pd2_medium_font,
-			font_size = tweak_data.menu.pd2_medium_font_size,
-			color = stars > 0 and tweak_data.screen_colors.risk or tweak_data.screen_colors.text,
-			align = "left",
-			layer = 1,
-		})
-		managers.hud:make_fine_text(name)
-		name:set_left(last_right + 8)
-		name:set_center_y(center_y)
-		last_right = name:right()
-	end
+	local rank_prefix = managers.localization:to_upper_text("csr_lobby_rank") .. ": "
+	local rank_str = rank_prefix .. tostring(mgr:host_rank()) .. " " .. cs_glyph
+	local rank_text = parent:text({
+		x = 0,
+		y = top,
+		w = w,
+		h = row_h,
+		vertical = "bottom",
+		align = "center",
+		text = rank_str,
+		color = Color.white,
+		font = font,
+		font_size = font_size,
+		layer = 1,
+	})
+	rank_text:set_range_color(utf8.len(rank_prefix), utf8.len(rank_str), highlight)
 
-	if rank then
-		local prefix = managers.localization:to_upper_text("csr_pause_rank") .. " "
-		local cs_glyph = utf8.char(0xE018)
-		local rank_t = parent:text({
-			text = prefix .. tostring(rank) .. " " .. cs_glyph,
-			font = tweak_data.menu.pd2_medium_font,
-			font_size = tweak_data.menu.pd2_medium_font_size,
-			color = tweak_data.screen_colors.text,
-			align = "left",
-			layer = 1,
-		})
-		managers.hud:make_fine_text(rank_t)
-		rank_t:set_left(last_right + 16)
-		rank_t:set_center_y(center_y)
-		rank_t:set_range_color(utf8.len(prefix), utf8.len(rank_t:text()), tweak_data.screen_colors.crime_spree_risk)
-	end
+	-- While guesting show the HOST's difficulty; nil falls back to own.
+	local diff_id = (mgr.mp_host_difficulty and mgr:mp_host_difficulty()) or mgr:difficulty()
+	local diff_name_id = tweak_data.difficulty_name_ids[diff_id]
+	local diff_text = diff_name_id and managers.localization:to_upper_text(diff_name_id) or tostring(diff_id)
+	local diff_prefix = managers.localization:to_upper_text("csr_lobby_difficulty") .. ": "
+	local diff_full = diff_prefix .. diff_text
+	local diff_label = parent:text({
+		x = 0,
+		y = top,
+		w = w,
+		h = row_h,
+		vertical = "bottom",
+		align = "right",
+		text = diff_full,
+		color = Color.white,
+		font = font,
+		font_size = font_size,
+		layer = 1,
+	})
+	diff_label:set_range_color(utf8.len(diff_prefix), utf8.len(diff_full), highlight)
 
 	return top + row_h
 end
@@ -508,6 +517,11 @@ local PAUSE_TABS = {
 	{ key = "preferences", text = "Preferences", icon = "sidebar_filters" },
 }
 
+-- Remembers the last-selected pause tab across pause opens. Each ESC build is a fresh
+-- IngameContractGui instance, so the selection can't live on `self`; this session-scoped
+-- upvalue persists while the file stays loaded (one game session).
+local last_pause_tab = "items"
+
 -- Switch the active pause tab: flip content visibility, move the selected-row marker, drop the
 -- Items tooltip, and repopulate the dynamic panel so it reflects current state on (re)open.
 function IngameContractGui:_csr_set_pause_tab(key)
@@ -533,6 +547,7 @@ function IngameContractGui:_csr_set_pause_tab(key)
 	end
 
 	self._csr_active_tab = key
+	last_pause_tab = key
 
 	if key == "modifiers" and self._populate_modifiers_panel then
 		self:_populate_modifiers_panel()
@@ -567,6 +582,15 @@ Hooks:PostHook(IngameContractGui, "init", "CSR_IngameContract_Relayout", functio
 	self._panel:set_visible(true)
 	self._panel:clear()
 
+	-- Shrink to roughly the lobby CSR sidebar's height while keeping vanilla's top anchor.
+	-- Vanilla sized this panel full-height; the lobby sidebar runs from one title-height + 16
+	-- below the top to 1.5 large-fonts above the bottom (CSRSidebar:init / missions_menu _setup),
+	-- so its height is that span. Apply only the height here; self._panel keeps vanilla's top y.
+	local large_font = tweak_data.menu.pd2_large_font_size
+	local sidebar_top = large_font + 16
+	local sidebar_bottom = ws:panel():h() - large_font * 1.5
+	self._panel:set_h(sidebar_bottom - sidebar_top)
+
 	local padding = SystemInfo:platform() == Idstring("WIN32") and 10 or 5
 
 	-- Big title: the mission name, in the same spot vanilla drew "CONTRACT ...".
@@ -591,10 +615,9 @@ Hooks:PostHook(IngameContractGui, "init", "CSR_IngameContract_Relayout", functio
 		h = self._panel:h() - padding * 2,
 	})
 
-	local rank = managers.csr and managers.csr:rank() or 0
-	-- Difficulty row: "DIFFICULTY: [skulls] NAME    RANK: N <glyph>" all on one line.
-	-- Anchored at the panel top now that the Crime.net info / briefing block is gone.
-	local diff_bottom = csr_render_difficulty_row(text_panel, 0, 0, rank)
+	-- Status header: MISSIONS COMPLETED | RANK | DIFFICULTY, identical to the lobby's row
+	-- above the mission cards. Anchored at the panel top (the briefing block is gone).
+	local header_bottom = csr_render_status_header(text_panel, 0, text_panel:w())
 
 	-- Mini sidebar (left) + tabbed content (right). Tabs: Items (per-peer team grid), Modifiers,
 	-- Preferences. Modifiers/Preferences render via methods borrowed from CSRMissionsMenuComponent
@@ -606,7 +629,7 @@ Hooks:PostHook(IngameContractGui, "init", "CSR_IngameContract_Relayout", functio
 	self._feature_panels = nil
 	local mgr = managers.csr
 	if mgr and mgr.registered_items and CSRSidebarItem then
-		local section_top = diff_bottom + padding
+		local section_top = header_bottom + padding
 		local needed = tweak_data.menu.pd2_medium_font_size + 4 + PEER_HEADER_H + ITEM_ICON_MIN + 8
 		if text_panel:h() - section_top >= needed then
 			-- Sidebar container: narrow strip, full height of the items panel beside it.
@@ -703,7 +726,10 @@ Hooks:PostHook(IngameContractGui, "init", "CSR_IngameContract_Relayout", functio
 				self:_populate_preferences_panel()
 			end
 
-			self:_csr_set_pause_tab("items")
+			-- Restore the last-used tab; fall back to Items if that tab wasn't built this open
+			-- (e.g. Modifiers/Preferences absent when the renderer borrow failed).
+			local restore_tab = self._csr_sidebar_items[last_pause_tab] and last_pause_tab or "items"
+			self:_csr_set_pause_tab(restore_tab)
 		else
 			csr_log(
 				"[CSR] pause panel: no room for team items (avail=" .. tostring(text_panel:h() - section_top) .. ")"

@@ -98,16 +98,18 @@ local function csr_collect_heister_stats()
 	return out
 end
 
--- Force in_csr_heist() true while fn runs so the live item/passive hooks fold their buffs into
--- the vanilla getters this panel calls. Restored even on error (rawset back to the class method).
-local function with_csr_heist_forced(fn)
+-- Pin in_csr_heist() to `value` while fn runs so the live item/passive hooks (all gated on it)
+-- fold their buffs in (true) or stay out (false). MUST force BOTH directions: when this panel
+-- renders inside a heist the live gate is already true, so an un-forced base call would also be
+-- buffed → base == buffed → no tint. Restored even on error (instance shadow removed).
+local function with_csr_heist(value, fn)
 	local mgr = managers and managers.csr
 	if not (mgr and mgr.in_csr_heist) then
 		return fn()
 	end
 	local had = rawget(mgr, "in_csr_heist")
 	mgr.in_csr_heist = function()
-		return true
+		return value
 	end
 	local ok, res = pcall(fn)
 	mgr.in_csr_heist = had
@@ -265,10 +267,11 @@ function CSRMissionsMenuComponent:_populate_heister_panel()
 	local mgr = managers and managers.csr
 	local rank = (mgr and mgr.host_rank and mgr:host_rank()) or 0
 
-	-- Mechanism 1 (health/stamina/dodge): force in_csr_heist() true so the real hooks fold in.
-	-- base_stats = gate-off (vanilla); buffed_stats = gate-on. Distinct tables (no aliasing).
-	local base_stats = csr_collect_heister_stats()
-	local buffed_stats = with_csr_heist_forced(csr_collect_heister_stats) or csr_collect_heister_stats()
+	-- Mechanism 1 (health/stamina/dodge): the real hooks fold buffs into vanilla getters when the
+	-- gate is on. Force BOTH directions so the comparison is valid even mid-heist (live gate true):
+	-- base_stats = gate forced OFF (vanilla); buffed_stats = gate forced ON. Distinct tables.
+	local base_stats = with_csr_heist(false, csr_collect_heister_stats) or csr_collect_heister_stats()
+	local buffed_stats = with_csr_heist(true, csr_collect_heister_stats) or csr_collect_heister_stats()
 
 	-- Mechanism 2 (armor/movement): their buff hooks a fn the menu never calls — layer explicitly.
 	if mgr and mgr.owned then

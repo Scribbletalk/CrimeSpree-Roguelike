@@ -489,8 +489,7 @@ function MenuCallbackHandler:csr_continue()
 		level = managers.csr:rank(),
 		cost = cost,
 	}
-	local coins = 0
-	coins = managers.custom_safehouse:coins()
+	local coins = managers.custom_safehouse:coins()
 
 	if coins < cost then
 		local dialog_data = {
@@ -535,22 +534,29 @@ function MenuCallbackHandler:csr_continue()
 end
 
 function MenuCallbackHandler:_dialog_csr_continue_yes()
-	-- Rebuild the missions panel so failed-lock re-evaluates after clearing.
 	local cost = managers.csr:get_continue_cost()
 
 	managers.custom_safehouse:deduct_coins(cost, TelemetryConst.economy_origin.continue_crime_spree)
 	managers.csr:clear_failed()
 
-	local logic = managers.menu:active_menu() and managers.menu:active_menu().logic
-	if logic then
-		local node = logic:selected_node()
-		local name = node and node.parameters and node:parameters() and node:parameters().name
-
-		if name then
-			logic:refresh_node(name)
+	-- Re-apply the now-unlocked state IN PLACE on the live CSR component (Start back, Continue→Reroll
+	-- via _refresh_action_buttons). A full create_crime_spree_missions_gui rebuild from this dialog
+	-- callback unregisters/recreates the component, so the dialog's input-focus restore lands on a
+	-- stale component -> the whole CSR lobby goes unclickable. refresh() keeps input wiring intact.
+	local comp = managers.menu_component and managers.menu_component:crime_spree_missions_gui()
+	if comp and comp.refresh and CSRMissionsMenuComponent ~= nil and getmetatable(comp) == CSRMissionsMenuComponent then
+		comp:refresh()
+	else
+		-- Fallback for a vanilla component / unexpected state: original rebuild path.
+		local logic = managers.menu:active_menu() and managers.menu:active_menu().logic
+		if logic then
+			local node = logic:selected_node()
+			local name = node and node.parameters and node:parameters() and node:parameters().name
+			if name then
+				logic:refresh_node(name)
+			end
+			managers.menu_component:create_crime_spree_missions_gui(node)
 		end
-
-		managers.menu_component:create_crime_spree_missions_gui(node)
 	end
 
 	WalletGuiObject.refresh()
@@ -706,7 +712,10 @@ function MenuCallbackHandler:csr_select_modifier()
 end
 
 function MenuCallbackHandler:csr_start_game()
-	if not managers.csr or managers.csr:current_mission() == nil then
+	-- A failed run is locked: Start is hidden, but the hidden button can still be hit via
+	-- confirm_pressed/mouse (Diesel inside() ignores visibility). Gate the launch here so a
+	-- failed run can never start a (buggy) heist until Continue is paid or the spree ended.
+	if not managers.csr or managers.csr:current_mission() == nil or managers.csr:has_failed() then
 		managers.menu:post_event("menu_error")
 	else
 		self:start_the_game()

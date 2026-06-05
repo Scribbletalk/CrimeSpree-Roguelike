@@ -1,5 +1,7 @@
--- Plush Shark (rare) — guardian angel: on the LAST down before custody, cancel
--- it (heal full + restore one down + armor) and grant long invulnerability.
+-- Plush Shark (rare) — guardian angel. Fires once per life to cancel a death:
+--   (1) the LAST down before custody (HP hits 0 on the final life), and
+--   (2) the bleed-out / incapacitated timer running out (any downs remaining).
+-- Either way: heal full + restore one down + armor + long invulnerability.
 -- Cross-item priority with The Edge: see csr_emergency_heal_priority.md.
 
 if not (_G.CSR and _G.CSR.register_item) then
@@ -99,21 +101,31 @@ local function plush_push_radial(remaining, total)
 	end
 end
 
--- Cancel bleed-out + grant invuln. Returns true if it fired.
-local function try_plush_guardian(self, mgr, now)
+-- Shared save body: heal full + restore one down + grant invuln. Returns true if it fired.
+-- already_downed = player is in bleed_out/incapacitated (timer-expiry path) -> revive out first.
+local function plush_fire_guardian(self, mgr, now, already_downed)
 	if mgr:item_heal_blocked() then
 		return false
 	end
 	if not self._csr_guardian_armed then
 		return false
 	end
-	-- Only the LAST down before custody.
-	if (self:get_revives() or 0) ~= 1 then
-		return false
-	end
 	local stacks = mgr:owned("plush_shark")
 	if stacks <= 0 then
 		return false
+	end
+
+	if already_downed then
+		-- Exit bleed_out before healing; revive() handles state + HUD + net sync.
+		-- It no-ops on _revives == 0, so floor to 1 (defensive — the last-life down is
+		-- caught earlier in _check_bleed_out and never reaches this path).
+		if (self:get_revives() or 0) <= 0 then
+			self._revives = Application:digest_value(1, true)
+			if self._send_set_revives then
+				self:_send_set_revives()
+			end
+		end
+		self:revive(true)
 	end
 
 	local max_hp = self:_max_health()
@@ -145,6 +157,14 @@ local function try_plush_guardian(self, mgr, now)
 		mgr:debug_log(string.format("plush_shark guardian fired (invuln %.0fs)", duration))
 	end
 	return true
+end
+
+-- _check_bleed_out trigger: only the LAST down before custody (revives == 1 pre-decrement).
+local function try_plush_guardian(self, mgr, now)
+	if (self:get_revives() or 0) ~= 1 then
+		return false
+	end
+	return plush_fire_guardian(self, mgr, now, false)
 end
 
 local function csr_mgr()
@@ -183,6 +203,25 @@ _G.CSR.register_item({
 				end
 				try_plush_guardian(self, mgr, TimerManager:game():time())
 			end)
+
+			-- Bleed-out / incapacitated timer expiry -> save instead of custody, regardless of
+			-- remaining downs. Raw-wrap because we must flip the return true (timer up -> custody)
+			-- to false to cancel the transition before IngameBleedOutState calls on_enter_custody.
+			local orig_update_downed = PlayerDamage.update_downed
+			function PlayerDamage:update_downed(t, dt)
+				local expired = orig_update_downed(self, t, dt)
+				if expired then
+					local mgr = csr_mgr()
+					if
+						mgr
+						and is_local_pd(self)
+						and plush_fire_guardian(self, mgr, TimerManager:game():time(), true)
+					then
+						return false
+					end
+				end
+				return expired
+			end
 
 			-- Invuln gate. Returning nothing keeps any earlier hook's result (e.g. The Edge's).
 			Hooks:PostHook(PlayerDamage, "_chk_can_take_dmg", "CSR_PlushShark_Invuln", function(self)

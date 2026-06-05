@@ -1,5 +1,7 @@
 -- HUD Wildcard Slot (U1) — shows the local player's owned wildcard to the LEFT
--- of the health circle, with a counterclockwise radial recharge reveal.
+-- of the health circle. Two render modes, switched live via the hud_wildcard_use_bar
+-- preference: icon (counterclockwise radial recharge reveal, default) or a vertical
+-- magenta bar that fills bottom-to-top as the cooldown depletes.
 --
 -- Direction trick: Diesel's VertexColorTexturedRadial sweeps clockwise only, and
 -- the texture_rect negative-width UV flip that reverses the sweep ALSO mirrors
@@ -87,6 +89,18 @@ local function apply_icon_texture(slot_panel, item_type)
 	end
 end
 
+-- Bar mode is opt-in via the hud_wildcard_use_bar preference (nil/unset = icon mode).
+local function use_bar_mode()
+	return managers and managers.csr and managers.csr:setting("hud_wildcard_use_bar") == true
+end
+
+local function set_layer_visible(slot_panel, name, visible)
+	local child = slot_panel:child(name)
+	if child and child:visible() ~= visible then
+		child:set_visible(visible)
+	end
+end
+
 -- State held in this Lua table (Diesel panels are userdata and silently drop
 -- arbitrary field assignments). Each panel gets its own state closure at hook time.
 local function update_widget(slot_panel, state, dt)
@@ -133,9 +147,33 @@ local function update_widget(slot_panel, state, dt)
 		end
 	end
 
-	-- progress = 1 fresh-press (icon empty) -> 0 ready (icon fully drawn). Color.r
-	-- drives how much of the icon renders CCW via VertexColorTexturedRadial.
-	icon:set_color(Color(1, 1 - state.displayed_progress, 1, 1))
+	local progress = state.displayed_progress
+	local bar_mode = use_bar_mode()
+
+	-- Both layer sets are pre-built, so switching is a pure visibility flip — the
+	-- Preferences toggle takes effect live, no HUD rebuild on change.
+	set_layer_visible(slot_panel, "wildcard_icon_dim", not bar_mode)
+	set_layer_visible(slot_panel, "wildcard_icon", not bar_mode)
+	set_layer_visible(slot_panel, "wildcard_bar_frame", bar_mode)
+	set_layer_visible(slot_panel, "wildcard_bar_bg", bar_mode)
+	set_layer_visible(slot_panel, "wildcard_bar_fill", bar_mode)
+
+	if bar_mode then
+		-- progress=1 fresh-press (bar empty) -> 0 ready (bar full). Diesel Y is top-down,
+		-- so growing from the bottom shrinks h and raises y together.
+		local fill = slot_panel:child("wildcard_bar_fill")
+		local bg = slot_panel:child("wildcard_bar_bg")
+		if fill and bg then
+			local h_total = bg:h()
+			local fill_h = math.floor(h_total * (1 - progress) + 0.5)
+			fill:set_h(fill_h)
+			fill:set_y(bg:y() + h_total - fill_h)
+		end
+	else
+		-- progress = 1 fresh-press (icon empty) -> 0 ready (icon fully drawn). Color.r
+		-- drives how much of the icon renders CCW via VertexColorTexturedRadial.
+		icon:set_color(Color(1, 1 - progress, 1, 1))
+	end
 end
 
 if HUDTeammate and not _G._CSR_WILDCARD_SLOT_HOOKED then
@@ -192,6 +230,49 @@ if HUDTeammate and not _G._CSR_WILDCARD_SLOT_HOOKED then
 			color = Color(1, 1, 1, 1),
 			w = size,
 			h = size,
+		})
+
+		-- Bar-mode layers (hidden by default; update_widget reveals them when the
+		-- hud_wildcard_use_bar preference is on). Frame/bg/fill sandwich; the magenta
+		-- fill uses blend_mode="add" so it glows like the radial's additive health fill.
+		local bar_w = 10
+		local bar_x = size - bar_w
+		local magenta = Color(1, 0.9, 0.27, 0.72)
+		local frame_color = Color(1, 0.4, 0.4, 0.4)
+		local bg_color = Color(1, 0.05, 0.05, 0.05)
+		slot_panel:rect({
+			name = "wildcard_bar_frame",
+			color = frame_color,
+			alpha = 1,
+			layer = 0,
+			visible = false,
+			x = bar_x,
+			y = 0,
+			w = bar_w,
+			h = size,
+		})
+		slot_panel:rect({
+			name = "wildcard_bar_bg",
+			color = bg_color,
+			alpha = 0.35,
+			layer = 1,
+			visible = false,
+			x = bar_x + 1,
+			y = 1,
+			w = bar_w - 2,
+			h = size - 2,
+		})
+		slot_panel:rect({
+			name = "wildcard_bar_fill",
+			color = magenta,
+			alpha = 1,
+			blend_mode = "add",
+			layer = 2,
+			visible = false,
+			x = bar_x + 1,
+			y = 1,
+			w = bar_w - 2,
+			h = size - 2,
 		})
 
 		local state = { current = nil, displayed_progress = nil }

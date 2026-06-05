@@ -4,10 +4,10 @@ if not (_G.CSR and _G.CSR.register_item) then
 	return
 end
 
-local K = 0.05
+local K = 1.0
 
 local function revive_chance(stacks)
-	return 400 - 370 / (1 + K * (stacks - 1))
+	return 100 - 50 / (1 + K * (stacks - 1))
 end
 
 local function bleedout_penalty(stacks)

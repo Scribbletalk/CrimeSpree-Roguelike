@@ -46,7 +46,8 @@ local function apply_equalizer(self, attack_data)
 		return
 	end
 	if is_special(self) then
-		attack_data.damage = attack_data.damage * (1 + BONUS * stacks)
+		-- Multiplicative so 2 stacks @ +50% = x2.25, mirroring the penalty.
+		attack_data.damage = attack_data.damage * (1 + BONUS) ^ stacks
 	else
 		-- Multiplicative so 2 stacks @ 50% = x0.25, not 0.
 		attack_data.damage = math.max(1, attack_data.damage * (1 - PENALTY) ^ stacks)

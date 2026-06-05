@@ -302,6 +302,14 @@
 			"script_path": "lua/managers/mp_session.lua"
 		},
 		{
+			"hook_id": "lib/states/ingamewaitingforplayers",
+			"script_path": "lua/intercepts/quit_penalty.lua"
+		},
+		{
+			"hook_id": "lib/managers/menumanager",
+			"script_path": "lua/intercepts/quit_penalty.lua"
+		},
+		{
 			"hook_id": "lib/setups/gamesetup",
 			"script_path": "lua/core/heist_packages.lua"
 		},

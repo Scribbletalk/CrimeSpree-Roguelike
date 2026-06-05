@@ -1,12 +1,7 @@
--- Turron (wildcard) — on key press: instant +33% max HP heal + a 5s window of
--- 33% damage reduction. 90s cooldown. Stealth-allowed (heal/DR aren't loud).
---
--- Active item: registered with the wildcard dispatcher. The dispatcher already
--- gates in_csr_heist / down / arrested before calling us.
---
--- DR is applied via a PreHook on PlayerDamage:_calc_armor_damage — the single
--- funnel for every damage variant (bullet/melee/explosion/fire), so one hook
--- scales armor consumption AND leftover-to-HP uniformly.
+-- Turron (wildcard) — on key press: instant +33% max HP heal + 5s of 33% damage
+-- reduction. 90s cooldown. Stealth-allowed (heal/DR aren't loud). Active item via the
+-- wildcard dispatcher (gates in_csr_heist/down/arrested). DR via one PreHook on
+-- PlayerDamage:_calc_armor_damage — the funnel every damage variant passes through.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
