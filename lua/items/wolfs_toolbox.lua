@@ -98,6 +98,12 @@ _G.CSR.register_item({
 	-- Icon id is "toolbox" in hudicons.lua (legacy name).
 	icon = "csr_toolbox",
 	icon_scale = 1.0,
+	loc_macros = {
+		normal_base = string.format("%g", NORMAL_BASE),
+		normal_extra_s = string.format("%gs", NORMAL_EXTRA),
+		special_base = string.format("%g", SPECIAL_BASE),
+		special_extra_s = string.format("%gs", SPECIAL_EXTRA),
+	},
 
 	hooks = {
 		["lib/units/enemies/cop/copdamage"] = function()

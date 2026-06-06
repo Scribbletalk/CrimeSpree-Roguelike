@@ -111,6 +111,11 @@ _G.CSR.register_item({
 	notes = "csr_logbook_half_a_glass_notes",
 	icon = "csr_half_a_glass",
 	icon_scale = 1.0,
+	loc_macros = {
+		refill_pct = string.format("%g", REFILL * 100),
+		first_pct = string.format("%g", MAX_AMMO_FIRST * 100),
+		extra_pct = string.format("%g", MAX_AMMO_EXTRA * 100),
+	},
 
 	hooks = {
 		["lib/units/pickups/gageassignmentbase"] = function()

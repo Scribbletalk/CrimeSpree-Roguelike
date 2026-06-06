@@ -86,6 +86,9 @@ function CSRGameManager:register_item(def)
 		icon_scale = icon_scale,
 		-- Scrapper output; excluded from the selection-window roll.
 		is_scrap = def.is_scrap == true or nil,
+		-- Number macros for $-substitution in localized desc/effect/notes; single-sourced from the
+		-- def's tuning constants so a balance change auto-updates the text. Resolved via CSR.item_text.
+		loc_macros = def.loc_macros,
 		effect = effect,
 		on_apply = def.on_apply,
 		on_remove = def.on_remove,
@@ -206,6 +209,7 @@ local function csr_stealth_sequence(families, seed)
 			icon = f.icon,
 			class = f.class,
 			data = tier.data,
+			loc_macros = tier.loc_macros,
 		}
 	end
 	return out
@@ -248,6 +252,7 @@ function CSRGameManager:register_modifier(def)
 			icon = def.icon,
 			class = def.class,
 			data = def.data or {},
+			loc_macros = def.loc_macros,
 		}
 		mods.by_id[id] = entry
 		mods.loud[#mods.loud + 1] = entry
@@ -326,8 +331,9 @@ end
 -- The slot becomes `false` and is persisted, so RE-INSTALLING the add-on does NOT restore it
 -- to an in-progress spree -- it stays dropped until a fresh spree (start_run re-rolls). Run at
 -- init AFTER registrations replay (by_id reflects the currently installed add-ons). No backfill:
--- a dropped slot is just skipped, the spree keeps one fewer active modifier. (Stealth entries are
--- full self-contained tables, not by_id-resolved, so they are left as-is.)
+-- a dropped slot is just skipped, the spree keeps one fewer active modifier. (Stealth slots are
+-- left as-is here: active_modifiers re-resolves them from the live registry per use, so a removed
+-- stealth family drops out and a reworked one refreshes there -- no storage tombstone needed.)
 function CSRGameManager:_prune_modifier_seq()
 	local seq = self._state.modifier_seq
 	if not (seq and type(seq.loud) == "table") then
@@ -347,8 +353,36 @@ function CSRGameManager:_prune_modifier_seq()
 	end
 end
 
+-- Re-synthesize a frozen stealth-seq slot from the LIVE registry. The family is looked up by
+-- the family id embedded in the stored entry id ("family_<tier>"); only that id (the frozen tier
+-- identity) is read -- the stored entry's baked class/data/loc are ignored. Mirrors loud's by_id
+-- re-resolution: a reworked mechanic (changed class/data/loc) applies to an in-progress spree, an
+-- old-version save's stale baked payload is replaced with the current effect, and a since-removed
+-- family drops out (returns nil). Fixes old saves applying the pre-rework stealth mechanic.
+function CSRGameManager:_resolve_stealth_entry(stored)
+	if not stored or stored == false then
+		return nil
+	end
+	local fam_id, tier_n = string.match(tostring(stored.id), "^(.-)_(%d+)$")
+	local fam = fam_id and self._registry.modifiers.by_id[fam_id]
+	local tier = fam and fam.tiers and fam.tiers[tonumber(tier_n)]
+	if not tier then
+		return nil
+	end
+	return {
+		id = stored.id,
+		loc = tier.loc,
+		icon = fam.icon,
+		class = fam.class,
+		data = tier.data,
+		loc_macros = tier.loc_macros,
+	}
+end
+
 -- Active modifiers for the current run: the frozen per-spree sequence sliced to rank
 -- (one more unlocks every 2 ranks). Frozen at first use, so pool changes never reshuffle it.
+-- Both categories re-resolve their payload from the live registry (loud by id, stealth by tier
+-- identity) so reworked mechanics reach in-progress sprees and removed modifiers drop out.
 function CSRGameManager:active_modifiers(category)
 	local rank = self:host_rank() or 0
 	if rank <= 0 then
@@ -366,6 +400,8 @@ function CSRGameManager:active_modifiers(category)
 		local entry = seq[i]
 		if category == "loud" then
 			entry = by_id[entry] -- stored as id; re-resolve so a since-removed modifier drops out
+		else
+			entry = self:_resolve_stealth_entry(entry) -- re-synthesize from live registry (rework / old-save migration)
 		end
 		if entry then
 			out[#out + 1] = entry
@@ -472,15 +508,23 @@ function CSRGameManager:apply_modifiers()
 		return
 	end
 
-	-- ModifierLessPagers mutates alarm_pager in place and never reverts (BaseModifier:destroy is a no-op).
-	-- Snapshot pristine arrays once; restore before every apply to prevent compounding.
+	-- ModifierLessPagers / ModifierCSRPagerResponse mutate alarm_pager in place and never revert
+	-- (BaseModifier:destroy is a no-op). Snapshot pristine arrays once; restore before every apply
+	-- to prevent compounding. call_duration is the pager ring window shrunk by Keen Dispatch.
 	local ap = tweak_data and tweak_data.player and tweak_data.player.alarm_pager
 	if ap and type(ap.bluff_success_chance) == "table" then
 		_G.CSR_PagerBaseline = _G.CSR_PagerBaseline
-			or { bluff = clone(ap.bluff_success_chance), skill = clone(ap.bluff_success_chance_w_skill) }
+			or {
+				bluff = clone(ap.bluff_success_chance),
+				skill = clone(ap.bluff_success_chance_w_skill),
+				call_duration = clone(ap.call_duration),
+			}
 		ap.bluff_success_chance = clone(_G.CSR_PagerBaseline.bluff)
 		if _G.CSR_PagerBaseline.skill then
 			ap.bluff_success_chance_w_skill = clone(_G.CSR_PagerBaseline.skill)
+		end
+		if _G.CSR_PagerBaseline.call_duration then
+			ap.call_duration = clone(_G.CSR_PagerBaseline.call_duration)
 		end
 	end
 

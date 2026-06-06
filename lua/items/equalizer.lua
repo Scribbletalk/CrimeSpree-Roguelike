@@ -64,6 +64,12 @@ _G.CSR.register_item({
 	icon = "csr_equalizer",
 	icon_scale = 0.9,
 
+	-- $bonus_mul / $penalty_mul fill csr_logbook_equalizer_effect.
+	loc_macros = {
+		bonus_mul = string.format("%g", 1 + BONUS),
+		penalty_mul = string.format("%g", 1 - PENALTY),
+	},
+
 	hooks = {
 		["lib/units/enemies/cop/copdamage"] = function()
 			if _G._CSR_EQUALIZER_HOOKED then

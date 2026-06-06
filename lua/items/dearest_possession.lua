@@ -19,6 +19,7 @@ _G.CSR.register_item({
 	notes = "csr_logbook_dearest_possession_notes",
 	icon = "csr_dearest_possession",
 	icon_scale = 1.0,
+	loc_macros = { cap_pct = string.format("%g", CAP_PCT * 100), drain_interval = DRAIN_INTERVAL },
 
 	hooks = {
 		["lib/units/beings/player/playerdamage"] = function()

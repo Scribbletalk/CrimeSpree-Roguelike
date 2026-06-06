@@ -1,7 +1,9 @@
--- Autodidact (loud modifier) -- Medic heal cooldown is 20% faster.
+-- Autodidact (loud modifier) -- Medic heal cooldown is faster.
 if not (_G.CSR and _G.CSR.register_modifier) then
 	return
 end
+
+local HEAL_SPEED_PCT = 20
 
 _G.CSR.register_modifier({
 	id = "heal_speed",
@@ -9,5 +11,6 @@ _G.CSR.register_modifier({
 	loc = "menu_cs_modifier_heal_speed",
 	icon = "crime_spree_medic_speed",
 	class = "ModifierHealSpeed",
-	data = { speed = { 20, "add" } },
+	data = { speed = { HEAL_SPEED_PCT, "add" } },
+	loc_macros = { pct = HEAL_SPEED_PCT },
 })

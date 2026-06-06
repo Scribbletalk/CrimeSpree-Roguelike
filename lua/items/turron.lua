@@ -169,6 +169,14 @@ _G.CSR.register_item({
 	icon = "csr_turron",
 	icon_scale = 1.0,
 
+	-- $heal_pct / $dr_pct / $dr_s / $cooldown_s fill csr_logbook_turron_effect.
+	loc_macros = {
+		heal_pct = string.format("%g", HEAL_PCT * 100),
+		dr_pct = string.format("%g", DR_PCT * 100),
+		dr_s = DR_DURATION,
+		cooldown_s = COOLDOWN,
+	},
+
 	hooks = {
 		["lib/units/beings/player/playerdamage"] = function()
 			if _G._CSR_TURRON_DR_HOOKED then

@@ -80,6 +80,11 @@ _G.CSR.register_item({
 	notes = "csr_logbook_lockes_beret_notes",
 	icon = "csr_lockes_beret",
 	icon_scale = 1.0,
+	loc_macros = {
+		first_pct = string.format("%g", FIRST_PCT * 100),
+		max_pct = string.format("%g", MAX_PCT * 100),
+		interval = INTERVAL,
+	},
 
 	hooks = {
 		["lib/managers/playermanager"] = function()

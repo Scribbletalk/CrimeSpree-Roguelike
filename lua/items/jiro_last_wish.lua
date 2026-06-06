@@ -4,6 +4,8 @@ if not (_G.CSR and _G.CSR.register_item) then
 	return
 end
 
+local MELEE_BONUS_PER_STACK = 1.0
+
 local function csr_owns_jiro()
 	local mgr = managers and managers.csr
 	if not mgr or not mgr.in_csr_heist or not mgr:in_csr_heist() then
@@ -21,6 +23,7 @@ _G.CSR.register_item({
 	notes = "csr_logbook_jiro_last_wish_notes",
 	icon = "csr_jiro_last_wish",
 	icon_scale = 1.0,
+	loc_macros = { melee_pct = string.format("%g", MELEE_BONUS_PER_STACK * 100) },
 
 	hooks = {
 		-- Melee damage: +100%/stack (multiplies dmg and dmg_effect).
@@ -39,7 +42,7 @@ _G.CSR.register_item({
 				if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 					return dmg, dmg_effect
 				end
-				local bonus = 1.0 * mgr:owned("jiro_last_wish")
+				local bonus = MELEE_BONUS_PER_STACK * mgr:owned("jiro_last_wish")
 				if bonus ~= 0 and type(dmg) == "number" then
 					local mul = 1 + bonus
 					dmg = dmg * mul

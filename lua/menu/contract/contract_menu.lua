@@ -145,7 +145,7 @@ function CSRContractMenuComponent:_setup()
 		wrap = true,
 		align = "left",
 		wrap_word = true,
-		text = managers.localization:text("cn_crime_spree_brief"),
+		text = managers.localization:text("csr_crime_spree_brief"),
 		w = text_w,
 		h = text_h,
 		font_size = font_size,

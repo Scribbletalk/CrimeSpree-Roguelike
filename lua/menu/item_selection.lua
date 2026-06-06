@@ -32,7 +32,7 @@ local function build_item_pool()
 			icon_scale = def.icon_scale or 1,
 			rarity = def.rarity or "common",
 			name = csr_loc(def.name) or string.upper(tostring(def.type)),
-			desc = csr_loc(def.desc) or "",
+			desc = _G.CSR.item_text(def.desc, def) or "",
 		}
 	end
 
@@ -42,8 +42,8 @@ local function build_item_pool()
 			id = "none",
 			icon = "dog_tags",
 			rarity = "common",
-			name = "NO ITEMS",
-			desc = "No items are available right now.",
+			name = managers.localization:text("csr_item_selection_none_name"),
+			desc = managers.localization:text("csr_item_selection_none_desc"),
 		}
 	end
 

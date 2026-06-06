@@ -198,13 +198,13 @@ function CSRMissionsMenuComponent:_populate_preferences_panel()
 		}
 	end
 
-	local btn = make_toggle("BLOCK HEALING EFFECTS FROM ITEMS", "block_item_heal")
+	local btn = make_toggle(managers.localization:text("csr_pref_block_item_heal"), "block_item_heal")
 	table.insert(self._preferences_buttons, btn)
 
-	local wc_bar = make_toggle("ALTERNATIVE HUD DISPLAY FOR WILDCARDS", "hud_wildcard_use_bar")
+	local wc_bar = make_toggle(managers.localization:text("csr_pref_hud_wildcard_bar"), "hud_wildcard_use_bar")
 	table.insert(self._preferences_buttons, wc_bar)
 
-	local sfx = make_slider("ITEM SOUND VOLUME", "sfx_volume")
+	local sfx = make_slider(managers.localization:text("csr_pref_item_sound_volume"), "sfx_volume")
 	table.insert(self._preferences_buttons, sfx)
 end
 

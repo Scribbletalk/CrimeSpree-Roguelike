@@ -33,11 +33,11 @@ local function resolve_icon(icon)
 end
 
 -- :text() returns "ERROR <key>" for unknown keys; blank that out.
-local function loc_or_blank(key)
+local function loc_or_blank(key, src)
 	if not key or not managers.localization then
 		return ""
 	end
-	local s = managers.localization:text(key)
+	local s = managers.localization:text(key, src and src.loc_macros or nil)
 	if s and string.find(s, "^ERROR", 1) then
 		return ""
 	end
@@ -351,7 +351,7 @@ function CrimeSpreeBlackMarketShopPage:_build_card_visuals(card, entry)
 		layer = 2,
 	})
 
-	local full_desc = loc_or_blank(entry.desc)
+	local full_desc = loc_or_blank(entry.desc, entry)
 	local main_desc, but_desc = string.match(full_desc, "^(.-)\n(But.+)$")
 	card.effect_text = panel:text({
 		name = "effect",

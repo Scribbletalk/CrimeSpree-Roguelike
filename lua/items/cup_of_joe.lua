@@ -4,6 +4,9 @@ if not (_G.CSR and _G.CSR.register_item) then
 	return
 end
 
+-- Tuning -- single source: feeds both the stamina hook and the $-macros in the localized effect text.
+local STAMINA_PER = 0.10
+
 _G.CSR.register_item({
 	type = "cup_of_joe",
 	rarity = "common",
@@ -13,6 +16,9 @@ _G.CSR.register_item({
 	notes = "csr_logbook_cup_of_joe_notes",
 	icon = "csr_cup_of_joe",
 	icon_scale = 1.0,
+
+	-- $stamina_pct fills csr_logbook_cup_of_joe_effect.
+	loc_macros = { stamina_pct = string.format("%g", STAMINA_PER * 100) },
 
 	hooks = {
 		["lib/managers/playermanager"] = function()
@@ -27,7 +33,7 @@ _G.CSR.register_item({
 				if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 					return v
 				end
-				return v + 0.10 * mgr:owned("cup_of_joe")
+				return v + STAMINA_PER * mgr:owned("cup_of_joe")
 			end
 		end,
 	},

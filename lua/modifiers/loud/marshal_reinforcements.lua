@@ -6,13 +6,16 @@ if not (_G.CSR and _G.CSR.register_modifier) then
 	return
 end
 
+local AMOUNT = 2
+
 _G.CSR.register_modifier({
 	id = "heavy_sniper",
 	category = "loud",
 	loc = "menu_cs_modifier_heavy_sniper",
 	icon = "crime_spree_heavy_sniper",
 	class = "ModifierHeavySniper",
-	data = { amount = { 2, "add" } },
+	data = { amount = { AMOUNT, "add" } },
+	loc_macros = { n = AMOUNT },
 
 	hooks = {
 		["lib/modifiers/modifierheavysniper"] = function()

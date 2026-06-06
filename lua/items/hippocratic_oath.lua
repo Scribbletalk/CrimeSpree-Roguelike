@@ -529,6 +529,14 @@ _G.CSR.register_item({
 	icon = "csr_hippocratic_oath",
 	icon_scale = 0.9,
 
+	-- $aura_radius / $tick_s / $heal_pct / $respawn_min fill csr_logbook_hippocratic_oath_effect.
+	loc_macros = {
+		aura_radius = string.format("%gm", AURA_RADIUS / 100),
+		tick_s = string.format("%g", AURA_TICK),
+		heal_pct = string.format("%g", HEAL_PCT * 100),
+		respawn_min = string.format("%g", RESPAWN_DELAY / 60),
+	},
+
 	hooks = {
 		["lib/managers/playermanager"] = function()
 			-- Install the per-frame tick + pulse + reset + MP handler from here (PlayerManager

@@ -217,6 +217,26 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 		is_new[i] = i > hl_floor
 	end
 
+	-- Stealth: collapse a tiered family to ONE row showing only its highest active tier (display-only;
+	-- the mechanic still uses every entry via apply_modifiers). The seq lists a family's tiers ascending,
+	-- so the last occurrence is the highest tier; it overwrites in place, keeping first-seen order and
+	-- carrying its new-flag (a family bumped this mission stays highlighted).
+	if is_stealth then
+		local seen, clist, cnew = {}, {}, {}
+		for i = 1, #list do
+			local entry = list[i]
+			local base = (entry.id and entry.id:match("^(.-)_%d+$")) or entry.id
+			local at = seen[base]
+			if at then
+				clist[at], cnew[at] = entry, is_new[i]
+			else
+				clist[#clist + 1], cnew[#clist + 1] = entry, is_new[i]
+				seen[base] = #clist
+			end
+		end
+		list, is_new = clist, cnew
+	end
+
 	-- Reverse so the newest-unlocked modifier appears first (view-only; the source list is untouched).
 	-- is_new rides along so each row keeps its new/old flag after the swap.
 	for i = 1, math.floor(#list / 2) do
@@ -232,7 +252,7 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 
 	for ri, entry in ipairs(list) do
 		-- Combined "Title\nBody" loc string -> name (top) + description (wrapped).
-		local full = (entry.loc and managers.localization and managers.localization:text(entry.loc)) or ""
+		local full = (entry.loc and managers.localization and _G.CSR.item_text(entry.loc, entry)) or ""
 		local title, body = full, ""
 		local nl = full:find("\n", 1, true)
 		if nl then

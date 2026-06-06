@@ -44,6 +44,10 @@ _G.CSR.register_item({
 	notes = "csr_logbook_rebar_notes",
 	icon = "csr_rebar",
 	icon_scale = 1.0,
+	loc_macros = {
+		base_bonus_pct = string.format("%g", BASE_BONUS * 100),
+		extra_bonus_pct = string.format("%g", EXTRA_BONUS * 100),
+	},
 
 	hooks = {
 		["lib/units/enemies/cop/copdamage"] = function()

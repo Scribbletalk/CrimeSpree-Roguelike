@@ -4,6 +4,8 @@ if not (_G.CSR and _G.CSR.register_item) then
 	return
 end
 
+local SPEED_BONUS = 0.10
+
 _G.CSR.register_item({
 	type = "duct_tape",
 	rarity = "common",
@@ -13,6 +15,7 @@ _G.CSR.register_item({
 	notes = "csr_logbook_duct_tape_notes",
 	icon = "csr_duct_tape",
 	icon_scale = 1.0,
+	loc_macros = { pct = string.format("%g", SPEED_BONUS * 100) },
 
 	hooks = {
 		["lib/units/interactions/interactionext"] = function()
@@ -37,7 +40,7 @@ _G.CSR.register_item({
 				if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 					return t
 				end
-				local bonus = 0.10 * mgr:owned("duct_tape")
+				local bonus = SPEED_BONUS * mgr:owned("duct_tape")
 				if bonus <= 0 then
 					return t
 				end

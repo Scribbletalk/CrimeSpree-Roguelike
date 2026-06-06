@@ -15,6 +15,9 @@ _G.CSR.register_item({
 	notes = "csr_logbook_evidence_rounds_notes",
 	icon = "csr_evidence_rounds",
 	icon_scale = 0.9,
+	loc_macros = {
+		per_stack_pct = string.format("%g", PER_STACK * 100),
+	},
 
 	hooks = {
 		["lib/units/weapons/raycastweaponbase"] = function()

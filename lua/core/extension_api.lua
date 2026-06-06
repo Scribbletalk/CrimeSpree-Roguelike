@@ -215,6 +215,16 @@ function _G.CSR.icon_data(raw)
 	return tweak_data.hud_icons:get_icon_data(raw)
 end
 
+-- Resolve an item/modifier loc key, substituting the def's number macros (def.loc_macros) so tuning
+-- constants defined once in the item file auto-fill $macros in the localized desc/effect/notes.
+-- `src` is any table carrying loc_macros (a registry entry / def / logbook item_data); nil-safe.
+function _G.CSR.item_text(key, src)
+	if not (managers and managers.localization) then
+		return key or ""
+	end
+	return managers.localization:text(key, src and src.loc_macros or nil)
+end
+
 -- Recursively dofile every .lua under `dir`; files self-register via register_item/modifier.
 local function run_lua_dir(dir, label)
 	local count = 0

@@ -308,7 +308,7 @@ end
 -- Exchange: sacrifice removed immediately, lid reopens + offer awarded after REOPEN_DELAY.
 local function use_copier(c)
 	if not c.offer_type or not c.tier then
-		hint("Copier has no offer", 2)
+		hint(managers.localization:text("csr_copier_no_offer"), 2)
 		return
 	end
 	if c.cycling then
@@ -323,7 +323,7 @@ local function use_copier(c)
 
 	local sacrifice = pick_sacrifice(c.tier, c.offer_type)
 	if not sacrifice then
-		hint("No " .. tostring(c.tier) .. " items in your inventory to sacrifice", 4)
+		hint(managers.localization:text("csr_copier_no_sacrifice", { tier = tostring(c.tier) }), 4)
 		return
 	end
 
@@ -355,7 +355,12 @@ local function use_copier(c)
 	end
 
 	if managers.chat then
-		managers.chat:_receive_message(1, tostring(sacrifice_name), "sacrificed!", color)
+		managers.chat:_receive_message(
+			1,
+			tostring(sacrifice_name),
+			managers.localization:text("csr_chat_sacrificed"),
+			color
+		)
 	end
 
 	-- Award offer when lid finishes reopening.
@@ -381,7 +386,12 @@ local function use_copier(c)
 		end
 
 		if managers.chat then
-			managers.chat:_receive_message(1, tostring(c.offer_name or c.offer_type), "printed!", color)
+			managers.chat:_receive_message(
+				1,
+				tostring(c.offer_name or c.offer_type),
+				managers.localization:text("csr_chat_printed"),
+				color
+			)
 		end
 	end)
 end

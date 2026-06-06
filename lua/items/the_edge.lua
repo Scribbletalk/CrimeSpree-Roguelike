@@ -69,6 +69,14 @@ _G.CSR.register_item({
 	notes = "csr_logbook_the_edge_notes",
 	icon = "csr_the_edge",
 	icon_scale = 1.0,
+	loc_macros = {
+		hp_threshold_pct = string.format("%g", HP_THRESHOLD * 100),
+		heal_pct = string.format("%g", HEAL_PCT * 100),
+		heal_flat = HEAL_FLAT,
+		heal_flat_extra = HEAL_FLAT_EXTRA,
+		invuln_s = string.format("%gs", INVULN),
+		cooldown_s = COOLDOWN .. "s",
+	},
 
 	hooks = {
 		["lib/units/beings/player/playerdamage"] = function()

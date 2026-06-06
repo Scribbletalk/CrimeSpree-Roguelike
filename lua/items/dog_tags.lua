@@ -4,6 +4,8 @@ if not (_G.CSR and _G.CSR.register_item) then
 	return
 end
 
+local HEALTH_BONUS = 0.10
+
 _G.CSR.register_item({
 	type = "dog_tags",
 	rarity = "common",
@@ -13,6 +15,7 @@ _G.CSR.register_item({
 	notes = "csr_logbook_dog_tags_notes",
 	icon = "csr_dog_tags",
 	icon_scale = 1.0,
+	loc_macros = { pct = string.format("%g", HEALTH_BONUS * 100) },
 
 	hooks = {
 		["lib/managers/playermanager"] = function()
@@ -30,7 +33,7 @@ _G.CSR.register_item({
 				if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 					return v
 				end
-				return v + 0.10 * mgr:owned("dog_tags")
+				return v + HEALTH_BONUS * mgr:owned("dog_tags")
 			end
 		end,
 	},

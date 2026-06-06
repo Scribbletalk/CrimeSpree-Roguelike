@@ -92,6 +92,11 @@ _G.CSR.register_item({
 	icon = "csr_side_satchel",
 	icon_scale = 1.0,
 
+	-- $carry_speed_pct fills csr_logbook_side_satchel_effect.
+	loc_macros = {
+		carry_speed_pct = string.format("%g", (CARRY_SPEED_MULT - 1) * 100),
+	},
+
 	hooks = {
 		["lib/managers/playermanager"] = function()
 			if _G._CSR_SIDE_SATCHEL_PM_HOOKED then

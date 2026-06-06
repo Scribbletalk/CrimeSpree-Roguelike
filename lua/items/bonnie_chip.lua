@@ -88,6 +88,10 @@ _G.CSR.register_item({
 	notes = "csr_logbook_bonnie_chip_notes",
 	icon = "csr_bonnie_chip",
 	icon_scale = 1.05,
+	loc_macros = {
+		chance_pct = string.format("%g", CHANCE * 100),
+		cooldown = COOLDOWN,
+	},
 
 	hooks = {
 		["lib/units/enemies/cop/copdamage"] = function()

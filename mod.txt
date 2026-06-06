@@ -102,6 +102,18 @@
 			"script_path": "lua/core/rank_passives.lua"
 		},
 		{
+			"hook_id": "lib/managers/playermanager",
+			"script_path": "lua/core/perk_deck_scaling.lua"
+		},
+		{
+			"hook_id": "lib/units/pickups/ammoclip",
+			"script_path": "lua/core/perk_deck_scaling.lua"
+		},
+		{
+			"hook_id": "lib/units/beings/player/huskplayerbase",
+			"script_path": "lua/core/perk_deck_scaling.lua"
+		},
+		{
 			"hook_id": "lib/units/beings/player/playerdamage",
 			"script_path": "lua/core/rank_passives.lua"
 		},

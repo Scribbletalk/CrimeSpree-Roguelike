@@ -446,7 +446,7 @@ function CSRMissionsMenuComponent:_show_items_tooltip(target)
 		or (def.name and managers.localization and managers.localization:text(def.name))
 		or ""
 	local resolved_desc = def.desc_text
-		or (def.desc and managers.localization and managers.localization:text(def.desc))
+		or (def.desc and managers.localization and _G.CSR.item_text(def.desc, def))
 		or ""
 	local name_text = tip:text({
 		name = "tooltip_name",

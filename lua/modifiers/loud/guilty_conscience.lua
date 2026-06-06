@@ -8,6 +8,8 @@ end
 
 local HP_PENALTY_PER_KILL = 0.05
 local MAX_PENALTY = 0.30
+local HP_PENALTY_PCT = string.format("%g", HP_PENALTY_PER_KILL * 100)
+local MAX_PENALTY_PCT = string.format("%g", MAX_PENALTY * 100)
 local VIGNETTE_TEX = "guis/textures/pd2/crime_spree/csr_guilt_vignette"
 local FLASH_DURATION = 0.5
 
@@ -74,6 +76,7 @@ _G.CSR.register_modifier({
 	loc = "menu_cs_modifier_civilian_guilt",
 	icon = "csr_guilty_conscience",
 	data = {},
+	loc_macros = { pct = HP_PENALTY_PCT, max_pct = MAX_PENALTY_PCT },
 
 	hooks = {
 		-- HP penalty + reset on spawn.

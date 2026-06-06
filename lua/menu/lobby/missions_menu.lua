@@ -1720,20 +1720,37 @@ local function csr_character_mask_icon()
 	return "upcard_mask"
 end
 
+-- .text fields hold loc keys, not literals -- localized at render in CSRSidebar:_setup
+-- (this table is file-scope, so managers.localization isn't available here yet).
 CSRSidebar.ITEMS = {
 	{ separator = true },
-	{ text = "Heister", icon = csr_character_mask_icon, key = "heister", callback = csr_feature_toggle("heister") },
+	{
+		text = "csr_sidebar_heister",
+		icon = csr_character_mask_icon,
+		key = "heister",
+		callback = csr_feature_toggle("heister"),
+	},
 	{ separator = true },
-	{ text = "Items", icon = "sidebar_casino", key = "items", callback = csr_feature_toggle("items") },
-	{ text = "Modifiers", icon = "sidebar_mutators", key = "modifiers", callback = csr_feature_toggle("modifiers") },
-	{ text = "Rewards", icon = "sidebar_broker", key = "rewards", callback = csr_feature_toggle("rewards") },
+	{ text = "csr_sidebar_items", icon = "sidebar_casino", key = "items", callback = csr_feature_toggle("items") },
+	{
+		text = "csr_sidebar_modifiers",
+		icon = "sidebar_mutators",
+		key = "modifiers",
+		callback = csr_feature_toggle("modifiers"),
+	},
+	{
+		text = "csr_sidebar_rewards",
+		icon = "sidebar_broker",
+		key = "rewards",
+		callback = csr_feature_toggle("rewards"),
+	},
 	{ separator = true },
-	{ text = "Black Market", icon = "sidebar_gage", callback = csr_open_shop },
+	{ text = "csr_sidebar_black_market", icon = "sidebar_gage", callback = csr_open_shop },
 	{ separator = true },
-	{ text = "Logbook", icon = "sidebar_codex", callback = csr_open_logbook },
+	{ text = "csr_sidebar_logbook", icon = "sidebar_codex", callback = csr_open_logbook },
 	{ separator = true },
 	{
-		text = "Preferences",
+		text = "csr_sidebar_preferences",
 		icon = "sidebar_filters",
 		key = "preferences",
 		callback = csr_feature_toggle("preferences"),
@@ -1775,7 +1792,7 @@ function CSRSidebar:init(parent, top, bottom, owner)
 	-- Collapse toggle is never hidden by set_collapsed, staying visible as the "SHOW" affordance.
 	self._toggle = CSRSidebarItem:new(self._panel, {
 		position = padding,
-		text = "Hide Sidebar",
+		text = managers.localization:text("csr_sidebar_hide"),
 		icon = "sidebar_expand",
 		callback = function()
 			self:toggle_collapsed()
@@ -1801,7 +1818,7 @@ function CSRSidebar:init(parent, top, bottom, owner)
 			end
 			btn = CSRSidebarItem:new(self._panel, {
 				position = next_position,
-				text = item.text,
+				text = managers.localization:text(item.text),
 				icon = icon,
 				callback = item.callback,
 			})
@@ -1854,7 +1871,7 @@ function CSRSidebar:set_collapsed(collapsed)
 		self._owner:hide_feature_panels()
 	end
 
-	self._toggle:set_text(self._collapsed and "Show Sidebar" or "Hide Sidebar")
+	self._toggle:set_text(managers.localization:text(self._collapsed and "csr_sidebar_show" or "csr_sidebar_hide"))
 end
 
 function CSRSidebar:panel()

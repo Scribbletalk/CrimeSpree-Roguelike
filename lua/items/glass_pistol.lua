@@ -27,6 +27,12 @@ _G.CSR.register_item({
 	icon = "csr_glass_pistol",
 	icon_scale = 1.0,
 
+	-- $dmg_mul / $div_mul fill csr_logbook_glass_pistol_effect.
+	loc_macros = {
+		dmg_mul = DMG_MUL_PER_STACK,
+		div_mul = DIV_PER_STACK,
+	},
+
 	hooks = {
 		-- Ranged damage.
 		["lib/units/weapons/raycastweaponbase"] = function()

@@ -5,6 +5,9 @@ if not (_G.CSR and _G.CSR.register_item) then
 	return
 end
 
+-- Tuning -- single source: feeds both the regen hook and the $-macros in the localized effect text.
+local FIRST_PCT, MAX_PCT, INTERVAL = 0.02, 0.20, 5
+
 _G.CSR.register_item({
 	type = "worn_bandaid",
 	rarity = "common",
@@ -15,13 +18,19 @@ _G.CSR.register_item({
 	icon = "csr_worn_bandaid",
 	icon_scale = 1.0,
 
+	-- $first_pct / $max_pct (percent) and $interval (seconds) fill csr_logbook_worn_bandaid_effect.
+	loc_macros = {
+		first_pct = string.format("%g", FIRST_PCT * 100),
+		max_pct = string.format("%g", MAX_PCT * 100),
+		interval = INTERVAL,
+	},
+
 	hooks = {
 		["lib/units/beings/player/playerdamage"] = function()
 			if _G._CSR_WORN_BANDAID_HOOKED then
 				return
 			end
 			_G._CSR_WORN_BANDAID_HOOKED = true
-			local FIRST_PCT, MAX_PCT, INTERVAL = 0.02, 0.20, 5
 			local K = (MAX_PCT - FIRST_PCT) / FIRST_PCT
 			Hooks:PostHook(PlayerDamage, "update", "CSR_WornBandaid_Regen", function(self, unit, t, dt)
 				local mgr = managers.csr

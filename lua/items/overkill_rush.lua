@@ -82,6 +82,7 @@ _G.CSR.register_item({
 	notes = "csr_logbook_overkill_rush_notes",
 	icon = "csr_overkill_rush",
 	icon_scale = 0.9,
+	loc_macros = { duration = DURATION },
 
 	hooks = {
 		["lib/units/enemies/cop/copdamage"] = function()

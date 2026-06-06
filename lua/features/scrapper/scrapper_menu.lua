@@ -86,7 +86,7 @@ end
 -- Same text as the Items panel tooltip (Critical Rule 15).
 local function desc_for(def)
 	if def and def.desc and managers and managers.localization and managers.localization.text then
-		local s = managers.localization:text(def.desc)
+		local s = _G.CSR.item_text(def.desc, def)
 		if s and s ~= "" then
 			return s
 		end
@@ -246,7 +246,12 @@ local function on_pick(group)
 		local pretty_name = display_name_for(group.def)
 		local color = RARITY_COLOR[rarity] or Color.white
 		pcall(function()
-			managers.chat:_receive_message(1, tostring(pretty_name), "scrapped (x" .. tostring(removed) .. ")", color)
+			managers.chat:_receive_message(
+				1,
+				tostring(pretty_name),
+				managers.localization:text("csr_chat_scrapped", { count = tostring(removed) }),
+				color
+			)
 		end)
 	end
 

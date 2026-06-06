@@ -174,6 +174,7 @@ _G.CSR.register_item({
 	notes = "csr_logbook_dead_mans_trigger_notes",
 	icon = "csr_dead_mans_trigger",
 	icon_scale = 1.0,
+	loc_macros = { ally_pct = string.format("%g", ALLY_MULT * 100) },
 
 	hooks = {
 		["lib/units/beings/player/playerdamage"] = function()

@@ -9,6 +9,8 @@ if not (_G.CSR and _G.CSR.register_item) then
 end
 
 local PLUSH_VIGNETTE = "guis/textures/pd2/crime_spree/csr_guilt_vignette"
+local INVULN_BASE = 10
+local INVULN_PER_STACK = 20
 
 local function is_local_pd(self)
 	local pu = managers.player and managers.player:player_unit()
@@ -145,7 +147,7 @@ local function plush_fire_guardian(self, mgr, now, already_downed)
 		managers.environment_controller:set_last_life(new_revives <= 1)
 	end
 
-	local duration = 10 + math.max(0, stacks - 1) * 20
+	local duration = INVULN_BASE + math.max(0, stacks - 1) * INVULN_PER_STACK
 	self._csr_plush_invuln_end = now + duration
 	self._csr_guardian_armed = false
 
@@ -184,6 +186,7 @@ _G.CSR.register_item({
 	notes = "csr_logbook_plush_shark_notes",
 	icon = "csr_plush_shark",
 	icon_scale = 1.0,
+	loc_macros = { invuln_base = INVULN_BASE, invuln_per_stack = INVULN_PER_STACK },
 
 	hooks = {
 		["lib/units/beings/player/playerdamage"] = function()

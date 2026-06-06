@@ -55,9 +55,10 @@ globals = {
     "BaseNetworkSession",
     "BaseInteractionExt", "UseInteractionExt", "InteractionTweakData",
     "PlayerBase", "HuskPlayerBase", "PlayerDamage", "PlayerManager", "PlayerStandard",
-    "CopDamage", "CivilianDamage",
+    "PlayerMovement", "HuskPlayerMovement",
+    "CopDamage", "CivilianDamage", "TeamAIDamage",
     "NewRaycastWeaponBase", "RaycastWeaponBase", "SentryGunWeapon",
-    "GageAssignmentBase",
+    "AmmoClip", "GageAssignmentBase",
     -- PD2 AI / mission
     "GroupAIStateBase", "GroupAIStateBesiege", "IngameWaitingForPlayersState",
     "MissionEndState", "MissionManager",
@@ -72,7 +73,9 @@ globals = {
     "CrimeSpreeLogbookMenuComponent", "CrimeSpreeModifierDetailsPage",
     "MenuCrimeNetContractInitiator", "MenuCrimeNetCrimeSpreeContractInitiator",
     -- PD2 crime spree modifier classes CSR mutates by name
-    "ModifierAssaultExtender",
+    "ModifierAssaultExtender", "ModifierHeavySniper",
+    -- PD2 base modifier class + CSR's own custom modifier classes
+    "BaseModifier", "ModifierCSRPagerResponse",
     -- CSR core manager
     "CSRGameManager",
     -- CSR UI components

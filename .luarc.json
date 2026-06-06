@@ -76,6 +76,7 @@
     "PlayerDamage",
     "PlayerStandard",
     "PlayerMovement",
+    "HuskPlayerMovement",
     "PlayerInventory",
     "PlayerCarry",
     "PlayerBase",
@@ -185,6 +186,8 @@
     "CrimeSpreeReward",
     "CrimeSpreeModifier",
     "ModifierBase",
+    "BaseModifier",
+    "ModifierCSRPagerResponse",
     "ModifierNoHurtAnims",
     "ModifierShockingSurprise",
 

@@ -391,7 +391,7 @@ function CSROwnedItemsStrip:_show_tooltip(target)
 	})
 	local desc_text = tip:text({
 		name = "tooltip_desc",
-		text = csr_loc(def.desc) or "",
+		text = _G.CSR.item_text(def.desc, def) or "",
 		font = tweak_data.menu.pd2_small_font,
 		font_size = tweak_data.menu.pd2_small_font_size,
 		color = tweak_data.screen_colors.text,

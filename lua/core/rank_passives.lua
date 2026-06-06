@@ -8,6 +8,9 @@ end
 
 local HP_PER_RANK = 0.025
 local ARMOR_PER_RANK = 0.025
+-- Shared with perk_deck_scaling.lua: perk-deck armor/health regen scales by the same per-rank factors.
+_G.CSR_ARMOR_PER_RANK = ARMOR_PER_RANK
+_G.CSR_HP_PER_RANK = HP_PER_RANK
 local DMG_PER_RANK = 0.01
 local BOT_HP_PER_RANK = 0.01
 local BOT_DMG_PER_RANK = 0.10

@@ -5,6 +5,10 @@ if not (_G.CSR and _G.CSR.register_modifier) then
 	return
 end
 
+local DURATION_PCT = 40
+local DED_PCT = 5
+local MAX_HOSTAGES = 4
+
 _G.CSR.register_modifier({
 	id = "assault_extender",
 	category = "loud",
@@ -12,11 +16,12 @@ _G.CSR.register_modifier({
 	icon = "crime_spree_heavies",
 	class = "ModifierAssaultExtender",
 	data = {
-		duration = { 40, "add" },
+		duration = { DURATION_PCT, "add" },
 		deduction = { 4, "add" },
-		duration_deduction = { 5, "add" },
-		max_hostages = { 4, "none" },
+		duration_deduction = { DED_PCT, "add" },
+		max_hostages = { MAX_HOSTAGES, "none" },
 	},
+	loc_macros = { pct = DURATION_PCT, ded_pct = DED_PCT, max_hst = MAX_HOSTAGES },
 
 	hooks = {
 		-- Replace modify_value so it extends ONLY the sustain DURATION and leaves

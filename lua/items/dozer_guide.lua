@@ -26,6 +26,12 @@ _G.CSR.register_item({
 	notes = "csr_logbook_dozer_guide_notes",
 	icon = "csr_dozer_guide",
 	icon_scale = 0.9,
+	loc_macros = {
+		armor_pct = string.format("%g", ARMOR_BONUS * 100),
+		speed_pct = string.format("%g", SPEED_PENALTY * 100),
+		speed_min_pct = string.format("%g", SPEED_MIN * 100),
+		dodge = DODGE_PENALTY,
+	},
 
 	hooks = {
 		["lib/units/beings/player/playerdamage"] = function()

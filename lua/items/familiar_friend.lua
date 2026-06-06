@@ -262,6 +262,13 @@ _G.CSR.register_item({
 	icon = "csr_familiar_friend",
 	icon_scale = 1.0,
 
+	-- $aura_radius / $base_dmg / $cooldown fill csr_logbook_familiar_friend_effect.
+	loc_macros = {
+		aura_radius = string.format("%gm", RADIUS / 100),
+		base_dmg = BASE_DISPLAY_DAMAGE,
+		cooldown = string.format("%gs", COOLDOWN),
+	},
+
 	hooks = {
 		["lib/managers/playermanager"] = function()
 			if _G._CSR_FAMILIAR_FRIEND_HOOKED then

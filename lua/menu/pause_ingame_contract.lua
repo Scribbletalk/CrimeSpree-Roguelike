@@ -420,7 +420,7 @@ local function csr_show_item_tooltip(self, target)
 
 	-- Items carry loc keys in def.name/desc; :text() returns "ERROR..." on an unknown key, so guard the key.
 	local resolved_name = (def.name and managers.localization:text(def.name)) or ""
-	local resolved_desc = (def.desc and managers.localization:text(def.desc)) or ""
+	local resolved_desc = (def.desc and _G.CSR.item_text(def.desc, def)) or ""
 
 	tip:text({
 		name = "tooltip_name",
@@ -512,9 +512,9 @@ end
 -- Pause-sidebar tabs. Items is always present; Modifiers/Preferences only when the borrow
 -- succeeds (their renderers live on CSRMissionsMenuComponent). Order mirrors the lobby sidebar.
 local PAUSE_TABS = {
-	{ key = "items", text = "Items", icon = "sidebar_casino" },
-	{ key = "modifiers", text = "Modifiers", icon = "sidebar_mutators" },
-	{ key = "preferences", text = "Preferences", icon = "sidebar_filters" },
+	{ key = "items", text = "csr_sidebar_items", icon = "sidebar_casino" },
+	{ key = "modifiers", text = "csr_sidebar_modifiers", icon = "sidebar_mutators" },
+	{ key = "preferences", text = "csr_sidebar_preferences", icon = "sidebar_filters" },
 }
 
 -- Remembers the last-selected pause tab across pause opens. Each ESC build is a fresh
@@ -663,7 +663,7 @@ Hooks:PostHook(IngameContractGui, "init", "CSR_IngameContract_Relayout", functio
 					local key = tab.key
 					local item = CSRSidebarItem:new(sb_panel, {
 						position = row_y,
-						text = tab.text,
+						text = managers.localization:text(tab.text),
 						icon = tab.icon,
 						callback = function(gui)
 							gui:_csr_set_pause_tab(key)

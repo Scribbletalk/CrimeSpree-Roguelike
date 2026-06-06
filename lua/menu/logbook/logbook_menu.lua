@@ -302,7 +302,7 @@ function CrimeSpreeLogbookMenuComponent:_setup_logbook()
 	})
 
 	-- Header: pd2_large label over a faded pd2_massive ghost, same pattern as the lobby title.
-	local header_label = "LOGBOOK"
+	local header_label = managers.localization:text("csr_logbook_title")
 	local header_ghost = self._panel:text({
 		name = "csr_header_ghost",
 		vertical = "top",
@@ -356,9 +356,9 @@ end
 
 function CrimeSpreeLogbookMenuComponent:_create_tabs()
 	local tabs = {
-		{ id = "items", label = "ITEMS" },
-		{ id = "statistics", label = "STATISTICS" },
-		{ id = "achievements", label = "ACHIEVEMENTS" },
+		{ id = "items", label = managers.localization:text("csr_logbook_tab_items") },
+		{ id = "statistics", label = managers.localization:text("csr_logbook_tab_statistics") },
+		{ id = "achievements", label = managers.localization:text("csr_logbook_tab_achievements") },
 	}
 
 	local panel_w = self._content_panel:w()
@@ -504,9 +504,10 @@ function CrimeSpreeLogbookMenuComponent:_build_items_list()
 			icon = e.icon,
 			rarity = e.rarity,
 			is_scrap = e.is_scrap or nil,
+			loc_macros = e.loc_macros,
 			name_en = string.upper((e.name and managers.localization:text(e.name)) or tostring(e.type)),
-			effect_en = (e.full_desc and managers.localization:text(e.full_desc))
-				or (e.desc and managers.localization:text(e.desc))
+			effect_en = (e.full_desc and _G.CSR.item_text(e.full_desc, e))
+				or (e.desc and _G.CSR.item_text(e.desc, e))
 				or "",
 			community = e.addon ~= nil or nil,
 		}
@@ -642,7 +643,7 @@ end
 
 function CrimeSpreeLogbookMenuComponent:_populate_achievements_tab()
 	local panel = self._tab_panels["achievements"]
-	local placeholder = "ACHIEVEMENTS COMING IN FUTURE UPDATES"
+	local placeholder = managers.localization:text("csr_logbook_achievements_placeholder")
 
 	panel:text({
 		name = "achievements_placeholder",
@@ -671,7 +672,7 @@ function CrimeSpreeLogbookMenuComponent:_create_statistics()
 	local font_size = tweak_data.menu.pd2_small_font_size
 
 	local panel = self._stats_panel_ref or self._content_panel
-	local stats_title = "STATISTICS"
+	local stats_title = managers.localization:text("csr_logbook_tab_statistics")
 	panel:text({
 		name = "stats_title",
 		text = stats_title,
@@ -707,37 +708,37 @@ function CrimeSpreeLogbookMenuComponent:_create_statistics()
 
 	local stats_list = {
 		{
-			label = "Missions Completed:",
+			label = managers.localization:text("csr_logbook_stat_missions"),
 			value = format_number(stats.total_missions),
 			x = stats_x,
 			y = stats_y + 35,
 		},
 		{
-			label = "Total Kills:",
+			label = managers.localization:text("csr_logbook_stat_kills"),
 			value = format_number(stats.total_kills),
 			x = stats_x,
 			y = stats_y + 55,
 		},
 		{
-			label = "Bags Secured:",
+			label = managers.localization:text("csr_logbook_stat_bags"),
 			value = format_number(stats.total_bags),
 			x = stats_x,
 			y = stats_y + 75,
 		},
 		{
-			label = "Highest Level:",
+			label = managers.localization:text("csr_logbook_stat_level"),
 			value = format_number(stats.highest_level),
 			x = stats_x + 300,
 			y = stats_y + 35,
 		},
 		{
-			label = "Total Cash Earned:",
+			label = managers.localization:text("csr_logbook_stat_cash"),
 			value = format_cash(stats.total_cash),
 			x = stats_x + 300,
 			y = stats_y + 55,
 		},
 		{
-			label = "Total Coins Earned:",
+			label = managers.localization:text("csr_logbook_stat_coins"),
 			value = format_number(math.floor(stats.total_coins or 0)),
 			x = stats_x + 300,
 			y = stats_y + 75,
@@ -1060,7 +1061,7 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 	if item_data.community then
 		local community_obj = self._details_panel:text({
 			name = "item_community_tag",
-			text = "COMMUNITY ITEM",
+			text = managers.localization:text("csr_logbook_community_item"),
 			font = tweak_data.menu.pd2_small_font,
 			font_size = tweak_data.menu.pd2_small_font_size,
 			color = Color(1, 0.85, 0.4),
@@ -1085,7 +1086,7 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 	if effects_sealed then
 		effect_text = managers.localization:text("csr_logbook_effect_sealed")
 	else
-		effect_text = managers.localization:text(loc_key)
+		effect_text = _G.CSR.item_text(loc_key, item_data)
 		-- :text() returns "ERROR <key>" for unknown keys; fall back to the list entry's desc.
 		if not effect_text or effect_text == "" or effect_text == loc_key or effect_text:find("^ERROR") then
 			effect_text = item_data.effect_en or ""
@@ -1167,15 +1168,17 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 	local _, _, _, effect_h = effect_desc:text_rect()
 	y_pos = math.max(y_pos + icon_size, text_y + effect_h) + 20
 
-	local notes_params = item_data.id == "evidence_rounds"
-			and { rounds = tostring(math.max(31, _G.CSR_BulletsFiredToday or 0)) }
-		or nil
+	-- Static tuning macros from the def by default; evidence_rounds overrides with a runtime counter.
+	local notes_params = item_data.loc_macros
+	if item_data.id == "evidence_rounds" then
+		notes_params = { rounds = tostring(math.max(31, _G.CSR_BulletsFiredToday or 0)) }
+	end
 	local notes_text = managers.localization:text("csr_logbook_" .. item_data.id .. "_notes", notes_params)
 	-- Skip NOTES when no _notes key exists (scrap) — :text() returns "ERROR <key>".
 	if notes_text and notes_text ~= "" and not notes_text:find("^ERROR") then
 		self._details_panel:text({
 			name = "lore_title",
-			text = "NOTES:",
+			text = managers.localization:text("csr_logbook_notes"),
 			font = tweak_data.menu.pd2_medium_font,
 			font_size = tweak_data.menu.pd2_medium_font_size,
 			color = Color.white,
@@ -1314,13 +1317,11 @@ function CrimeSpreeLogbookMenuComponent:mouse_moved(o, x, y)
 
 	for i, item in ipairs(self._items) do
 		if alive(item.panel) then
-			local panel_x, panel_y = item.panel:world_position()
+			local item_x, item_y = item.panel:world_position()
 			local panel_w, panel_h = item.panel:size()
 
-			if x >= panel_x and x <= panel_x + panel_w and y >= panel_y and y <= panel_y + panel_h then
+			if x >= item_x and x <= item_x + panel_w and y >= item_y and y <= item_y + panel_h then
 				new_hovered = item
-				if not self._hovered_item or self._hovered_item ~= item then
-				end
 				break
 			end
 		end

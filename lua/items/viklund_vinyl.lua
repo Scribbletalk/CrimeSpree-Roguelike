@@ -232,6 +232,11 @@ _G.CSR.register_item({
 	notes = "csr_logbook_viklund_vinyl_notes",
 	icon = "csr_viklund_vinyl",
 	icon_scale = 1.0,
+	loc_macros = {
+		proc_chance_pct = string.format("%g", PROC_CHANCE * 100),
+		chain_count = CHAIN_COUNT,
+		chain_dmg_pct = string.format("%g", CHAIN_DMG_PCT * 100),
+	},
 
 	hooks = {
 		["lib/units/enemies/cop/copdamage"] = function()

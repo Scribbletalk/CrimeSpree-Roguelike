@@ -55,17 +55,27 @@ function CSRMissionsMenuComponent:_populate_rewards_panel()
 	end
 
 	local rows = {
-		{ icon = "upcard_cash", title = "CASH", own = cash_fmt(r.cash), mp = cash_fmt(b.cash) },
-		{ icon = "upcard_xp", title = "EXPERIENCE", own = xp_fmt(r.experience), mp = xp_fmt(b.experience) },
+		{
+			icon = "upcard_cash",
+			title = managers.localization:text("csr_rewards_cash"),
+			own = cash_fmt(r.cash),
+			mp = cash_fmt(b.cash),
+		},
+		{
+			icon = "upcard_xp",
+			title = managers.localization:text("csr_rewards_experience"),
+			own = xp_fmt(r.experience),
+			mp = xp_fmt(b.experience),
+		},
 		{
 			icon = "upcard_coins",
-			title = "CONTINENTAL COINS",
+			title = managers.localization:text("csr_rewards_continental_coins"),
 			own = tostring(r.continental_coins or 0),
 			mp = tostring(b.continental_coins or 0),
 		},
 		{
 			icon = "upcard_random",
-			title = "LOOT CARDS",
+			title = managers.localization:text("csr_rewards_loot_cards"),
 			own = tostring(r.loot_drop or 0),
 			mp = tostring(b.loot_drop or 0),
 		},
@@ -94,7 +104,7 @@ function CSRMissionsMenuComponent:_populate_rewards_panel()
 	if show_mp then
 		content:text({
 			name = "reward_hdr_own",
-			text = "THIS RUN",
+			text = managers.localization:text("csr_rewards_this_run"),
 			font = tweak_data.menu.pd2_small_font,
 			font_size = small,
 			color = Color.white:with_alpha(0.6),
@@ -107,7 +117,7 @@ function CSRMissionsMenuComponent:_populate_rewards_panel()
 		})
 		content:text({
 			name = "reward_hdr_mp",
-			text = "MP SESSIONS",
+			text = managers.localization:text("csr_rewards_mp_sessions"),
 			font = tweak_data.menu.pd2_small_font,
 			font_size = small,
 			color = Color.white:with_alpha(0.6),
