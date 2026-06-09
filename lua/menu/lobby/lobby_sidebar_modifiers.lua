@@ -26,7 +26,7 @@ local modifiers_row_scrollbar_margin = 18 -- reserve space for the scroll bar
 -- PD2 button blue (screen_colors.button_stage_2) so the tint matches the in-menu selected-button look.
 local modifiers_new_bg_color = tweak_data.screen_colors.button_stage_2 -- blue tint behind a freshly-unlocked row
 local modifiers_new_bg_alpha = 0.22
-local modifiers_new_bg_hold = 5 -- seconds the blue tint stays solid after the panel opens
+local modifiers_new_bg_hold = 1 -- seconds the blue tint stays solid after the panel opens
 local modifiers_new_bg_fade = 0.6 -- fade-out duration once the hold elapses
 
 -- Hold the new-modifier blue tint solid for ~5s after the panel opens, fade it out, then clear the

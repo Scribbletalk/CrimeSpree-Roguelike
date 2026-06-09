@@ -94,13 +94,45 @@ function CSRGameManager:rank_for_current_level()
 	return self:constant("rank_per_heist") or 1
 end
 
+-- Pick one random mission from `list` whose id is not in `used`. nil if all are taken.
+local function pick_unused(list, used)
+	local candidates = {}
+	for _, m in ipairs(list) do
+		if m.id and not used[m.id] then
+			candidates[#candidates + 1] = m
+		end
+	end
+	if #candidates == 0 then
+		return nil
+	end
+	return candidates[math.random(1, #candidates)]
+end
+
+-- One mission per bucket (1=stealth, 2=short loud, 3=long loud), all 3 guaranteed
+-- distinct. A heist can live in several buckets at once (loud+stealth, or add 9-10
+-- spans short+long), so a naive per-bucket roll could repeat an id across slots.
 function CSRGameManager:get_random_missions()
 	local lists = self:_mission_lists()
 	local set = {}
+	local used = {}
 	for i = 1, 3 do
 		local list = lists[i]
 		if list and #list > 0 then
-			set[i] = list[math.random(1, #list)]
+			-- Bucket exhausted of unique ids: fall back to any unused mission across all
+			-- buckets so the slot still fills (degenerate tiny-pool case only).
+			local pick = pick_unused(list, used)
+			if not pick then
+				for j = 1, 3 do
+					pick = pick_unused(lists[j] or {}, used)
+					if pick then
+						break
+					end
+				end
+			end
+			if pick then
+				set[i] = pick
+				used[pick.id] = true
+			end
 		end
 	end
 	return set

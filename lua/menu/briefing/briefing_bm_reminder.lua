@@ -169,6 +169,17 @@ if MissionBriefingGui and not _G._CSR_BM_REMINDER_HOOKED then
 		end
 	end)
 
+	-- Plate lives on the shared saferect workspace, so vanilla close() won't remove it; orphan leaks into the mission. Remove it ourselves.
+	Hooks:PostHook(MissionBriefingGui, "close", "CSR_BmReminderClose", function(self)
+		local ws_panel = self._safe_workspace and self._safe_workspace:panel()
+		if self._csr_bm_panel and alive(self._csr_bm_panel) and ws_panel and alive(ws_panel) then
+			ws_panel:remove(self._csr_bm_panel)
+		end
+		self._csr_bm_panel = nil
+		self._csr_bm_bg = nil
+		self._csr_bm_text = nil
+	end)
+
 	-- Outermost wrap: call orig first in mouse_moved so item-reminder clears its hover before BM applies its own.
 	local orig_mm = MissionBriefingGui.mouse_moved
 	if orig_mm then

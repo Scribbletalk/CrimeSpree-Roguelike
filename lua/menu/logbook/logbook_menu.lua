@@ -659,126 +659,190 @@ function CrimeSpreeLogbookMenuComponent:_populate_achievements_tab()
 	})
 end
 
+-- Three-column career-stats board: RECORDS / TOTALS / ITEMS.
+-- Scaffold step: values come from managers.csr:career_stat (the _meta.stats bucket, all 0
+-- until the tracking hooks land) except Items Unlocked, which reads the already-persisted
+-- CSR_Logbook progress. Each label/value is its own loc key (no hardcoded strings).
 function CrimeSpreeLogbookMenuComponent:_create_statistics()
-	if not CSR_MetaProgress then
-		return
+	local panel = self._stats_panel_ref or self._content_panel
+	local loc = managers.localization
+	local mgr = managers.csr
+
+	local function career(key)
+		return (mgr and mgr.career_stat and mgr:career_stat(key, 0)) or 0
 	end
 
-	local stats = CSR_MetaProgress:GetStats()
-
-	local stats_y = 20
-	local stats_x = 10
-	local font = tweak_data.menu.pd2_small_font
-	local font_size = tweak_data.menu.pd2_small_font_size
-
-	local panel = self._stats_panel_ref or self._content_panel
-	local stats_title = managers.localization:text("csr_logbook_tab_statistics")
-	panel:text({
-		name = "stats_title",
-		text = stats_title,
-		font = tweak_data.menu.pd2_medium_font,
-		font_size = tweak_data.menu.pd2_medium_font_size,
-		color = Color(1, 0.8, 0.8, 1),
-		x = stats_x,
-		y = stats_y,
-		layer = 10,
-	})
-
-	local function format_number(num)
-		local formatted = tostring(num)
+	-- Thousands separator, integer-only.
+	local function fmt(num)
+		local s = tostring(math.floor(tonumber(num) or 0))
 		local k
-		while true do
-			formatted, k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", "%1,%2")
-			if k == 0 then
-				break
+		repeat
+			s, k = string.gsub(s, "^(-?%d+)(%d%d%d)", "%1,%2")
+		until k == 0
+		return s
+	end
+
+	-- Compact suffix form for large numbers: 1 234 567 → "1.2M", 45 000 → "45.0K".
+	local function fmt_compact(num)
+		local n = math.floor(tonumber(num) or 0)
+		if n >= 1e9 then
+			return string.format("%.1fB", n / 1e9)
+		elseif n >= 1e6 then
+			return string.format("%.1fM", n / 1e6)
+		elseif n >= 1e3 then
+			return string.format("%.1fK", n / 1e3)
+		end
+		return tostring(n)
+	end
+
+	-- Items unlocked / full catalogue: cross-reference registry against the unlock dict so stale
+	-- save keys and is_scrap entries can't inflate either counter. Numerator <= denominator guaranteed.
+	local total_items = 0
+	local unlocked_items = 0
+	if mgr and mgr.registered_items then
+		local unlocked_set = (
+			_G.CSR_Logbook
+			and _G.CSR_Logbook.get_unlocked_items
+			and _G.CSR_Logbook:get_unlocked_items()
+		) or {}
+		for _, def in ipairs(mgr:registered_items()) do
+			if not def.is_scrap then
+				total_items = total_items + 1
+				if unlocked_set[def.type] then
+					unlocked_items = unlocked_items + 1
+				end
 			end
 		end
-		return formatted
 	end
 
-	local function format_cash(amount)
-		if amount >= 1000000 then
-			return string.format("$%.1fM", amount / 1000000)
-		elseif amount >= 1000 then
-			return string.format("$%.1fK", amount / 1000)
-		else
-			return "$" .. amount
-		end
+	-- Favorite wildcard = the wildcard with the most completed heists (localized name; "None" until
+	-- a heist is finished while holding one).
+	local fav_wildcard_name = loc:text("csr_logbook_none")
+	local fav_type = mgr and mgr.favorite_wildcard and mgr:favorite_wildcard()
+	if fav_type then
+		local def = mgr.item_def and mgr:item_def(fav_type)
+		fav_wildcard_name = (def and def.name and loc:text(def.name)) or fav_type
 	end
 
-	local stats_list = {
+	local columns = {
 		{
-			label = managers.localization:text("csr_logbook_stat_missions"),
-			value = format_number(stats.total_missions),
-			x = stats_x,
-			y = stats_y + 35,
+			header = loc:text("csr_logbook_col_records"),
+			rows = {
+				{ label = loc:text("csr_logbook_stat_rank"), value = fmt(career("highest_rank")) },
+				{
+					label = loc:text("csr_logbook_stat_longest_spree"),
+					value = fmt(career("longest_spree")) .. " " .. loc:text("csr_logbook_unit_missions"),
+				},
+				{ label = loc:text("csr_logbook_stat_most_purchases"), value = fmt(career("most_purchases")) },
+				{ label = loc:text("csr_logbook_stat_most_items"), value = fmt(career("most_items")) },
+			},
 		},
 		{
-			label = managers.localization:text("csr_logbook_stat_kills"),
-			value = format_number(stats.total_kills),
-			x = stats_x,
-			y = stats_y + 55,
+			header = loc:text("csr_logbook_col_totals"),
+			rows = {
+				{ label = loc:text("csr_logbook_stat_missions"), value = fmt(career("total_missions")) },
+				{ label = loc:text("csr_logbook_stat_kills"), value = fmt(career("total_kills")) },
+				{
+					label = loc:text("csr_logbook_stat_damage_dealt"),
+					value = fmt_compact(career("total_damage_dealt")),
+				},
+				{
+					label = loc:text("csr_logbook_stat_damage_taken"),
+					value = fmt_compact(career("total_damage_taken")),
+				},
+				{ label = loc:text("csr_logbook_stat_coins"), value = fmt(career("total_coins")) },
+				{ label = loc:text("csr_logbook_stat_purchases"), value = fmt(career("total_purchases")) },
+			},
 		},
 		{
-			label = managers.localization:text("csr_logbook_stat_bags"),
-			value = format_number(stats.total_bags),
-			x = stats_x,
-			y = stats_y + 75,
-		},
-		{
-			label = managers.localization:text("csr_logbook_stat_level"),
-			value = format_number(stats.highest_level),
-			x = stats_x + 300,
-			y = stats_y + 35,
-		},
-		{
-			label = managers.localization:text("csr_logbook_stat_cash"),
-			value = format_cash(stats.total_cash),
-			x = stats_x + 300,
-			y = stats_y + 55,
-		},
-		{
-			label = managers.localization:text("csr_logbook_stat_coins"),
-			value = format_number(math.floor(stats.total_coins or 0)),
-			x = stats_x + 300,
-			y = stats_y + 75,
+			header = loc:text("csr_logbook_col_items"),
+			rows = {
+				{ label = loc:text("csr_logbook_stat_unlocked"), value = unlocked_items .. " / " .. total_items },
+				{ label = loc:text("csr_logbook_stat_favorite_wildcard"), value = fav_wildcard_name },
+			},
 		},
 	}
 
-	for i, stat in ipairs(stats_list) do
+	local font = tweak_data.menu.pd2_small_font
+	local font_size = tweak_data.menu.pd2_small_font_size
+	local col_w = panel:w() / 3
+	local pad = 16
+	local header_y = 16
+	local rows_top = 60
+	local row_h = 26
+
+	for ci, col in ipairs(columns) do
+		local col_x = (ci - 1) * col_w
+
+		-- Divider between columns (skip the left edge of the first one).
+		if ci > 1 then
+			panel:rect({
+				name = "stats_col_div_" .. ci,
+				color = Color.white,
+				alpha = 0.15,
+				x = col_x,
+				y = header_y,
+				w = 2,
+				h = panel:h() - header_y - 20,
+				layer = 9,
+			})
+		end
+
 		panel:text({
-			name = "stat_label_" .. i,
-			text = stat.label,
-			font = font,
-			font_size = font_size,
-			color = tweak_data.screen_colors.text,
-			x = stat.x,
-			y = stat.y,
+			name = "stats_col_header_" .. ci,
+			text = col.header,
+			font = tweak_data.menu.pd2_medium_font,
+			font_size = tweak_data.menu.pd2_medium_font_size,
+			color = Color(1, 0.8, 0.4),
+			align = "center",
+			x = col_x + pad,
+			y = header_y,
+			w = col_w - pad * 2,
+			h = 28,
 			layer = 10,
 		})
 
-		local value_text = panel:text({
-			name = "stat_value_" .. i,
-			text = stat.value,
-			font = font,
-			font_size = font_size,
-			color = Color.white,
-			x = stat.x + 200,
-			y = stat.y,
+		panel:rect({
+			name = "stats_col_underline_" .. ci,
+			color = Color(1, 0.8, 0.4),
+			alpha = 0.5,
+			x = col_x + pad,
+			y = header_y + 32,
+			w = col_w - pad * 2,
+			h = 2,
 			layer = 10,
 		})
+
+		for ri, row in ipairs(col.rows) do
+			local ry = rows_top + (ri - 1) * row_h
+			panel:text({
+				name = "stats_" .. ci .. "_lbl_" .. ri,
+				text = row.label,
+				font = font,
+				font_size = font_size,
+				color = tweak_data.screen_colors.text,
+				align = "left",
+				x = col_x + pad,
+				y = ry,
+				w = col_w - pad * 2,
+				h = row_h,
+				layer = 10,
+			})
+			panel:text({
+				name = "stats_" .. ci .. "_val_" .. ri,
+				text = row.value,
+				font = font,
+				font_size = font_size,
+				color = Color.white,
+				align = "right",
+				x = col_x + pad,
+				y = ry,
+				w = col_w - pad * 2,
+				h = row_h,
+				layer = 10,
+			})
+		end
 	end
-
-	panel:rect({
-		name = "stats_divider",
-		color = Color.white,
-		alpha = 0.3,
-		x = stats_x,
-		y = stats_y + 100,
-		w = 840,
-		h = 2,
-		layer = 9,
-	})
 end
 
 function CrimeSpreeLogbookMenuComponent:_create_icons_grid()

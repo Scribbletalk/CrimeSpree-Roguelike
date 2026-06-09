@@ -119,6 +119,35 @@ if BlackMarketManager and not _G._CSR_RankPassive_Melee then
 	end
 end
 
+-- Bows / crossbows. Their arrows resolve to CopDamage:damage_bullet, bypassing the ranged
+-- _get_current_damage hook (ProjectileWeaponBase overrides _fire_raycast). Scale here, gated on the
+-- local player as attacker (arrows are client-authoritative, applied on the shooter) and on a
+-- bow/crossbow weapon so guns -- already scaled at _get_current_damage -- aren't double-counted.
+if CopDamage and not _G._CSR_RankDmg_Bow then
+	_G._CSR_RankDmg_Bow = true
+	Hooks:PreHook(CopDamage, "damage_bullet", "CSR_RankDmg_Bow", function(_, attack_data)
+		if not attack_data or type(attack_data.damage) ~= "number" then
+			return
+		end
+		local au = attack_data.attacker_unit
+		if not (au and alive(au) and au:base() and au:base().is_local_player == true) then
+			return
+		end
+		local wu = attack_data.weapon_unit
+		if
+			not (wu and alive(wu) and wu:base() and wu:base().is_category and wu:base():is_category("bow", "crossbow"))
+		then
+			return
+		end
+		local r = run_rank()
+		if r > 0 then
+			local mul = 1 + DMG_PER_RANK * r
+			dbg_mult("bow_dmg_mult", mul)
+			attack_data.damage = attack_data.damage * mul
+		end
+	end)
+end
+
 -- Explosions / fire / DOT run host-side for the whole crew.
 -- Host-only or a client would double-scale.
 if CopDamage and not _G._CSR_RankDmg_CopDamage then

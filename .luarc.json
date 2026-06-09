@@ -74,6 +74,7 @@
 
     "PlayerManager",
     "PlayerDamage",
+    "StatisticsManager",
     "PlayerStandard",
     "PlayerMovement",
     "HuskPlayerMovement",

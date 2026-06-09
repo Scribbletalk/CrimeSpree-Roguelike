@@ -231,9 +231,23 @@ function CrimeSpreeBlackMarketMenuComponent:close()
 	end
 	pcall(function()
 		if managers and managers.music and managers.music.post_event then
-			managers.music:post_event("stop_all_music")
+			-- After a heist the captured pre-shop event is "music_uno_fade_reset": on_mission_end
+			-- overwrites Global.current_event with a fade-reset that names no track, so it can't be
+			-- replayed. Fall back to the result track recorded at mission end, then to menu music.
 			local prev = self._prev_music_event
-			if prev and prev ~= "stop_all_music" and prev ~= "lets_go_shopping_menu" then
+			if prev == "music_uno_fade_reset" and _G.CSR_post_mission_music then
+				prev = _G.CSR_post_mission_music
+			end
+			if _G.CSR_DEBUG then
+				log("[CSR][music] BM close restore: " .. tostring(prev))
+			end
+			managers.music:post_event("stop_all_music")
+			if
+				prev
+				and prev ~= "stop_all_music"
+				and prev ~= "lets_go_shopping_menu"
+				and prev ~= "music_uno_fade_reset"
+			then
 				managers.music:post_event(prev)
 			elseif managers.music.jukebox_menu_track then
 				managers.music:post_event(managers.music:jukebox_menu_track("mainmenu"))

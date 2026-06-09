@@ -98,6 +98,10 @@
 			"script_path": "lua/core/callback_tick.lua"
 		},
 		{
+			"hook_id": "lib/setups/setup",
+			"script_path": "lua/debug/perf_probe.lua"
+		},
+		{
 			"hook_id": "lib/managers/playermanager",
 			"script_path": "lua/core/rank_passives.lua"
 		},
@@ -111,6 +115,10 @@
 		},
 		{
 			"hook_id": "lib/units/beings/player/huskplayerbase",
+			"script_path": "lua/core/perk_deck_scaling.lua"
+		},
+		{
+			"hook_id": "lib/units/beings/player/playerdamage",
 			"script_path": "lua/core/perk_deck_scaling.lua"
 		},
 		{
@@ -144,6 +152,18 @@
 		{
 			"hook_id": "lib/units/weapons/newraycastweaponbase",
 			"script_path": "lua/core/rank_passives.lua"
+		},
+		{
+			"hook_id": "lib/managers/playermanager",
+			"script_path": "lua/intercepts/combat_stats.lua"
+		},
+		{
+			"hook_id": "lib/units/beings/player/playerdamage",
+			"script_path": "lua/intercepts/combat_stats.lua"
+		},
+		{
+			"hook_id": "lib/managers/statisticsmanager",
+			"script_path": "lua/intercepts/combat_stats.lua"
 		},
 		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",
@@ -316,6 +336,10 @@
 		{
 			"hook_id": "lib/states/ingamewaitingforplayers",
 			"script_path": "lua/intercepts/quit_penalty.lua"
+		},
+		{
+			"hook_id": "lib/states/ingamewaitingforplayers",
+			"script_path": "lua/intercepts/skip_blackscreen.lua"
 		},
 		{
 			"hook_id": "lib/managers/menumanager",

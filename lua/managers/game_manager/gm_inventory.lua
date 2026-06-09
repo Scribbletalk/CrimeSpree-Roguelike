@@ -342,6 +342,10 @@ function CSRGameManager:add_item(peer_id, item_type)
 		fn(peer_id, item_type, entry.counts[item_type])
 	end
 	self:save()
+	-- Fold the local player's collection into the "Most Items Collected" career peak.
+	if peer_id == self:local_peer_id() then
+		self:record_items_peak(peer_id)
+	end
 	log_csr("add_item: peer=" .. tostring(peer_id) .. " type=" .. item_type .. " count=" .. entry.counts[item_type])
 	return true
 end

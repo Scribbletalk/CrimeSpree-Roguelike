@@ -624,8 +624,14 @@ function CSRStageEndScreenGui:init(saferect_ws, fullrect_ws, statistics_data)
 
 	self._panel:set_right(self._safe_workspace:panel():w())
 
-	-- CSR gate 2: reserve the forked missions-strip height like vanilla CS.
-	self._panel:set_bottom(self._safe_workspace:panel():h() - (CSRMissionsMenuComponent.get_height() + padding))
+	-- CSR gate 2: reserve the forked missions-strip height like vanilla CS, plus
+	-- clearance for the reminder stack (BM + unselected-items bars) that
+	-- CSRMissionsMenuComponent anchors above the missions strip, so the stats
+	-- tabs don't get overlapped. ~one reminder-bar of lift.
+	local reminder_clearance = tweak_data.menu.pd2_medium_font_size * 2
+	self._panel:set_bottom(
+		self._safe_workspace:panel():h() - (CSRMissionsMenuComponent.get_height() + padding) - reminder_clearance
+	)
 
 	local continue_button = managers.menu:is_pc_controller() and "[ENTER]" or nil
 	local continue_text = utf8.to_upper(managers.localization:text("menu_es_calculating_experience", {

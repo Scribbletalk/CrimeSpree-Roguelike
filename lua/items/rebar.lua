@@ -5,7 +5,7 @@ if not (_G.CSR and _G.CSR.register_item) then
 	return
 end
 
-local BASE_BONUS = 0.15
+local BASE_BONUS = 0.20
 local EXTRA_BONUS = 0.10
 
 local function rebar_apply_first_hit(cop, attack_data)

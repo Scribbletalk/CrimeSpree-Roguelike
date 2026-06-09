@@ -37,6 +37,13 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 	self._total_xp_bonus = false
 	self._completion_bonus_done = true
 
+	-- Record the result-screen music event so the Black Market can resume it on close. The state
+	-- posts this track then on_mission_end() overwrites Global.current_event with a fade-reset that
+	-- names no track, so the menu can't read the audible track back from current_event.
+	if managers.music and managers.music.jukebox_menu_track then
+		_G.CSR_post_mission_music = managers.music:jukebox_menu_track(self._success and "heistresult" or "heistlost")
+	end
+
 	if self._success then
 		-- Guest run is paused: progress banks into bucket B, paid out at guest's own End Spree.
 		local guesting = managers.csr.is_guesting and managers.csr:is_guesting()
@@ -47,12 +54,26 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 		else
 			gain = managers.csr:rank_for_mission(played_id)
 		end
+		-- guest_coin_mult/guest_p are computed once in the guest branch and reused for loot-rank.
+		local guest_coin_mult, guest_p
 		if guesting then
-			managers.csr:accrue_mp_earnings(gain)
+			local host_n = managers.csr:mp_host_missions_completed() or 0
+			guest_coin_mult = managers.csr:coin_streak_mult(host_n)
+			guest_p = managers.csr:heist_participation()
+			managers.csr:accrue_mp_earnings(gain, guest_coin_mult, guest_p)
 		else
 			managers.csr:progress_rank(gain)
 			managers.csr:record_mission_completed()
+			-- Career peak rank (host/SP only; a guest's own rank is paused while guesting).
+			managers.csr:record_career_max("highest_rank", managers.csr:rank())
+			-- Career peak spree depth: most missions completed in a single spree (host/SP).
+			managers.csr:record_career_max("longest_spree", managers.csr:missions_completed())
 		end
+
+		-- Career lifetime mission count: every completed CSR heist, host/SP AND guest.
+		managers.csr:add_career_stat("total_missions", 1)
+		-- Tally this heist toward the local player's held wildcard (carry-1; nil held = skipped).
+		managers.csr:record_wildcard_mission(managers.csr:held_wildcard(managers.csr:local_peer_id()))
 
 		local loot_cash = 0
 		pcall(function()
@@ -72,9 +93,12 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 		end
 		local loot_ranks
 		if guesting then
-			loot_ranks = managers.csr:accrue_guest_loot_rank(loot_cash)
+			loot_ranks = managers.csr:accrue_guest_loot_rank(loot_cash, guest_coin_mult, guest_p)
 		else
 			loot_ranks = managers.csr:accrue_loot_rank(loot_cash)
+			-- Bank this heist's escalated coins (host/SP). Total rank = mission-length gain + loot
+			-- ranks; multiplier uses missions_completed, already incremented above.
+			managers.csr:accrue_escalated_coins(gain + (loot_ranks or 0))
 		end
 
 		-- Runtime stash for end-screen conversion animation (stage_endscreen.lua), not serialized.
@@ -123,6 +147,10 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 		log("[CSR] mission FAILED: run marked failed (locked until Continue/End Spree)")
 	end
 
+	-- Bank this heist's combat tally (kills / damage dealt / taken) into career totals. Runs for
+	-- both win and loss — the kills/damage happened either way. CSR-gated by the hook's early return.
+	managers.csr:flush_heist_tally()
+
 	-- Heist resolved cleanly (win or wipe) -> clear the loss-penalty in-flight flag so the grace
 	-- timer and crash-detect can't fire for a finished heist. Host/SP only (guest never set it).
 	if managers.csr.clear_in_heist and not (managers.csr.is_guesting and managers.csr:is_guesting()) then
@@ -145,5 +173,30 @@ Hooks:PostHook(MissionEndState, "at_exit", "CSR_MissionLifecycle_TeardownEndscre
 		log_csr("at_exit: CSR end-screen backdrop torn down (pre-reinit)")
 	end
 end)
+
+-- Capture the heist timer at heist entry so heist_participation() can compute how much of the
+-- mission the local player was present for: ~0 for a from-start player; the host's synced
+-- elapsed time for a drop-in client. Mirrors the _G._CSR_*_Hooked guard used by the other
+-- IngameWaitingForPlayersState hooks (apply_modifiers / quit_penalty / mp_session).
+if IngameWaitingForPlayersState and not _G._CSR_HeistParticipation_Hooked then
+	_G._CSR_HeistParticipation_Hooked = true
+	Hooks:PostHook(IngameWaitingForPlayersState, "at_enter", "CSR_HeistParticipation_Join", function()
+		if not managers.csr then
+			return
+		end
+		local t = 0
+		pcall(function()
+			t = (managers.game_play_central and managers.game_play_central:get_heist_timer()) or 0
+		end)
+		managers.csr._heist_join_time = t
+		-- Reset the per-heist combat tally so kills/damage count from zero this heist (CSR only).
+		if managers.csr.in_csr_heist and managers.csr:in_csr_heist() then
+			managers.csr:reset_heist_tally()
+		end
+		if _G.CSR_DEBUG then
+			log("[CSR] heist join captured: t_join=" .. tostring(t))
+		end
+	end)
+end
 
 log_csr("mission_lifecycle.lua loaded")

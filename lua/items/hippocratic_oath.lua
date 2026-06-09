@@ -20,7 +20,7 @@ local SPAWN_MIN_DIST = 1500 -- spawn 15-40m from the owner (offscreen, but reach
 local SPAWN_MAX_DIST = 4000
 local SPAWN_CHECK_INTERVAL = 2.0
 local MEDIC_DR = 0.80 -- 80% incoming damage reduction on the medic
-local FOLLOW_DISTANCE = 300 -- idle follow leash: medic re-paths to its owner once it drifts past 3m
+local RELOCATE_DISTANCE = 250 -- idle follow leash: host forces a re-path past 2.5m (half the 5m aura) so the medic stays in heal range, via _check_should_relocate override
 local LEASH_DISTANCE = AURA_RADIUS -- host yanks the medic out of any fight the instant it leaves heal range (follow-first)
 local LEASH_CHECK_INTERVAL = 0.5 -- leash check cadence: frequent yank keeps the medic glued instead of brawling
 local PULSE_DURATION = 0.5 -- expanding-ring visual lifetime per heal pulse
@@ -39,6 +39,14 @@ local last_voice_t = 0
 local next_aura_t = 0
 local next_spawn_t = 0
 local next_leash_t = 0
+
+-- Follow-debug tracing, gated by the mod-options debug toggle (_G.CSR_DEBUG), same as
+-- perk_deck_scaling.lua. Turn CSR_DEBUG on in options to capture the medic-follow trace.
+local function dbg(fmt, ...)
+	if _G.CSR_DEBUG and csr_log then
+		csr_log("[HO] " .. string.format(fmt, ...))
+	end
+end
 
 -- =====================================================
 -- Helpers
@@ -221,17 +229,19 @@ end
 -- `distance` is the idle relocate threshold (coplogicidle.lua:1087).
 local function set_follow_objective(medic_unit, owner_unit)
 	if not (alive(medic_unit) and medic_unit:brain() and alive(owner_unit)) then
+		dbg("set_follow_objective SKIP medic=%s owner=%s", tostring(alive(medic_unit)), tostring(alive(owner_unit)))
 		return
 	end
-	pcall(function()
+	local ok = pcall(function()
 		medic_unit:brain():set_objective({
 			type = "follow",
 			follow_unit = owner_unit,
 			scan = true,
 			is_default = true,
-			distance = FOLLOW_DISTANCE,
+			haste = "run", -- converted jokers default to "walk" in cool stance (coplogictravel.lua:1587); force run so the medic can keep pace with a sprinting owner
 		})
 	end)
+	dbg("set_follow_objective DONE ok=%s logic_now=%s", tostring(ok), tostring(medic_unit:brain()._current_logic_name))
 end
 
 -- Spawn one medic for the given peer and convert it to a joker. Returns nothing.
@@ -240,17 +250,21 @@ local function spawn_medic_for(peer_id)
 		return
 	end
 	if managers.groupai:state():whisper_mode() then
+		dbg("spawn SKIP whisper_mode peer=%s", tostring(peer_id))
 		return -- stealth gate
 	end
 
 	local owner_unit = get_peer_player_unit(peer_id)
 	if not alive(owner_unit) then
+		dbg("spawn SKIP no owner peer=%s", tostring(peer_id))
 		return
 	end
 	local spawn_pos = pick_spawn_position(owner_unit)
 	if not spawn_pos then
+		dbg("spawn SKIP no spawn_pos peer=%s", tostring(peer_id))
 		return -- caller retries on the next spawn-check tick
 	end
+	dbg("spawn peer=%s spawn_dist=%.0f", tostring(peer_id), mvector3.distance(owner_unit:movement():m_pos(), spawn_pos))
 
 	local unit_id = Idstring(MEDIC_UNIT_PATH)
 	if not (DB and DB.has and DB:has(Idstring("unit"), unit_id)) then
@@ -293,6 +307,13 @@ local function spawn_medic_for(peer_id)
 		local conv_ok = pcall(function()
 			groupai:convert_hostage_to_criminal(spawned, peer_unit)
 		end)
+		dbg(
+			"convert peer=%s ok=%s is_converted=%s logic=%s",
+			tostring(peer_id),
+			tostring(conv_ok),
+			tostring(spawned:brain() and spawned:brain()._logic_data and spawned:brain()._logic_data.is_converted),
+			tostring(spawned:brain() and spawned:brain()._current_logic_name)
+		)
 		if not conv_ok then
 			return
 		end
@@ -374,7 +395,16 @@ local function host_leash_tick()
 			local owner_unit = get_peer_player_unit(peer_id)
 			if alive(owner_unit) and owner_unit:movement() then
 				local d = mvector3.distance(owner_unit:movement():m_pos(), s.medic_unit:movement():m_pos())
-				if d > LEASH_DISTANCE and s.medic_unit:brain()._current_logic_name ~= "travel" then
+				local logic = s.medic_unit:brain()._current_logic_name
+				local reissue = d > LEASH_DISTANCE and logic ~= "travel"
+				dbg(
+					"leash peer=%s d=%.0f logic=%s reissue=%s",
+					tostring(peer_id),
+					d,
+					tostring(logic),
+					tostring(reissue)
+				)
+				if reissue then
 					set_follow_objective(s.medic_unit, owner_unit)
 				end
 			end
@@ -414,6 +444,20 @@ local function is_oath_medic(cdmg)
 		return false
 	end
 	local key = cdmg._unit:key()
+	for _, s in pairs(state) do
+		if s and s.medic_unit_key == key then
+			return true
+		end
+	end
+	return false
+end
+
+-- Unit-keyed variant for the relocate override (which gets the AI unit, not its CopDamage).
+local function is_oath_medic_unit(unit)
+	if not alive(unit) then
+		return false
+	end
+	local key = unit:key()
 	for _, s in pairs(state) do
 		if s and s.medic_unit_key == key then
 			return true
@@ -624,6 +668,72 @@ _G.CSR.register_item({
 			Hooks:PreHook(CopDamage, "damage_melee", "CSR_HippocraticOath_DR_Melee", dr_pre)
 			Hooks:PreHook(CopDamage, "damage_explosion", "CSR_HippocraticOath_DR_Explosion", dr_pre)
 			Hooks:PreHook(CopDamage, "damage_dot", "CSR_HippocraticOath_DR_Dot", dr_pre)
+		end,
+
+		["lib/units/player_team/logics/teamailogicidle"] = function()
+			-- Tight follow leash for Oath medics: converted jokers route their relocate check
+			-- through this fn (coplogicidle.lua:1040), but vanilla only trips it past ~5m in a
+			-- different nav-seg → the medic loiters. Force a relocate for OUR medic past
+			-- RELOCATE_DISTANCE; scoped by unit-key, so every other unit hits vanilla untouched.
+			if _G._CSR_HIPPOCRATIC_RELOCATE_HOOKED then
+				return
+			end
+			_G._CSR_HIPPOCRATIC_RELOCATE_HOOKED = true
+			local original = TeamAILogicIdle._check_should_relocate
+			function TeamAILogicIdle._check_should_relocate(data, my_data, objective, ...)
+				if
+					data
+					and alive(data.unit)
+					and objective
+					and alive(objective.follow_unit)
+					and is_oath_medic_unit(data.unit)
+				then
+					local my_mov = data.unit:movement()
+					local follow_mov = objective.follow_unit:movement()
+					if my_mov and follow_mov then
+						local d = mvector3.distance(my_mov:m_pos(), follow_mov:m_newest_pos())
+						dbg("relocate-override HIT d=%.0f force=%s", d, tostring(d > RELOCATE_DISTANCE))
+						if d > RELOCATE_DISTANCE then
+							return true
+						end
+					end
+				end
+				return original(data, my_data, objective, ...)
+			end
+		end,
+
+		["lib/units/enemies/cop/logics/coplogictravel"] = function()
+			-- "Follow more directly" (ported from Useful Bots, scoped to OUR medic): vanilla
+			-- _begin_coarse_pathing fires an ASYNC search_for_coarse_path, so the medic stalls for
+			-- several ticks waiting on the pathfinder, then walks a meandering multi-seg path to a
+			-- now-stale owner position. Replace it with a SYNCHRONOUS direct two-node path straight
+			-- to the owner's current nav segment -> no stall, heads at the live position. Every
+			-- non-medic unit keeps the vanilla async search.
+			if _G._CSR_HIPPOCRATIC_COARSE_HOOKED then
+				return
+			end
+			_G._CSR_HIPPOCRATIC_COARSE_HOOKED = true
+			local original = CopLogicTravel._begin_coarse_pathing
+			function CopLogicTravel._begin_coarse_pathing(data, my_data, ...)
+				if not is_oath_medic_unit(data.unit) or (data.path_fail_t and data.t - data.path_fail_t < 2) then
+					return original(data, my_data, ...)
+				end
+				local objective = data.objective
+				if not (objective and alive(objective.follow_unit) and objective.follow_unit:movement()) then
+					return original(data, my_data, ...)
+				end
+				local follow_tracker = objective.follow_unit:movement():nav_tracker()
+				local nav_seg = follow_tracker and follow_tracker:nav_segment()
+				local pos = follow_tracker and follow_tracker:field_position()
+				if not nav_seg or not pos then
+					return original(data, my_data, ...)
+				end
+				my_data.coarse_path_index = 1
+				my_data.coarse_path = {
+					{ data.unit:movement():nav_tracker():nav_segment(), mvector3.copy(data.m_pos) },
+					{ nav_seg, pos },
+				}
+			end
 		end,
 	},
 })

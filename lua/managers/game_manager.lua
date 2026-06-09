@@ -42,6 +42,8 @@ local function default_state()
 		rank = 0,
 		-- Tracked separately from rank because rank may have multiple sources.
 		missions_completed = 0,
+		-- Per-spree BM purchase count; feeds the "Most Purchases" career peak. Resets each start_run.
+		run_purchases = 0,
 		-- A failed run stays active but locked until the player pays Continue or ends the run.
 		failed = false,
 		-- Loss penalty (host/SP). Heist outcome commits on start: in_heist is set at heist start,
@@ -58,6 +60,9 @@ local function default_state()
 		peer_items = {},
 		-- Accumulated looted cash toward the next loot-rank; remainder carries across heists.
 		loot_rank_cash = 0,
+		-- Banked continental coins (bucket A), escalated per heist by the streak multiplier.
+		-- Replaces the flat rank*COINS_PER_RANK projection; see gm_rewards.lua:accrue_escalated_coins.
+		coins_escalated = 0,
 		milestones = {},
 		spawners = { copiers = {}, scrappers = {} },
 		mp_session = {},
@@ -218,6 +223,95 @@ function CSRGameManager:missions_completed()
 	return self._state.missions_completed or 0
 end
 
+-- Career (cross-run) stat read. Values live in _meta.stats so they survive start_run().
+-- Nil-safe -> default. Nothing writes here yet (the Logbook stats UI is scaffold-only;
+-- the increment hooks are a later step). The UI reads through this so wiring the writes
+-- later needs no UI change.
+function CSRGameManager:career_stat(key, default)
+	local v = self._meta.stats and self._meta.stats[key]
+	return v or default or 0
+end
+
+-- Career stat writers (cross-run, _meta.stats). Each persists; called at most once per heist,
+-- so the extra disk write is negligible. add_career_stat accumulates a running total;
+-- record_career_max keeps an all-time peak.
+function CSRGameManager:add_career_stat(key, amount)
+	amount = tonumber(amount) or 0
+	if amount == 0 then
+		return
+	end
+	self._meta.stats = self._meta.stats or {}
+	self._meta.stats[key] = (self._meta.stats[key] or 0) + amount
+	self:save()
+end
+
+function CSRGameManager:record_career_max(key, value)
+	value = tonumber(value) or 0
+	self._meta.stats = self._meta.stats or {}
+	if value > (self._meta.stats[key] or 0) then
+		self._meta.stats[key] = value
+		self:save()
+	end
+end
+
+-- Per-wildcard career mission tally: counts heists completed while holding each wildcard, keyed by
+-- item type in _meta.stats.wildcard_missions. Drives the Logbook "Favorite Wildcard" stat.
+function CSRGameManager:record_wildcard_mission(wildcard_type)
+	if not wildcard_type then
+		return
+	end
+	self._meta.stats = self._meta.stats or {}
+	local wm = self._meta.stats.wildcard_missions or {}
+	wm[wildcard_type] = (wm[wildcard_type] or 0) + 1
+	self._meta.stats.wildcard_missions = wm
+	self:save()
+end
+
+-- Wildcard with the most completed heists, as (type, count); nil if none recorded. Ties broken by
+-- type name for a stable pick.
+function CSRGameManager:favorite_wildcard()
+	local wm = self._meta.stats and self._meta.stats.wildcard_missions
+	if not wm then
+		return nil
+	end
+	local best_type, best_n
+	for wtype, n in pairs(wm) do
+		if not best_n or n > best_n or (n == best_n and wtype < best_type) then
+			best_type, best_n = wtype, n
+		end
+	end
+	return best_type, best_n
+end
+
+-- Per-heist combat tally (runtime only). Combat hooks (combat_stats.lua) increment it every hit
+-- during a CSR heist; flush_heist_tally banks the totals into _meta.stats ONCE at heist end, so
+-- we never touch disk per bullet. reset at heist start, flush at heist end (mission_lifecycle.lua).
+function CSRGameManager:reset_heist_tally()
+	self._heist_tally = { kills = 0, damage_dealt = 0, damage_taken = 0 }
+end
+
+function CSRGameManager:tally_combat(key, amount)
+	local tally = self._heist_tally
+	if not tally then
+		return
+	end
+	tally[key] = (tally[key] or 0) + (tonumber(amount) or 0)
+end
+
+function CSRGameManager:flush_heist_tally()
+	local tally = self._heist_tally
+	if not tally then
+		return
+	end
+	self._meta.stats = self._meta.stats or {}
+	local s = self._meta.stats
+	s.total_kills = (s.total_kills or 0) + (tally.kills or 0)
+	s.total_damage_dealt = (s.total_damage_dealt or 0) + (tally.damage_dealt or 0)
+	s.total_damage_taken = (s.total_damage_taken or 0) + (tally.damage_taken or 0)
+	self:save()
+	self._heist_tally = nil
+end
+
 function CSRGameManager:_default_difficulty()
 	-- Remembered preference -> CS base difficulty -> hardcoded fallback.
 	local cs_td = tweak_data and tweak_data.crime_spree
@@ -309,6 +403,7 @@ function CSRGameManager:start_run()
 	self._state.heist_grace_over = false
 	self._state.rank = 0
 	self._state.missions_completed = 0
+	self._state.run_purchases = 0
 	self._state.difficulty = self:_default_difficulty()
 	self._state.seed = math.random(1, 2 ^ 30)
 	-- Fresh spree re-rolls the modifier order with the current pool (picks up new add-ons).
@@ -320,6 +415,7 @@ function CSRGameManager:start_run()
 	-- Wipe inventory so Items panel doesn't carry stacks from a prior run.
 	self._state.peer_items = {}
 	self._state.loot_rank_cash = 0
+	self._state.coins_escalated = 0
 	self._state.mp_session = {}
 	self:generate_mission_set()
 	log_csr(
@@ -378,6 +474,32 @@ function CSRGameManager:record_mission_completed()
 	log_csr("record_mission_completed: now " .. tostring(self._state.missions_completed))
 	self:save()
 	return true
+end
+
+-- One BM purchase: bumps the per-spree count and folds it into the "Most Purchases" career peak.
+-- record_career_max only writes when the new value beats the record, so calling per-buy is cheap.
+function CSRGameManager:record_purchase()
+	self._state.run_purchases = (self._state.run_purchases or 0) + 1
+	self:record_career_max("most_purchases", self._state.run_purchases)
+end
+
+-- Peak non-scrap inventory size held during one run -> "Most Items Collected" career record.
+-- Reads live holdings (no per-spree counter needed: record_career_max only grows the peak, and
+-- removals/tier-ups can't lower an already-captured max). Excludes is_scrap so printer-spammed
+-- scrap can't game the record. Called from add_item (the single collection chokepoint).
+function CSRGameManager:record_items_peak(peer_id)
+	local counts = self:player_items(peer_id)
+	local by_type = self._registry.by_type
+	local total = 0
+	for item_type, n in pairs(counts) do
+		if type(n) == "number" and n > 0 then
+			local def = by_type[item_type]
+			if not (def and def.is_scrap) then
+				total = total + n
+			end
+		end
+	end
+	self:record_career_max("most_items", total)
 end
 
 -- =====================================================

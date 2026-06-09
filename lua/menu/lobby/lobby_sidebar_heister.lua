@@ -123,25 +123,33 @@ end
 -- Constants mirror rank_passives.lua + the item files — Rule #13: no shared accumulator exists.
 local function csr_stat_offpath_mult(key, mgr, rank)
 	if key == "armor" then
+		local glass = mgr:owned("glass_pistol")
 		return (1 + 0.025 * rank) -- rank_passives ARMOR_PER_RANK
-			* (0.5 ^ mgr:owned("glass_pistol")) -- glass_pistol DIV_PER_STACK
+			* ((glass > 0) and 1 / (2 * glass) or 1) -- glass_pistol DIV_PER_STACK (÷2 per stack, linear)
 			* (1 + 0.50 * mgr:owned("dozer_guide")) -- dozer_guide ARMOR_BONUS
 	elseif key == "movement" then
+		local m = 1
+		local ep = mgr:owned("escape_plan")
+		if ep > 0 then
+			m = m * (1 + 0.50 * (1 - 1 / (1 + (3 / 47) * ep))) -- escape_plan hyperbolic speed bonus
+		end
 		local d = mgr:owned("dozer_guide")
 		if d > 0 then
-			return math.max(0.40, 1 - 0.15 * d) -- dozer_guide SPEED_MIN / SPEED_PENALTY
+			m = m * math.max(0.40, 1 - 0.15 * d) -- dozer_guide SPEED_MIN / SPEED_PENALTY
 		end
+		return m
 	end
 	return 1
 end
 
 -- CSR damage multiplier (kind = "ranged" | "melee"). Mirrors the item files + rank DMG_PER_RANK.
 local function csr_weapon_dmg_mult(kind, mgr, rank)
+	local glass = mgr:owned("glass_pistol")
 	local m = (1 + 0.01 * rank) -- rank_passives DMG_PER_RANK
-		* (1.75 ^ mgr:owned("glass_pistol")) -- glass_pistol DMG_PER_STACK
+		* ((glass > 0) and 2 * glass or 1) -- glass_pistol DMG_MUL_PER_STACK (×2 per stack, linear)
 		* (1 + 0.10 * mgr:owned("evidence_rounds")) -- evidence_rounds PER_STACK
 	if kind == "melee" then
-		m = m * (1 + 0.50 * mgr:owned("jiro_last_wish")) -- jiro_last_wish
+		m = m * (1 + 1.0 * mgr:owned("jiro_last_wish")) -- jiro_last_wish MELEE_BONUS_PER_STACK
 	end
 	return m
 end
@@ -218,15 +226,17 @@ local function csr_collect_weapon_rows(mgr, rank)
 			local factor = (mgr and csr_weapon_dmg_mult("melee", mgr, rank)) or 1
 			local mn = math.round((st.min_damage or 0) * mult * factor)
 			local mx = math.round((st.max_damage or st.min_damage or 0) * mult * factor)
-			melee.dmg = (mn == mx) and tostring(mx) or (mn .. "–" .. mx)
+			-- "X (Y)": X = uncharged hit (min_damage), Y = full-charge hit (max_damage).
+			melee.dmg = (mn == mx) and tostring(mx) or (mn .. " (" .. mx .. ")")
 			melee.color = dmg_color(factor)
 		end
 	end)
 	rows[#rows + 1] = melee
 
 	-- Throwable: damage lives in tweak_data.projectiles (NOT .blackmarket.projectiles).
-	-- No CSR item buff applies to throwables; rank explosion scaling is conditional/host-side,
-	-- so leave the value un-tinted (neutral white) rather than over-report a boost.
+	-- Grenades deal explosion/fire damage, scaled host-side for the whole crew by rank passives
+	-- (DMG_PER_RANK) and Glass Pistol (×2/stack AoE) — clients included via host sim. Preview both
+	-- + tint. evidence_rounds (firearms/turrets) and jiro (melee) don't touch throwables, so excluded.
 	local throwable = { slot = "THROWABLE", name = "—", dmg = nil, color = Color.white }
 	pcall(function()
 		local id, amount = bm:equipped_grenade()
@@ -237,7 +247,11 @@ local function csr_collect_weapon_rows(mgr, rank)
 		throwable.name = (bmtw.name_id and managers.localization:text(bmtw.name_id)) or id
 		local ptw = tweak_data.projectiles[id]
 		if ptw and ptw.damage then
-			throwable.dmg = tostring(math.round(ptw.damage * 10))
+			local glass = (mgr and mgr:owned("glass_pistol")) or 0
+			local factor = (1 + 0.01 * rank) -- rank_passives DMG_PER_RANK
+				* ((glass > 0) and 2 * glass or 1) -- glass_pistol DMG_MUL_PER_STACK (now scales AoE)
+			throwable.dmg = tostring(math.round(ptw.damage * 10 * factor))
+			throwable.color = dmg_color(factor)
 		elseif amount then
 			throwable.dmg = "×" .. tostring(amount)
 		end

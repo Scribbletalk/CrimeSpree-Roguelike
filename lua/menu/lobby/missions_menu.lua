@@ -234,8 +234,15 @@ function CSRMissionsMenuComponent:_setup()
 
 	-- End-screen surface: a freshly-unlocked modifier flashes the siren behind the Modifiers sidebar
 	-- icon -- the first thing seen post-heist. One-shot consume; the lobby keeps only the blue tint.
-	if not self._is_lobby and mgr and mgr.consume_modifier_glow and mgr:consume_modifier_glow() then
-		if self._sidebar and self._sidebar.play_modifier_siren then
+	if not self._is_lobby then
+		local consumed = mgr and mgr.consume_modifier_glow and mgr:consume_modifier_glow()
+		log( -- TEMP siren debug (raw log: csr_log is CSR_DEBUG-gated)
+			"[CSR][siren] _setup consume: consumed="
+				.. tostring(consumed)
+				.. " sidebar="
+				.. tostring(self._sidebar ~= nil)
+		)
+		if consumed and self._sidebar and self._sidebar.play_modifier_siren then
 			self._sidebar:play_modifier_siren()
 		end
 	end
@@ -722,6 +729,35 @@ function CSRMissionsMenuComponent:_refresh_action_buttons()
 	-- pure visibility hide. Host/SP keep the full set.
 	local client = not self:_is_host()
 
+	if self._start_button then
+		self._start_button:panel():set_visible(not locked and not client)
+	end
+
+	-- Reroll is positioned BEFORE the action button so End Spree can anchor to its final left edge.
+	if self._reroll_button then
+		if locked then
+			self._reroll_button:set_text(managers.localization:to_upper_text("menu_cs_continue"))
+			self._reroll_button:set_callback(callback(self, self, "_action_continue"))
+		else
+			self._reroll_button:set_text(managers.localization:to_upper_text("menu_cs_reroll"))
+			self._reroll_button:set_callback(callback(self, self, "_reroll_pressed"))
+		end
+
+		if managers.menu:is_pc_controller() then
+			self._reroll_button:shrink_wrap_button()
+		end
+
+		-- When locked, Start is hidden and Reroll becomes "Continue Crime Spree": right-align it to
+		-- the panel edge (where Start sat) instead of leaving it floating left of the hidden Start.
+		if locked then
+			self._reroll_button:panel():set_right(self._buttons_panel:right())
+		else
+			self._reroll_button:panel():set_right(self._start_button:panel():left() - large_padding)
+		end
+		self._reroll_button:panel():set_bottom(self._start_button:panel():bottom())
+		self._reroll_button:panel():set_visible(not client)
+	end
+
 	if self._action_button then
 		if self._is_lobby then
 			self._action_button:set_text(managers.localization:to_upper_text("csr_end_spree"))
@@ -738,25 +774,6 @@ function CSRMissionsMenuComponent:_refresh_action_buttons()
 		self._action_button:panel():set_right(self._reroll_button:panel():left() - large_padding)
 		self._action_button:panel():set_bottom(self._reroll_button:panel():bottom())
 		self._action_button:panel():set_visible(not client)
-	end
-
-	if self._start_button then
-		self._start_button:panel():set_visible(not locked and not client)
-	end
-
-	if self._reroll_button then
-		if locked then
-			self._reroll_button:set_text(managers.localization:to_upper_text("menu_cs_continue"))
-			self._reroll_button:set_callback(callback(self, self, "_action_continue"))
-		else
-			self._reroll_button:set_text(managers.localization:to_upper_text("menu_cs_reroll"))
-			self._reroll_button:set_callback(callback(self, self, "_reroll_pressed"))
-		end
-
-		if managers.menu:is_pc_controller() then
-			self._reroll_button:shrink_wrap_button()
-		end
-		self._reroll_button:panel():set_visible(not client)
 	end
 
 	-- Scrim hidden for guests too; exists only after the first _refresh_action_buttons during build.
@@ -1934,10 +1951,12 @@ end
 function CSRSidebar:play_modifier_siren()
 	for _, btn in ipairs(self._buttons) do
 		if btn._feature_key == "modifiers" and btn.play_siren then
+			log("[CSR][siren] play_modifier_siren: modifiers button found, arming") -- TEMP siren debug
 			btn:play_siren()
 			return
 		end
 	end
+	log("[CSR][siren] play_modifier_siren: NO modifiers button found") -- TEMP siren debug
 end
 
 -- CSRSidebarSeparator — fork of vanilla CrimeNetSidebarSeparator; 10px non-interactive row.
@@ -2142,6 +2161,7 @@ function CSRSidebarItem:play_siren()
 		self._siren_blue = add_glow(sidebar_siren_blue)
 	end
 	self._siren_t = 0
+	self._siren_logged = nil -- TEMP siren debug
 end
 
 function CSRSidebarItem:update(t, dt)
@@ -2164,8 +2184,23 @@ function CSRSidebarItem:update(t, dt)
 	end
 	-- Out-of-phase red/blue strobe; quick fade over the last 0.6s so it trails off.
 	local fade = math.min(1, (sidebar_siren_duration - tt) / 0.6)
-	self._siren_red:set_alpha(math.abs(math.sin(tt * 8)) * 0.55 * fade)
-	self._siren_blue:set_alpha(math.abs(math.cos(tt * 8)) * 0.55 * fade)
+	local red_a = math.abs(math.sin(tt * 8)) * 0.55 * fade
+	local blue_a = math.abs(math.cos(tt * 8)) * 0.55 * fade
+	self._siren_red:set_alpha(red_a)
+	self._siren_blue:set_alpha(blue_a)
+	if not self._siren_logged then -- TEMP siren debug
+		self._siren_logged = true
+		log(
+			"[CSR][siren] update ticking: tt="
+				.. string.format("%.2f", tt)
+				.. " red_a="
+				.. string.format("%.2f", red_a)
+				.. " blue_a="
+				.. string.format("%.2f", blue_a)
+				.. " panel_vis="
+				.. tostring(alive(self._panel) and self._panel:visible())
+		)
+	end
 end
 
 csr_log("[CSR] missions_menu.lua loaded (Slice 8 fork + start button)")

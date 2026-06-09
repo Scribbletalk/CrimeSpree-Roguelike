@@ -309,6 +309,8 @@ function CSR_Shop.buy(peer_id, slot_index)
 	end
 	CSR_Shop.debit(peer_id, price)
 	slot.sold = true
+	m:add_career_stat("total_purchases", 1) -- career lifetime BM purchases (persists; saves internally)
+	m:record_purchase() -- per-spree count -> "Most Purchases" career peak
 	m:save()
 	csr_log(
 		"[CSR] shop: bought slot " .. tostring(slot_index) .. " (" .. tostring(slot.type) .. ") for " .. tostring(price)

@@ -54,13 +54,14 @@ globals = {
     -- PD2 player / weapon / enemy
     "BaseNetworkSession",
     "BaseInteractionExt", "UseInteractionExt", "InteractionTweakData",
-    "PlayerBase", "HuskPlayerBase", "PlayerDamage", "PlayerManager", "PlayerStandard",
+    "PlayerBase", "HuskPlayerBase", "PlayerDamage", "PlayerManager", "PlayerStandard", "StatisticsManager",
     "PlayerMovement", "HuskPlayerMovement",
     "CopDamage", "CivilianDamage", "TeamAIDamage",
-    "NewRaycastWeaponBase", "RaycastWeaponBase", "SentryGunWeapon",
-    "AmmoClip", "GageAssignmentBase",
+    "NewRaycastWeaponBase", "RaycastWeaponBase", "NewNPCRaycastWeaponBase", "SentryGunWeapon",
+    "AmmoClip", "GageAssignmentBase", "WeaponDescription",
     -- PD2 AI / mission
     "GroupAIStateBase", "GroupAIStateBesiege", "IngameWaitingForPlayersState",
+    "TeamAILogicIdle", "CopLogicTravel",
     "MissionEndState", "MissionManager",
     "ElementAreaTrigger", "ElementSpawnEnemyDummy",
     -- PD2 economy / black market
@@ -89,7 +90,7 @@ globals = {
     -- CSR contract
     "CSRContractMenuComponent", "MenuCSRContractInitiator",
     -- CSR module tables / singletons
-    "CSR_Shop", "CSR_LogbookProgress", "CSR_MetaProgress", "CSR_MP",
+    "CSR_Shop", "CSR_LogbookProgress", "CSR_MP",
     -- CSR global helpers
     "csr_log",
     -- CSR callbacks

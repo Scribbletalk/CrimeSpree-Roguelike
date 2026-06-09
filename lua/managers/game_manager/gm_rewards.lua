@@ -16,6 +16,12 @@ end
 -- Per-rank cash multiplier by CSR difficulty index (1=normal..7=death_sentence). Mirrors moneytweakdata.
 local REWARD_PAYOUT_MULT = { 1, 2, 5, 10, 11, 13, 14 }
 
+-- Base continental coins granted per rank. Reduced from 2 to 1 (2026-06-08) so the streak
+-- escalation multiplier grows from a non-doubled base. Used by _rewards_for AND accrue_escalated_coins.
+local COINS_PER_RANK = 1
+-- Linear streak ramp slope: mult(n) = 1 + COIN_ESCALATION_K * (n - 1). mult(1) = 1.
+local COIN_ESCALATION_K = 0.2
+
 -- tweak_data.difficulties leads with "easy" (index 1), so CSR index = difficulty_to_index - 1.
 function CSRGameManager:reward_difficulty_index()
 	local di = (tweak_data and tweak_data.difficulty_to_index and tweak_data:difficulty_to_index(self:difficulty()))
@@ -44,14 +50,80 @@ function CSRGameManager:_rewards_for(rank, idx)
 	return {
 		cash = math.round(cash),
 		experience = math.round(xp),
-		continental_coins = rank * 2,
+		continental_coins = rank * COINS_PER_RANK,
 		loot_drop = rank,
 	}
 end
 
+-- Linear streak multiplier for the n-th completed mission. mult(1) = 1 (first mission unscaled).
+function CSRGameManager:coin_streak_mult(n)
+	n = tonumber(n) or 1
+	if n < 1 then
+		n = 1
+	end
+	return 1 + COIN_ESCALATION_K * (n - 1)
+end
+
+-- Banked bucket-A continental coins (fractional; rounded at projection/payout).
+function CSRGameManager:coins_escalated()
+	return self._state.coins_escalated or 0
+end
+
+-- Host/SP: bank one completed heist's escalated coins. rank_amount = the heist's TOTAL rank
+-- (mission-length gain + loot ranks). The multiplier uses the current streak length
+-- (missions_completed), so it must be called AFTER record_mission_completed().
+function CSRGameManager:accrue_escalated_coins(rank_amount)
+	rank_amount = tonumber(rank_amount) or 0
+	if rank_amount <= 0 or not self._state.is_active then
+		return 0
+	end
+	local n = self._state.missions_completed or 0
+	local add = rank_amount * COINS_PER_RANK * self:coin_streak_mult(n)
+	self._state.coins_escalated = (self._state.coins_escalated or 0) + add
+	self:add_career_stat("total_coins", add) -- career lifetime total (persists)
+	self:save()
+	log_csr(
+		"accrue_escalated_coins: +"
+			.. tostring(add)
+			.. " coins (rank "
+			.. tostring(rank_amount)
+			.. " x mult(n="
+			.. tostring(n)
+			.. ")="
+			.. tostring(self:coin_streak_mult(n))
+			.. "); total "
+			.. tostring(self._state.coins_escalated)
+	)
+	return add
+end
+
 function CSRGameManager:projected_rewards()
-	-- Bucket A: own rank/difficulty (guest bucket B is summed in separately at End Spree).
-	return self:_rewards_for(self:rank(), self:reward_difficulty_index())
+	-- Bucket A: own rank/difficulty. Continental coins come from the escalated accumulator,
+	-- not the flat rank*COINS_PER_RANK term (escalation is banked per heist).
+	local r = self:_rewards_for(self:rank(), self:reward_difficulty_index())
+	r.continental_coins = math.round(self:coins_escalated())
+	return r
+end
+
+-- Fraction of the heist the local player was present for, from the host-authoritative heist
+-- timer: 1 for a from-start player, smaller for a late-join client. Guards a zero/short heist.
+-- _heist_join_time is set on IngameWaitingForPlayersState:at_enter (mission_lifecycle.lua).
+function CSRGameManager:heist_participation()
+	local t_end = 0
+	pcall(function()
+		t_end = (managers.game_play_central and managers.game_play_central:get_heist_timer()) or 0
+	end)
+	if t_end <= 0 then
+		return 1
+	end
+	local t_join = self._heist_join_time or 0
+	local p = (t_end - t_join) / t_end
+	if p < 0 then
+		return 0
+	elseif p > 1 then
+		return 1
+	end
+	return p
 end
 
 -- CSR difficulty index for the host's synced difficulty (bucket B). Falls back to own when not guesting.
@@ -68,26 +140,41 @@ end
 -- Guest earnings bucket B
 -- =====================================================
 
--- Bank one guest heist's reward into _meta.mp_earnings at host difficulty. Called only from the guest fork.
-function CSRGameManager:accrue_mp_earnings(rank_gained)
+-- Bank one guest heist's reward into _meta.mp_earnings at host difficulty. Called only from the
+-- guest fork. coin_mult applies the streak escalation to coins only; participation (0..1) scales
+-- ALL four components for late-join fairness. Both default to 1 (back-compat / loot-rank calls).
+function CSRGameManager:accrue_mp_earnings(rank_gained, coin_mult, participation)
 	rank_gained = tonumber(rank_gained) or 0
 	if rank_gained <= 0 then
 		return nil
 	end
+	coin_mult = tonumber(coin_mult) or 1
+	participation = tonumber(participation) or 1
+	if participation < 0 then
+		participation = 0
+	elseif participation > 1 then
+		participation = 1
+	end
 	local r = self:_rewards_for(rank_gained, self:host_reward_difficulty_index())
 	local b = self._meta.mp_earnings or { cash = 0, experience = 0, continental_coins = 0, loot_drop = 0 }
-	b.cash = (b.cash or 0) + r.cash
-	b.experience = (b.experience or 0) + r.experience
-	b.continental_coins = (b.continental_coins or 0) + r.continental_coins
-	b.loot_drop = (b.loot_drop or 0) + r.loot_drop
+	b.cash = (b.cash or 0) + math.round(r.cash * participation)
+	b.experience = (b.experience or 0) + math.round(r.experience * participation)
+	local coins_add = math.round(r.continental_coins * coin_mult * participation)
+	b.continental_coins = (b.continental_coins or 0) + coins_add
+	self:add_career_stat("total_coins", coins_add) -- career lifetime total (persists)
+	b.loot_drop = (b.loot_drop or 0) + math.round(r.loot_drop * participation)
 	self._meta.mp_earnings = b
 	self:save()
 	log_csr(
 		"accrue_mp_earnings: +"
-			.. tostring(r.cash)
+			.. tostring(math.round(r.cash * participation))
 			.. " cash / +"
-			.. tostring(r.experience)
-			.. " xp (bucket B now "
+			.. tostring(math.round(r.continental_coins * coin_mult * participation))
+			.. " coins (coin_mult="
+			.. tostring(coin_mult)
+			.. ", p="
+			.. tostring(participation)
+			.. "; bucket B now "
 			.. tostring(b.cash)
 			.. " cash)"
 	)
@@ -95,7 +182,9 @@ function CSRGameManager:accrue_mp_earnings(rank_gained)
 end
 
 -- Guest analogue of accrue_loot_rank: converts looted cash to bucket B ranks at host difficulty.
-function CSRGameManager:accrue_guest_loot_rank(loot_cash)
+-- Forwards coin_mult/participation so loot-derived ranks escalate + scale identically to the
+-- mission-gain accrual for the same heist.
+function CSRGameManager:accrue_guest_loot_rank(loot_cash, coin_mult, participation)
 	loot_cash = tonumber(loot_cash) or 0
 	if loot_cash <= 0 then
 		return 0
@@ -112,7 +201,7 @@ function CSRGameManager:accrue_guest_loot_rank(loot_cash)
 	local ranks = math.floor(acc / per_rank)
 	entry.loot_rank_cash = acc - ranks * per_rank
 	if ranks > 0 then
-		self:accrue_mp_earnings(ranks) -- accrue_mp_earnings saves
+		self:accrue_mp_earnings(ranks, coin_mult, participation) -- accrue_mp_earnings saves
 	else
 		self:save() -- persist the carried remainder
 	end
