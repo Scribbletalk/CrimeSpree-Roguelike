@@ -183,6 +183,38 @@ function CSRGameManager:_setup_temporary_job()
 	end
 end
 
+-- MP guest only: the guest never runs select_mission, so its JobManager has no active job
+-- (job_id nil) -> current_level_data() nil. EVERY briefing surface built from it is then empty,
+-- incl. HUDMissionBriefing:reload which bails at `if not has_active_job() then return` BEFORE it
+-- loads the contact assets_gui (the briefing bg video). Mirror the host's select_mission wiring:
+-- set the narrative chain, then activate the temporary crime_spree job from game_settings.level_id
+-- (vanilla network sync already set it for the heist load). Idempotent + guest-gated: the
+-- has_active_job guard makes it a no-op for the host and for vanilla (non-CSR) heists where the
+-- job is already active. Must run BEFORE the briefing builds (IngameWaitingForPlayersState:at_enter).
+function CSRGameManager:ensure_guest_temp_job()
+	if not (_G.CSR_MP and _G.CSR_MP.is_client and _G.CSR_MP.is_client()) then
+		return
+	end
+	if not managers.job or managers.job:has_active_job() then
+		return
+	end
+	local gs = Global and Global.game_settings
+	local level_id = gs and gs.level_id
+	if not level_id or not managers.job.activate_temporary_job then
+		return
+	end
+	self:_setup_temporary_job()
+	managers.job:activate_temporary_job("crime_spree", level_id)
+	-- Assets were built off the (then empty) chain at MissionAssetsManager:init; rebuild now.
+	if managers.assets and managers.assets._setup_mission_assets then
+		if managers.assets._global then
+			managers.assets._global.assets = {}
+		end
+		managers.assets:_setup_mission_assets()
+	end
+	log_csr("ensure_guest_temp_job: activated crime_spree temp job (level=" .. tostring(level_id) .. ")")
+end
+
 -- =====================================================
 -- Run-state queries
 -- =====================================================
@@ -604,6 +636,22 @@ function CSRGameManager:_check_interrupted_heist()
 	end
 	self._state.in_heist = false
 	self._state.heist_grace_over = false
+	self:save()
+end
+
+-- Pending rewards captured from a leftover pre-install VANILLA Crime Spree (see end_spree_rewards.lua).
+-- Stored in _meta so they survive a relaunch until the player claims them via the reward screen.
+function CSRGameManager:set_pending_vanilla_rewards(rewards)
+	self._meta.pending_vanilla_rewards = rewards
+	self:save()
+end
+
+function CSRGameManager:pending_vanilla_rewards()
+	return self._meta.pending_vanilla_rewards
+end
+
+function CSRGameManager:clear_pending_vanilla_rewards()
+	self._meta.pending_vanilla_rewards = nil
 	self:save()
 end
 

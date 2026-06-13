@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<!--
+	CSR native-RPC messages. Registered onto the engine's settings/network protocol by the
+	SuperBLT wren XML tweaker (referenced from supermod.xml). Replaces the SuperBLT chat-tunnel
+	transport, which silently truncates any payload past the 255-char chat-message wire cap.
+
+	Two messages, one per authority direction, each carrying (msg_id, payload) as native strings.
+	Native string params have no 255-char cap (vanilla sync_outfit / set_equipped_weapon ship
+	300-600+ char strings reliably), so CSR payloads ride whole — no chunking, no reassembly.
+
+	receiver="connection" -> dispatched on ConnectionNetworkHandler, vanilla's lobby/join handler.
+	receiver="unit" (UnitNetworkHandler) was tried first but unit-RPCs are only delivered once the
+	engine enters multiplayer gameplay (set_multiplayer) — they queue fine but drop on receive in the
+	lobby. Connection messages are delivered through the whole join handshake, so they work in the
+	lobby AND in a heist.
+	delivery="ordered" -> reliable + in-order, matching the chat tunnel's old semantics.
+	check= -> engine-side forgery guard: only the server may send _sc, only clients may send _cs.
+
+	Adding/removing messages here requires a game restart.
+-->
+<tweaks>
+	<tweak version="2" name="settings/network" extension="network_settings">
+		<search>
+			<network/>
+			<rpc/>
+		</search>
+		<target mode="attach">
+			<message name="csr_net_sc" delivery="ordered" receiver="connection" check="server_to_client">
+				<param type="string"/>
+				<param type="string"/>
+			</message>
+		</target>
+	</tweak>
+	<tweak version="2" name="settings/network" extension="network_settings">
+		<search>
+			<network/>
+			<rpc/>
+		</search>
+		<target mode="attach">
+			<message name="csr_net_cs" delivery="ordered" receiver="connection" check="client_to_server">
+				<param type="string"/>
+				<param type="string"/>
+			</message>
+		</target>
+	</tweak>
+</tweaks>

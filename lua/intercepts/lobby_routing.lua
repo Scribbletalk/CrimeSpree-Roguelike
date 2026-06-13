@@ -36,6 +36,20 @@ Hooks:PostHook(MenuManager, "on_enter_lobby", "CSR_OnEnterLobbyRoute", function(
 		_G.CSR_MP.lobby_ping_host()
 	end
 
+	-- RETURNING guest: we already cached the host's CSR signature (host_seed), so reroute ourselves
+	-- instead of waiting for the host's ping reply. On a briefing->lobby return the host is rebuilding
+	-- its own lobby and its LOBBY_PING handler bails (no _crime_spree_missions yet) -> never replies ->
+	-- guest stuck in the vanilla lobby with no CSR UI. is_guesting is false on the initial join (no
+	-- host_seed yet), so first-join still relies on the ping/reply handshake.
+	if
+		managers.csr
+		and managers.csr.is_guesting
+		and managers.csr:is_guesting()
+		and _G.CSR_reroute_client_to_csr_lobby
+	then
+		_G.CSR_reroute_client_to_csr_lobby()
+	end
+
 	if not Global.CSR_RETURN_TO_LOBBY then
 		return
 	end

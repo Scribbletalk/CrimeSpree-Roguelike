@@ -52,7 +52,7 @@ globals = {
     "HudIconsTweakData", "HUDInteraction", "HUDManager", "HUDMissionBriefing",
     "HUDStageEndCrimeSpreeScreen", "HUDStageEndScreen", "HUDTeammate",
     -- PD2 player / weapon / enemy
-    "BaseNetworkSession",
+    "BaseNetworkSession", "UnitNetworkHandler", "ConnectionNetworkHandler",
     "BaseInteractionExt", "UseInteractionExt", "InteractionTweakData",
     "PlayerBase", "HuskPlayerBase", "PlayerDamage", "PlayerManager", "PlayerStandard", "StatisticsManager",
     "PlayerMovement", "HuskPlayerMovement",
@@ -62,7 +62,7 @@ globals = {
     -- PD2 AI / mission
     "GroupAIStateBase", "GroupAIStateBesiege", "IngameWaitingForPlayersState",
     "TeamAILogicIdle", "CopLogicTravel",
-    "MissionEndState", "MissionManager",
+    "MissionEndState", "MissionManager", "MissionScript",
     "ElementAreaTrigger", "ElementSpawnEnemyDummy",
     -- PD2 economy / black market
     "MoneyManager", "BlackMarketGui", "BlackMarketManager",

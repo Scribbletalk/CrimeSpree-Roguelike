@@ -80,6 +80,13 @@ Hooks:Add("MenuManagerInitialize", "CSR_OptionsCallbacks", function(menu_manager
 		end
 	end
 
+	MenuCallbackHandler.csr_grant_aloe_leaf = function(self, item)
+		local mgr = managers.csr
+		if mgr and mgr.add_item then
+			mgr:add_item(mgr:local_peer_id(), "aloe_leaf")
+		end
+	end
+
 	MenuCallbackHandler.csr_force_fwb = function(self, item)
 		local mgr = managers.csr
 		if mgr and mgr.debug_force_mission then
@@ -145,6 +152,15 @@ Hooks:Add("MenuManagerPopulateCustomMenus", "CSR_OptionsPopulate", function(menu
 		callback = "csr_grant_cup_of_joe",
 		menu_id = "csr_debug_menu",
 		priority = 1,
+	})
+
+	MenuHelper:AddButton({
+		id = "grant_aloe_leaf",
+		title = "csr_grant_aloe_title",
+		desc = "csr_grant_aloe_desc",
+		callback = "csr_grant_aloe_leaf",
+		menu_id = "csr_debug_menu",
+		priority = 0,
 	})
 
 	MenuHelper:AddButton({

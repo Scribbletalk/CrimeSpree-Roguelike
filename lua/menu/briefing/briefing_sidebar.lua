@@ -67,7 +67,26 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 		if self._sidebar then
 			return
 		end
-		if not csr_briefing_active() then
+		if _G.CSR_DEBUG then
+			local C = managers and managers.csr
+			csr_log(
+				string.format(
+					"[CSR][mpdbg] _csr_build_sidebar: have_sidebar=%s job_id=%s csr_active=%s is_guesting=%s",
+					tostring(self._sidebar ~= nil),
+					tostring(managers and managers.job and managers.job:current_job_id()),
+					tostring(csr_briefing_active()),
+					tostring(C and C.is_guesting and C:is_guesting())
+				)
+			)
+		end
+		-- Parity with briefing_wiring / HUD header: a guest's current_job may not have settled to
+		-- "crime_spree" yet (csr_briefing_active false), so fall back to is_guesting so the sidebar
+		-- still builds. Hardens against the host-state-arrives-late race.
+		local is_guesting = managers and managers.csr and managers.csr.is_guesting and managers.csr:is_guesting()
+		if not (csr_briefing_active() or is_guesting) then
+			if _G.CSR_DEBUG then
+				csr_log("[CSR][mpdbg] _csr_build_sidebar: BAILED — not csr_briefing_active and not is_guesting")
+			end
 			return
 		end
 		local ws_panel = self._safe_workspace and self._safe_workspace:panel()
@@ -219,12 +238,27 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 		if not managers or not managers.job or not managers.csr then
 			return
 		end
+		if _G.CSR_DEBUG then
+			csr_log(
+				string.format(
+					"[CSR][mpdbg] briefing init PreHook: job_id=%s has_level_data=%s (empty level_data + non-crime_spree job => plan/Bain text empty)",
+					tostring(managers.job and managers.job:current_job_id()),
+					tostring(managers.job:current_level_data() ~= nil)
+				)
+			)
+		end
 		if managers.job:current_level_data() then
 			return
 		end
 		if managers.job:current_job_id() == "crime_spree" and managers.csr._setup_temporary_job then
+			-- Job already active but chain empty (game-side manager re-init): re-derive the chain.
 			managers.csr:_setup_temporary_job()
 			csr_log("[CSR] briefing: re-derived empty crime_spree chain before init (MP client)")
+		elseif managers.csr.ensure_guest_temp_job then
+			-- Guest never runs select_mission -> no current_job. Activate the crime_spree temp job so
+			-- current_level_data is populated. Primary activation is the at_enter PreHook (before the
+			-- briefing HUD builds); this is the idempotent fallback if that didn't fire.
+			managers.csr:ensure_guest_temp_job()
 		end
 	end)
 

@@ -112,11 +112,17 @@ local function broadcast_host_state()
 		run_seed = mgr:seed(),
 		host_level_id = (gs and gs.level_id) or false,
 		host_mission = (gs and gs.mission) or "none",
+		-- The CSR card the host has selected (drives the guest's lobby highlight). false = none.
+		host_current_mission = (mgr.current_mission and mgr:current_mission()) or false,
 		host_tokens_gross = (_G.CSR_Shop and _G.CSR_Shop.gross_earned and _G.CSR_Shop.gross_earned()) or 0,
 		-- Addon signature for the MP join-gate (guest missing any of these is blocked).
 		host_addons = table.concat((mgr.addon_signature and mgr:addon_signature()) or {}, ","),
 	})
-	LuaNetworking:SendToPeers(CSR_MP.MSG.HANDSHAKE_OK, payload)
+	-- Lobby transport = SuperBLT chat tunnel (native session RPC does not deliver pre-heist). The
+	-- json can exceed the 255-char chat wire cap, so chunk it; the receiver reassembles via _hs_buf.
+	for _, chunk in ipairs(CSR_MP.build_raw_chunks("", payload, 180)) do
+		LuaNetworking:SendToPeers(CSR_MP.MSG.HANDSHAKE_OK, chunk)
+	end
 	-- Mission set rides the same triggers so guest cards match host's.
 	if CSR_MP.broadcast_mission_set then
 		CSR_MP.broadcast_mission_set()
@@ -137,7 +143,28 @@ if CSR_MP and CSR_MP.register_handler then
 			return
 		end
 		-- Not gated on csr_heist_active() — it's false in lobby; is_from_host blocks forgery.
-		local ok, payload = pcall(json.decode, data)
+		-- Reassemble the chunked json (chat tunnel splits host-state across "idx/total~" chunks).
+		CSR_MP._hs_buf = CSR_MP._hs_buf or { chunks = {}, total = 0 }
+		local idx, total, body = string.match(tostring(data), "^(%d+)/(%d+)~(.*)$")
+		idx, total = tonumber(idx), tonumber(total)
+		if not (idx and total) then
+			return
+		end
+		local buf = CSR_MP._hs_buf
+		buf.total = total
+		buf.chunks[idx] = body
+		local filled = 0
+		for i = 1, total do
+			if buf.chunks[i] then
+				filled = filled + 1
+			end
+		end
+		if filled < total then
+			return
+		end
+		local full = table.concat(buf.chunks, "", 1, total)
+		CSR_MP._hs_buf = { chunks = {}, total = 0 }
+		local ok, payload = pcall(json.decode, full)
 		if not ok or type(payload) ~= "table" then
 			return
 		end
@@ -165,10 +192,25 @@ if CSR_MP and CSR_MP.register_handler then
 					Global.game_settings.difficulty = payload.host_difficulty
 				end
 			end
+			-- Adopt the host's selected CSR card so the guest's lobby highlight tracks it.
+			if mgr.set_mp_host_current_mission then
+				local hcm = payload.host_current_mission
+				mgr:set_mp_host_current_mission((hcm ~= false and hcm) or nil)
+			end
 			-- Repaint lobby rank + item quota if currently open.
 			local comp = managers.menu_component and managers.menu_component._crime_spree_missions
 			if comp and comp.refresh_for_rank_change then
 				comp:refresh_for_rank_change()
+			end
+			-- Reflect the host's pick on the guest's mission cards (display only; never mutates/broadcasts).
+			if comp and comp._csr_apply_host_selection then
+				comp:_csr_apply_host_selection(mgr.current_mission and mgr:current_mission())
+			end
+			-- C/D hardening: if host-state arrives AFTER the briefing built (race), build the
+			-- CSR sidebar now that is_guesting() is finally true. Idempotent (has_sidebar guard).
+			local brief = managers.menu_component and managers.menu_component._mission_briefing_gui
+			if brief and brief._csr_build_sidebar then
+				brief:_csr_build_sidebar()
 			end
 			-- Re-apply modifiers with fresh host_rank; guest at_enter often fires before state arrives.
 			if mgr.apply_modifiers then
@@ -232,6 +274,16 @@ end
 
 if IngameWaitingForPlayersState and not _G._CSR_MP_SESSION_HOOKED then
 	_G._CSR_MP_SESSION_HOOKED = true
+
+	-- Activate the guest's crime_spree temp job BEFORE vanilla at_enter builds the briefing HUD:
+	-- HUDMissionBriefing:reload bails on `not has_active_job()` and never loads the contact
+	-- assets_gui (the briefing bg video). Runs earlier than the MissionBriefingGui:init fallback so
+	-- the whole briefing builds with a valid current_level_data. Guest-gated + idempotent in helper.
+	Hooks:PreHook(IngameWaitingForPlayersState, "at_enter", "CSR_MP_GuestTempJob", function()
+		if managers and managers.csr and managers.csr.ensure_guest_temp_job then
+			managers.csr:ensure_guest_temp_job()
+		end
+	end)
 
 	Hooks:PostHook(IngameWaitingForPlayersState, "at_enter", "CSR_MP_HostStatePush", function(self)
 		if not CSR_MP then

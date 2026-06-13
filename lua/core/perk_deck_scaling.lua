@@ -30,6 +30,24 @@
 --                       returns FLAT mitigation (own or shared-best); scaled by armor-per-rank. Wrapped
 --                       at the cocaine getter, not damage_absorption(), so Tag Team isn't double-scaled.
 --                       Local-only (own client's incoming damage).
+--   Hacker    (#21) -- pocket-ECM heal-on-kill. Self (card 5): read via PlayerBase:upgrade_value ->
+--                       PlayerManager:upgrade_value_nil(player, pocket_ecm_heal_on_kill), NOT upgrade_value.
+--                       Team (aced card 9): HuskPlayerBase:upgrade_value(team, pocket_ecm_heal_on_kill),
+--                       read on each teammate's client off the owner husk. Both flat is_static HP heals
+--                       (restore_health) -> HP-per-rank. Value captured once at ECM deploy. Self = local
+--                       (owner's own client); team = MP-only (husk path, like Tag Team tagged-heal).
+--   Kingpin   (#17) -- the ONE deck we NERF, not buff. Aced injector (card 9) converts overheal into
+--                       grenade-cooldown reduction: -1s per upg[1] internal HP overflowed (5 internal =
+--                       50 displayed). 50 HP is heavy vanilla damage but trivial once CSR ranks inflate
+--                       enemy damage ~5%/rank, so the cooldown would drain for free. Counter-scale the
+--                       THRESHOLD up by the same 5%/rank on PlayerManager:upgrade_value
+--                       (player.chico_injector_health_to_speed = {threshold, seconds}; scale [1] only).
+--                       Read fresh every hit in PlayerDamage:_check_chico_heal; local-only, MP-safe.
+--   Copycat   (#23) -- card 3 base upgrade player_headshot_regen_health_bonus: flat HP regenerated on
+--                       each headshot (PlayerManager:on_headshot_dealt -> restore_health, is_static).
+--                       Scalar value (1 = 10 displayed), read fresh every headshot on PlayerManager:
+--                       upgrade_value, scaled by HP-per-rank like Biker. Local-only (own player_unit).
+--                       Only card 3's base is scaled here; the deck's multi_choice tiers are untouched.
 --
 -- Hooked on 4 scripts (see mod.txt): playermanager, ammoclip, huskplayerbase, playerdamage. Each
 -- wrap is _G-flag guarded so it installs exactly once. All wraps are no-ops outside a CSR heist.
@@ -55,6 +73,12 @@ end
 local function armor_mult(r)
 	return 1 + (_G.CSR_ARMOR_PER_RANK or 0) * r
 end
+
+-- Kingpin (#17) is the one deck we NERF. Enemy damage climbs ~5%/rank under CSR (CS difficulty
+-- modifiers), so the injector's overheal->cooldown threshold must climb at the same rate or it
+-- fires for free at high ranks. Not an exported rank_passives factor (player/armor/bot scaling
+-- differ) -- Kingpin-specific, kept file-local.
+local INJECTOR_THRESHOLD_PER_RANK = 0.05
 
 -- Per-scale debug tracing, controlled by the mod-options debug toggle (_G.CSR_DEBUG, set from
 -- CSRGameManager._debug). Gate on it before string.format too: the wraps below sit on hot paths
@@ -272,9 +296,80 @@ if PlayerManager and not _G._CSR_PerkScale_Upgrade then
 						return scaled
 					end
 					return v
+				elseif upgrade == "chico_injector_health_to_speed" then
+					-- Kingpin (#17) NERF. Aced injector turns overheal into grenade-cooldown reduction:
+					-- -seconds ([2]) per threshold ([1]) internal HP overflowed (5 internal = 50 displayed).
+					-- Counter-scale the THRESHOLD up by 5%/rank to track CSR enemy-damage growth, so the
+					-- cooldown drain stays meaningful instead of firing for free. Getter returns
+					-- {threshold, seconds}; scale [1] only, copy the table (tweak_data stays untouched).
+					-- Read fresh every hit in PlayerDamage:_check_chico_heal; local-only -> MP-safe.
+					local v = orig(self, category, upgrade, default)
+					local r = run_rank()
+					if r > 0 and type(v) == "table" and type(v[1]) == "number" and v[1] > 0 then
+						local mult = 1 + INJECTOR_THRESHOLD_PER_RANK * r
+						local scaled = { v[1] * mult, v[2] }
+						dbg(
+							"[CSR][perk_nerf] Kingpin injector threshold %g -> %g (rank %d, x%g)",
+							v[1],
+							scaled[1],
+							r,
+							mult
+						)
+						return scaled
+					end
+					return v
+				elseif upgrade == "headshot_regen_health_bonus" then
+					-- Copycat (#23) card 3 base: flat health regenerated on each headshot
+					-- (PlayerManager:on_headshot_dealt -> restore_health, is_static -> absolute internal
+					-- HP, value 1 = 10 displayed). Read fresh every headshot through this getter; restore is
+					-- on the local player_unit -> MP-safe. Scale by HP-per-rank like Biker wild_health_amount.
+					local v = orig(self, category, upgrade, default)
+					local r = run_rank()
+					local per = _G.CSR_HP_PER_RANK or 0
+					if r > 0 and per > 0 and type(v) == "number" and v > 0 then
+						local mult = 1 + per * r
+						local scaled = v * mult
+						dbg(
+							"[CSR][perk_heal] Copycat headshot_regen_health_bonus %g -> %g (rank %d, x%g)",
+							v,
+							scaled,
+							r,
+							mult
+						)
+						return scaled
+					end
+					return v
 				end
 			end
 			return orig(self, category, upgrade, default)
+		end
+	end
+end
+
+-- PlayerManager:upgrade_value_nil -- Hacker (#21) self heal-on-kill (card 5). PlayerInventory reads
+-- the pocket-ECM heal via PlayerBase:upgrade_value -> upgrade_value_nil (NOT upgrade_value), once when
+-- the ECM is deployed, then stores it on the jammer. restore_health(v, is_static=true) -> flat internal
+-- HP (value 2 = 20 displayed; PD2 stores HP x0.1), so scale by HP-per-rank like Biker wild_health_amount.
+-- Read on the owner's own client (user_is_local_player) -> local heal, MP-safe (host_rank synced).
+-- Returns nil when unowned, so guard type(v)=="number". Key-gated so every other upgrade tail-calls.
+if PlayerManager and not _G._CSR_PerkScale_UpgradeNil then
+	_G._CSR_PerkScale_UpgradeNil = true
+	local orig = PlayerManager.upgrade_value_nil
+	if orig then
+		function PlayerManager:upgrade_value_nil(category, upgrade)
+			if category == "player" and upgrade == "pocket_ecm_heal_on_kill" then
+				local v = orig(self, category, upgrade)
+				local r = run_rank()
+				local per = _G.CSR_HP_PER_RANK or 0
+				if r > 0 and per > 0 and type(v) == "number" and v > 0 then
+					local mult = 1 + per * r
+					local scaled = v * mult
+					dbg("[CSR][perk_heal] Hacker self pocket_ecm_heal %g -> %g (rank %d, x%g)", v, scaled, r, mult)
+					return scaled
+				end
+				return v
+			end
+			return orig(self, category, upgrade)
 		end
 	end
 end
@@ -373,6 +468,20 @@ if HuskPlayerBase and not _G._CSR_PerkScale_Husk then
 						r,
 						mult
 					)
+					return scaled
+				end
+				return v
+			elseif category == "team" and upgrade == "pocket_ecm_heal_on_kill" then
+				-- Hacker (#21) team heal-on-kill (aced card 9). The ECM owner is a remote husk on each
+				-- teammate's client; this getter feeds the flat is_static HP heal applied to the local
+				-- player on kill. Scale by HP-per-rank. MP-only (husk path), like Tag Team tagged-heal.
+				local v = orig(self, category, upgrade)
+				local r = run_rank()
+				local per = _G.CSR_HP_PER_RANK or 0
+				if r > 0 and per > 0 and type(v) == "number" and v > 0 then
+					local mult = 1 + per * r
+					local scaled = v * mult
+					dbg("[CSR][perk_heal] Hacker team pocket_ecm_heal %g -> %g (rank %d, x%g)", v, scaled, r, mult)
 					return scaled
 				end
 				return v

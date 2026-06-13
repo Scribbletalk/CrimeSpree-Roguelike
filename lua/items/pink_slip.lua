@@ -7,8 +7,6 @@ if not (_G.CSR and _G.CSR.register_item) then
 end
 
 local BASE_PCT = 0.01
-local BASE_FLAT = 4
-local EXTRA_FLAT = 6
 
 local function apply_kill_heal(mgr, stacks)
 	if mgr:item_heal_blocked() then
@@ -22,10 +20,10 @@ local function apply_kill_heal(mgr, stacks)
 	if not dmg or not dmg._max_health then
 		return
 	end
-	local scale = (tweak_data.gui and tweak_data.gui.stats_present_multiplier) or 10
 	local max_hp = dmg:_max_health()
-	-- Flat HP is authored in display units; /scale → internal.
-	local heal = max_hp * BASE_PCT + (BASE_FLAT + (stacks - 1) * EXTRA_FLAT) / scale
+	-- Hyperbolic stacking: 1 stack = BASE_PCT, diminishing per stack, asymptote 100% max HP.
+	local frac = (BASE_PCT * stacks) / (1 - BASE_PCT + BASE_PCT * stacks)
+	local heal = max_hp * frac
 	if heal > 0 then
 		dmg:set_health(dmg:get_real_health() + heal)
 		if mgr:debug_enabled() then
@@ -61,8 +59,6 @@ _G.CSR.register_item({
 	icon_scale = 1.05,
 	loc_macros = {
 		base_pct = string.format("%g", BASE_PCT * 100),
-		base_flat = BASE_FLAT,
-		extra_flat = EXTRA_FLAT,
 	},
 
 	hooks = {

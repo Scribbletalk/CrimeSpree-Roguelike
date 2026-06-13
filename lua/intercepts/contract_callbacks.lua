@@ -265,6 +265,45 @@ end
 
 function MenuCallbackHandler:_dialog_csr_claim_rewards_no() end
 
+-- Offer to claim rewards captured from a leftover pre-install vanilla Crime Spree (see
+-- end_spree_rewards.lua). Shown once per session from the CSR contract node when _meta has a pending
+-- table. Routes through the vanilla reward screen via the same _pending_end_rewards path CSR uses for
+-- its own End Spree, so xp/cash/coins/loot/cosmetics are all granted properly -- nothing is lost.
+function MenuCallbackHandler:csr_prompt_vanilla_rewards()
+	local mgr = managers.csr
+	if not (mgr and mgr.pending_vanilla_rewards and mgr:pending_vanilla_rewards()) then
+		return
+	end
+	local dialog_data = {
+		title = managers.localization:text("csr_dialog_vanilla_rewards_title"),
+		text = managers.localization:text("csr_dialog_vanilla_rewards_text"),
+		id = "csr_vanilla_rewards",
+	}
+	local yes_button = {
+		text = managers.localization:text("dialog_yes"),
+		callback_func = callback(self, self, "_dialog_claim_vanilla_rewards_yes"),
+	}
+	local no_button = {
+		text = managers.localization:text("dialog_no"),
+		cancel_button = true,
+	}
+	dialog_data.button_list = { yes_button, no_button }
+	managers.system_menu:show(dialog_data)
+end
+
+function MenuCallbackHandler:_dialog_claim_vanilla_rewards_yes()
+	local mgr = managers.csr
+	local rewards = mgr and mgr.pending_vanilla_rewards and mgr:pending_vanilla_rewards()
+	if not rewards then
+		return
+	end
+	-- The wrapped calculate_rewards/on_spree_complete (end_spree_rewards.lua) read _pending_end_rewards:
+	-- the screen displays these cards and on completion award_rewards() grants them.
+	mgr._pending_end_rewards = rewards
+	mgr:clear_pending_vanilla_rewards()
+	managers.menu:open_node("crime_spree_claim_rewards", {})
+end
+
 function MenuCallbackHandler:show_csr_crash_dialog()
 	local dialog_data = {
 		title = managers.localization:text("dialog_cs_crash_fail"),
@@ -625,9 +664,9 @@ function MenuCallbackHandler:show_peer_kicked_csr_dialog(params)
 	Global.on_remove_peer_message = nil
 end
 
--- Reroll costs continental coins = max(1, missions completed this spree). Confirm modal warns the cost first.
+-- Reroll costs continental coins = missions completed this spree (0 at run start -> first reroll is free).
 function MenuCallbackHandler:csr_reroll_cost()
-	return math.max(1, (managers.csr and managers.csr:missions_completed()) or 0)
+	return math.max(0, (managers.csr and managers.csr:missions_completed()) or 0)
 end
 
 function MenuCallbackHandler:csr_reroll()

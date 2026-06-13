@@ -221,6 +221,7 @@ DelayedCalls:Add("LoadSounds_Initial", 0.5, try_load)
 -- Built-in CSR sound registry. Paths are mod-relative under assets/sounds.
 _G.CSR.register_sound("bonnie_chip", { pattern = "assets/sounds/chip/chip_activate_$.ogg", n = 17 })
 _G.CSR.register_sound("the_edge_activate", { path = "assets/sounds/the_edge_activate.ogg" })
+_G.CSR.register_sound("aloe_leaf_activate", { path = "assets/sounds/aloe_leaf_activate.ogg" })
 _G.CSR.register_sound("plush_shark_activate", { pattern = "assets/sounds/shark/plush_shark_activate_$.ogg", n = 5 })
 _G.CSR.register_sound("printer_starting", { path = "assets/sounds/printer/printer_starting.ogg" })
 _G.CSR.register_sound("printer_working", { path = "assets/sounds/printer/printer_working.ogg" })

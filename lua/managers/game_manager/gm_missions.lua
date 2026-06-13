@@ -9,6 +9,15 @@ local function log_csr(msg)
 	end
 end
 
+-- Per-heist rank override by mission id (overrides the length-tier default in rank_for_mission).
+local RANK_OVERRIDE = {
+	vit = 4, -- White House (added via extra_heists, id = stage_id "vit")
+	cook_off = 1, -- Cook Off
+	cane = 1, -- Santa's Workshop
+	peta_2 = 4, -- Dirty Work (Goat Sim day 2; added via extra_heists, id = stage_id "peta_2")
+	crojob2_d = 2, -- Bomb: Forest (added via extra_heists, id = stage_id "crojob2_d"; level_id crojob3; add=14 would be +3)
+}
+
 -- 3-tier mission list from tweak_data with DLC filter. Cached because the reroll animation queries it per-frame.
 function CSRGameManager:_mission_lists()
 	if self._mission_lists_cache then
@@ -54,6 +63,9 @@ end
 -- Rank for completing a mission: short(add≤5)=1, medium(≤7)=2, long=3.
 -- Uses the same thresholds as CrimeSpreeMissionButton so rank matches the clock icon.
 function CSRGameManager:rank_for_mission(mission_id)
+	if mission_id and RANK_OVERRIDE[mission_id] then
+		return RANK_OVERRIDE[mission_id]
+	end
 	local m = self:get_mission(mission_id)
 	local add = m and m.add
 	if type(add) ~= "number" then
@@ -167,7 +179,13 @@ function CSRGameManager:generate_mission_set()
 	self._state.current_mission = nil
 	log_csr("generate_mission_set: " .. table.concat(ids, ", "))
 	self:save()
-	if _G.CSR_MP and _G.CSR_MP.broadcast_mission_set then
+	-- Push full host-state, not just the set: this also clears the guest's host_current_mission
+	-- (we just nilled current_mission), so a reroll/regen drops the stale selection highlight
+	-- instead of leaving it pointing at an id no longer in the set. broadcast_host_state re-sends
+	-- the mission set internally, so guests still get the new cards.
+	if _G.CSR_MP and _G.CSR_MP.broadcast_host_state then
+		_G.CSR_MP.broadcast_host_state()
+	elseif _G.CSR_MP and _G.CSR_MP.broadcast_mission_set then
 		_G.CSR_MP.broadcast_mission_set()
 	end
 	return ids
@@ -215,7 +233,23 @@ function CSRGameManager:set_mp_host_mission_set(ids)
 	self._state.mp_session.host_mission_set = type(ids) == "table" and ids or nil
 end
 
+-- Host's synced mission-set ids (for guest reroll-change detection); nil before first sync.
+function CSRGameManager:mp_host_mission_set_ids()
+	local mp = self._state.mp_session
+	return mp and mp.host_mission_set or nil
+end
+
+-- Host's currently-selected mission id, synced for the guest's lobby highlight (display only).
+function CSRGameManager:set_mp_host_current_mission(id)
+	self._state.mp_session = self._state.mp_session or {}
+	self._state.mp_session.host_current_mission = id
+end
+
 function CSRGameManager:current_mission()
+	-- While guesting, mirror the host's synced pick (display only); own pick otherwise.
+	if self:_is_guesting() then
+		return self._state.mp_session and self._state.mp_session.host_current_mission or nil
+	end
 	return self._state.current_mission
 end
 

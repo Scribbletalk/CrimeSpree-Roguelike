@@ -56,9 +56,16 @@ function _G.CSR._install_hook(item_type, req_lower, fn)
 		return
 	end
 	_G.CSR._installed_hooks[gkey] = true
+	-- Tag the owner so item_crash_handler can wrap any Hooks:* the installer registers.
+	local prev_owner = _G.CSR._installing_owner
+	_G.CSR._installing_owner = item_type
 	local ok, err = pcall(fn)
+	_G.CSR._installing_owner = prev_owner
 	if not ok then
 		log("[CSR][api] hook for '" .. tostring(item_type) .. "' @ " .. req_lower .. " failed: " .. tostring(err))
+		if _G.CSR_ReportItemError then
+			_G.CSR_ReportItemError(item_type, req_lower, err)
+		end
 	end
 end
 

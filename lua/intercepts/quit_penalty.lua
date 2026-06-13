@@ -18,11 +18,14 @@ end
 -- ============================================================
 -- Arm the flag + grace timer on heist start (host/SP only)
 -- ============================================================
+-- Hook sync_start, NOT at_enter: at_enter fires when the briefing (READY screen) opens, so backing
+-- out before readying would (past grace) wrongly count as a loss. sync_start fires only once the
+-- briefing is actually started (all ready / skip) and the blackscreen begins — the real commit point.
 if RequiredScript == "lib/states/ingamewaitingforplayers" then
 	if IngameWaitingForPlayersState and not _G._CSR_QuitPenalty_HeistStart then
 		_G._CSR_QuitPenalty_HeistStart = true
 
-		Hooks:PostHook(IngameWaitingForPlayersState, "at_enter", "CSR_QuitPenalty_HeistStart", function()
+		Hooks:PostHook(IngameWaitingForPlayersState, "sync_start", "CSR_QuitPenalty_HeistStart", function()
 			local mgr = managers and managers.csr
 			if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 				return

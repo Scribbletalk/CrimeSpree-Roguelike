@@ -53,6 +53,8 @@ local half_a_glass_file = mod_path .. "assets/gui/items/common/half_a_glass.dds"
 local half_a_glass_path = "guis/textures/pd2/crime_spree/csr_half_a_glass"
 local cup_of_joe_file = mod_path .. "assets/gui/items/common/cup_of_joe.dds"
 local cup_of_joe_path = "guis/textures/pd2/crime_spree/csr_cup_of_joe"
+local aloe_leaf_file = mod_path .. "assets/gui/items/common/aloe_leaf.dds"
+local aloe_leaf_path = "guis/textures/pd2/crime_spree/csr_aloe_leaf"
 local lockes_beret_file = mod_path .. "assets/gui/items/rare/locke_beret.dds"
 local lockes_beret_path = "guis/textures/pd2/crime_spree/csr_lockes_beret"
 -- Wildcard icons
@@ -158,6 +160,8 @@ if DB and DB.create_entry then
 	DB:create_entry(Idstring("texture"), Idstring(half_a_glass_path), half_a_glass_file)
 
 	DB:create_entry(Idstring("texture"), Idstring(cup_of_joe_path), cup_of_joe_file)
+
+	DB:create_entry(Idstring("texture"), Idstring(aloe_leaf_path), aloe_leaf_file)
 
 	DB:create_entry(Idstring("texture"), Idstring(lockes_beret_path), lockes_beret_file)
 
@@ -270,6 +274,11 @@ function HudIconsTweakData:init()
 
 	self.csr_cup_of_joe = {
 		texture = cup_of_joe_path,
+		texture_rect = { 0, 0, 128, 128 },
+	}
+
+	self.csr_aloe_leaf = {
+		texture = aloe_leaf_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 

@@ -656,10 +656,14 @@ function CSRItemSelectionComponent:_grant_picked(item_type, mgr)
 		-- or re-pick), so the owed-pick quota wouldn't advance. Flag it before add_item mutates state.
 		local def = mgr.item_def and mgr:item_def(item_type)
 		local net_zero = def and def.rarity == "wildcard" and mgr.held_wildcard and mgr:held_wildcard(pid) ~= nil
-		mgr:add_item(pid, item_type)
+		-- Credit the net-zero (wildcard swap/re-pick) BEFORE add_item: add_item fires on_item_added,
+		-- which drives the lobby/briefing reminder refresh. If the credit lands after that, the
+		-- reminder recomputes owed without it and lingers at the pre-pick count → a stale click then
+		-- opens a window with nothing owed (synthetic "NO ITEMS" card).
 		if net_zero and mgr.note_net_zero_rank_pick then
 			mgr:note_net_zero_rank_pick(pid)
 		end
+		mgr:add_item(pid, item_type)
 		-- pop_offer discards the whole 3-card set; the unchosen cards never carry over.
 		if mgr.pop_offer then
 			mgr:pop_offer(pid)
@@ -741,6 +745,20 @@ function CSRItemSelectionComponent:_advance_pick()
 	self._selected_item = nil
 
 	self._items = build_item_pool()
+
+	-- No real offer left (quota already satisfied): close rather than render the synthetic
+	-- "NO ITEMS" placeholder as a fake selectable pick. Old item buttons were already removed
+	-- above, so drop them from _buttons too — a stray mouse event before update() closes would
+	-- otherwise iterate dead panels.
+	if not (self._items[1] and self._items[1].id ~= "none") then
+		self._buttons = {}
+		for _, b in ipairs(self._action_buttons or {}) do
+			table.insert(self._buttons, b)
+		end
+		self._wants_close = true
+		return
+	end
+
 	local count = math.max(#self._items, 1)
 
 	for i = 1, count do
@@ -1056,14 +1074,22 @@ function _G.CSR_OpenItemSelection(num_to_select)
 		mgr:ensure_offers(mgr:local_peer_id(), num_to_select or 1)
 	end
 
-	local ok, comp = pcall(
-		CSRItemSelectionComponent.new,
-		CSRItemSelectionComponent,
-		ws,
-		fullscreen_ws,
-		build_item_pool(),
-		num_to_select
-	)
+	-- A stale reminder (e.g. left visible after a wildcard swap consumed the pick) can ask to open
+	-- with nothing actually owed. Bail instead of presenting a synthetic "NO ITEMS" card, and repaint
+	-- the lobby reminder so it drops to its true count.
+	local pool = build_item_pool()
+	local has_real_offer = pool[1] and pool[1].id ~= "none"
+	if (tonumber(num_to_select) or 0) <= 0 or not has_real_offer then
+		local lobby_comp = mcm._crime_spree_missions
+		if lobby_comp and lobby_comp.refresh_for_rank_change then
+			lobby_comp:refresh_for_rank_change()
+		end
+		csr_log("[CSR] item selection: nothing owed / no offer — open suppressed")
+		return
+	end
+
+	local ok, comp =
+		pcall(CSRItemSelectionComponent.new, CSRItemSelectionComponent, ws, fullscreen_ws, pool, num_to_select)
 	if not ok or not comp then
 		log("[CSR] item selection: failed to create component: " .. tostring(comp))
 		return

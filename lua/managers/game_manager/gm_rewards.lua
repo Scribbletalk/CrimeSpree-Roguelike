@@ -81,6 +81,12 @@ function CSRGameManager:accrue_escalated_coins(rank_amount)
 	local add = rank_amount * COINS_PER_RANK * self:coin_streak_mult(n)
 	self._state.coins_escalated = (self._state.coins_escalated or 0) + add
 	self:add_career_stat("total_coins", add) -- career lifetime total (persists)
+	-- Cash/XP/loot accrue per-mission too (like coins) so all four Logbook "Earned" rows track
+	-- together. These don't escalate -> flat per-rank reward at own difficulty.
+	local r = self:_rewards_for(rank_amount, self:reward_difficulty_index())
+	self:add_career_stat("total_cash", r.cash)
+	self:add_career_stat("total_experience", r.experience)
+	self:add_career_stat("total_loot", r.loot_drop)
 	self:save()
 	log_csr(
 		"accrue_escalated_coins: +"
@@ -162,6 +168,10 @@ function CSRGameManager:accrue_mp_earnings(rank_gained, coin_mult, participation
 	local coins_add = math.round(r.continental_coins * coin_mult * participation)
 	b.continental_coins = (b.continental_coins or 0) + coins_add
 	self:add_career_stat("total_coins", coins_add) -- career lifetime total (persists)
+	-- Career cash/XP/loot accrue here too (guest bucket B), participation-scaled like the rest.
+	self:add_career_stat("total_cash", math.round(r.cash * participation))
+	self:add_career_stat("total_experience", math.round(r.experience * participation))
+	self:add_career_stat("total_loot", math.round(r.loot_drop * participation))
 	b.loot_drop = (b.loot_drop or 0) + math.round(r.loot_drop * participation)
 	self._meta.mp_earnings = b
 	self:save()
@@ -323,6 +333,7 @@ function CSRGameManager:clear_mp_host_state()
 	mp.host_missions = nil
 	-- Also clear so the guest re-pulls a fresh mission set on the next lobby open.
 	mp.host_mission_set = nil
+	mp.host_current_mission = nil
 end
 
 -- Host difficulty while guesting (nil otherwise). Gated to prevent stale value leaking into own-host lobby.

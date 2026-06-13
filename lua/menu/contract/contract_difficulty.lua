@@ -96,6 +96,22 @@ local function add_csr_contract_items(node)
 		node:add_item(start_item)
 		node:add_item(continue_item)
 	end
+
+	-- One-shot per session: offer to claim rewards from a leftover pre-install vanilla Crime Spree
+	-- (captured in end_spree_rewards.lua). Deferred so the dialog opens after the node finishes building.
+	if
+		not _G._CSR_VANILLA_REWARDS_PROMPTED
+		and managers.csr
+		and managers.csr.pending_vanilla_rewards
+		and managers.csr:pending_vanilla_rewards()
+	then
+		_G._CSR_VANILLA_REWARDS_PROMPTED = true
+		DelayedCalls:Add("CSR_PromptVanillaRewards", 0.3, function()
+			if MenuCallbackHandler and MenuCallbackHandler.csr_prompt_vanilla_rewards then
+				MenuCallbackHandler:csr_prompt_vanilla_rewards()
+			end
+		end)
+	end
 end
 
 local function is_csr_contract(node, data)

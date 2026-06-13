@@ -1,8 +1,9 @@
 -- CSR MP wire layer: message ids, chunked codec, single NetworkReceivedData router.
 -- All persistent state lives on managers.csr. Full protocol in csr_mp_architecture.md.
 
--- Load-once guard (lib/entry can re-enter).
-local key = ModPath .. "\t" .. tostring(RequiredScript or "csr_mp_sync")
+-- Load-once guard (lib/entry can re-enter). Literal token, NOT RequiredScript — the latter is the
+-- shared hook path ("lib/entry"), so a RequiredScript-based key collides across all lib/entry hooks.
+local key = ModPath .. "\tcsr_mp_sync"
 if _G[key] then
 	return
 else
@@ -34,6 +35,9 @@ CSR_MP.ITEM_MSG = {
 	SHOCK = "CSR_ShockingSurprise",
 	OATH_HEAL = "CSR_OathHeal", -- host -> remote oath owner: heal your own player (aura tick)
 	BADGE_REVIVE = "CSR_BadgeRevive", -- host -> remote crooked_badge owner: roll your own assault-end revive
+	AURA_REQ = "CSR_AuraReq", -- aloe_leaf: client owner -> host: run my heal aura around my husk pos (pct)
+	AURA_HEAL = "CSR_AuraHeal", -- aloe_leaf: host -> remote ally in radius: heal your own player (pct)
+	AURA_PULSE = "CSR_AuraPulse", -- aloe_leaf: host -> all: draw the heal ring at this owner peer's pos (owner_pid)
 }
 
 local MAX_PAYLOAD = 200
@@ -110,6 +114,18 @@ function CSR_MP.build_chunked_payloads(header, encoded)
 		table.insert(payloads, header .. tostring(i) .. "/" .. tostring(#chunks) .. "~" .. chunk)
 	end
 	return payloads
+end
+
+-- Fixed-size raw chunker for opaque blobs (json) that have no '|' split points. Same
+-- "idx/total~" header convention as the item chunker, so SuperBLT's chat-split rejoins it
+-- intact. Used by HANDSHAKE_OK, whose json can exceed the 255-char chat-message wire cap.
+function CSR_MP.build_raw_chunks(header, str, size)
+	local out = {}
+	local total = math.max(1, math.ceil(#str / size))
+	for i = 1, total do
+		out[i] = header .. tostring(i) .. "/" .. tostring(total) .. "~" .. str:sub((i - 1) * size + 1, i * size)
+	end
+	return out
 end
 
 -- =====================================================
@@ -287,11 +303,11 @@ local function handle_items_payload(sender, data, sender_num, is_from_host)
 		return
 	end
 
-	local key = "items_" .. tostring(peer_id)
-	local buf = CSR_MP._items_buf[key]
+	local buf_key = "items_" .. tostring(peer_id)
+	local buf = CSR_MP._items_buf[buf_key]
 	if not buf then
 		buf = { name = name, total = total, chunks = {} }
-		CSR_MP._items_buf[key] = buf
+		CSR_MP._items_buf[buf_key] = buf
 	end
 	if idx == 1 then
 		buf.name = name
@@ -390,6 +406,19 @@ local function register_peer_removed_hook()
 			LuaNetworking:SendToPeers(CSR_MP.MSG.PLAYER_ITEMS, tostring(peer_id) .. "~~1/1~REMOVED")
 		end
 		CSR_MP.refresh_items_panel()
+		if _G.CSR_DEBUG then
+			local mcm = managers and managers.menu_component
+			csr_log(
+				string.format(
+					"[CSR][mpdbg] _on_peer_removed FIRED: peer_id=%s reason=%s lobby_comp=%s briefing_gui=%s remaining_remote=%s",
+					tostring(peer_id),
+					tostring(reason),
+					tostring(mcm and mcm._crime_spree_missions ~= nil),
+					tostring(mcm and mcm._mission_briefing_gui ~= nil),
+					tostring(mgr and mgr.remote_peer_ids and table.concat(mgr:remote_peer_ids(), ","))
+				)
+			)
+		end
 		mp_log("peer removed: " .. tostring(peer_id))
 	end)
 
@@ -517,12 +546,21 @@ CSR_MP.register_handler(CSR_MP.MSG.MISSION_SET, function(sender, data, sender_nu
 	for id in tostring(data):gmatch("[^,]+") do
 		ids[#ids + 1] = id
 	end
+	-- Detect a genuine reroll (set ids changed) vs. a repeated push (host-state spam re-sends
+	-- the unchanged set). Only a real change plays the spin animation on the guest's cards.
+	local prev = mgr.mp_host_mission_set_ids and mgr:mp_host_mission_set_ids()
+	local changed = prev ~= nil and table.concat(prev, ",") ~= table.concat(ids, ",")
 	mgr:set_mp_host_mission_set(ids)
 	local comp = managers.menu_component and managers.menu_component._crime_spree_missions
-	if comp and comp.update_mission then
-		comp:update_mission()
+	if comp then
+		if changed and comp.randomize_crimespree and comp.is_randomizing and not comp:is_randomizing() then
+			-- Mirror the host's reroll: spin the cards to reveal the new (already-synced) set.
+			comp:randomize_crimespree()
+		elseif comp.update_mission then
+			comp:update_mission()
+		end
 	end
-	mp_log("applied host mission set: " .. tostring(data))
+	mp_log("applied host mission set: " .. tostring(data) .. (changed and " (reroll spin)" or ""))
 end)
 
 -- _crime_spree_missions absent in a vanilla lobby — prevents leaking CSR reply.

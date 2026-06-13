@@ -50,6 +50,14 @@ Hooks:Add("MenuManagerBuildCustomMenus", "CSR_PauseMenuReturnToLobby", function(
 
 	local node = nodes.pause
 
+	-- Strip the vanilla "Terminate Contract" item (end_game_cs). CSR replaces crime spree with its
+	-- own "Return to Lobby" flow; the vanilla terminator only surfaces for the host (visible_callback
+	-- gates on crime_spree_is_active, which is host-only here). delete_item is an idempotent no-op
+	-- once it is gone, so this is safe to run on every manager re-init / VR-toggle rebuild.
+	if node.delete_item then
+		node:delete_item("end_game_cs")
+	end
+
 	-- Idempotency: hook can fire on manager re-init / VR toggle.
 	if node._items then
 		for _, item in ipairs(node._items) do

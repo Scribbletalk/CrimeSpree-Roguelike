@@ -97,6 +97,23 @@ function CSRMissionsMenuComponent:_setup()
 
 	local default_index = nil
 
+	if _G.CSR_DEBUG then
+		local C = managers.csr
+		local set = C:mission_set()
+		local ids = {}
+		for i = 1, 3 do
+			ids[i] = set[i] and set[i].id or "nil"
+		end
+		csr_log(
+			string.format(
+				"[CSR][mpdbg] lobby build: is_guesting=%s current_mission()=%s set_ids={%s} (guest current_mission is NOT host-synced -> no highlight)",
+				tostring(C.is_guesting and C:is_guesting()),
+				tostring(C:current_mission()),
+				table.concat(ids, ",")
+			)
+		)
+	end
+
 	for idx = 1, tweak_data.crime_spree.gui.missions_displayed do
 		-- Skip nil slots: mission_set() can be shorter than missions_displayed.
 		local data = managers.csr:mission_set()[idx]
@@ -117,7 +134,11 @@ function CSRMissionsMenuComponent:_setup()
 		default_index = default_index or 1
 	end
 
-	if default_index then
+	if managers.csr:is_guesting() then
+		-- Guest never picks: show the host's synced selection as a highlight, without mutating
+		-- current_mission or broadcasting (_set_button_index_selected would do both).
+		self:_csr_apply_host_selection(managers.csr:current_mission())
+	elseif default_index then
 		self:_set_button_index_selected(default_index, true)
 	end
 
@@ -699,11 +720,12 @@ function CSRMissionsMenuComponent:_reroll_pressed()
 	MenuCallbackHandler:csr_reroll()
 end
 
--- A failed run (lobby only) locks mission select / Start until the player
--- resolves it via the paid Continue or End Spree. has_failed() is a persisted
--- managers.csr flag set by csr_mission_lifecycle on a lost heist.
+-- A failed run locks mission select / Start on BOTH the lobby AND the end-screen surface
+-- until the player resolves it via the paid Continue or End Spree. has_failed() is a persisted
+-- managers.csr flag set by csr_mission_lifecycle on a lost heist; the same live component renders
+-- on both surfaces, so the Continue dialog's refresh unlocks whichever one is showing.
 function CSRMissionsMenuComponent:_is_locked()
-	return self._is_lobby and managers.csr and managers.csr:has_failed() == true
+	return managers.csr and managers.csr:has_failed() == true
 end
 
 function CSRMissionsMenuComponent:_action_end_spree()
@@ -841,6 +863,21 @@ function CSRMissionsMenuComponent:_select_mission(idx)
 	self._selected_button = idx
 
 	self:_set_button_index_selected(idx, true)
+end
+
+-- Guest-only: reflect the host's selected mission as a card highlight, WITHOUT calling
+-- select_mission (which mutates current_mission + broadcasts). nil clears all highlights.
+function CSRMissionsMenuComponent:_csr_apply_host_selection(host_mission_id)
+	for idx, btn in ipairs(self._buttons) do
+		if btn._type == "CSRMissionButton" then
+			local sel = host_mission_id ~= nil and btn:mission_id() == host_mission_id
+			btn:set_selected(sel)
+			btn:set_active(sel)
+			if sel then
+				self._selected_button = idx
+			end
+		end
+	end
 end
 
 function CSRMissionsMenuComponent:_set_button_index_selected(idx, selected)

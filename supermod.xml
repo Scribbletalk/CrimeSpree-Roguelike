@@ -1,5 +1,12 @@
 <mod>
 	<!--
+		Native-RPC messages (csr_net_sc / csr_net_cs) registered onto the engine's
+		settings/network protocol, replacing the SuperBLT chat-tunnel transport (255-char
+		wire cap). Handlers + send wrappers live in lua/network/. Restart required.
+	-->
+	<tweak definition="csr_network_tweak.xml"/>
+
+	<!--
 		Asset injection for the in-world props CSR spawns (printer + scrapper).
 		These units are not indexed by every heist's package, so we register the
 		files here to let them be spawned in any heist/safehouse.
