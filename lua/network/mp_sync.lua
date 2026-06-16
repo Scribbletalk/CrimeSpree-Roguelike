@@ -21,6 +21,7 @@ CSR_MP.MSG = {
 	ALL_PLAYERS = "CSR_AllPlayers", -- host -> joining client: full roster ("DONE" terminator)
 	RANK_UP = "CSR_RankUp", -- host -> all: host rank advanced
 	COPIER_SPAWN = "CSR_CopierSpawn", -- host -> all: spawn printer (key~pos~rot~offer)
+	COPIER_USE = "CSR_CopierUse", -- any -> all (host relays): play printer cycle (lid anim + sfx) by spawn_key
 	SCRAPPER_SPAWN = "CSR_ScrapperSpawn", -- host -> all: spawn scrapper (key~pos~rot)
 	REQUEST_PROPS = "CSR_RequestProps", -- client -> host: replay every prop (late-join)
 	LOBBY_PING = "CSR_LobbyPing", -- client -> host: is this a CSR lobby?
@@ -43,10 +44,12 @@ CSR_MP.ITEM_MSG = {
 local MAX_PAYLOAD = 200
 
 local function mp_log(msg)
-	local mgr = managers and managers.csr
-	if mgr and mgr.debug_enabled and mgr:debug_enabled() and mgr.debug_log then
-		mgr:debug_log("[MP] " .. tostring(msg))
-	end
+	-- TEMP MP test saturation: unconditional. STRIP -> restore the debug_enabled gate below. [CSR][mptest]
+	-- local mgr = managers and managers.csr
+	-- if mgr and mgr.debug_enabled and mgr:debug_enabled() and mgr.debug_log then
+	-- 	mgr:debug_log("[MP] " .. tostring(msg))
+	-- end
+	csr_log("[CSR][mptest][MP] " .. tostring(msg))
 end
 CSR_MP.log = mp_log
 
@@ -299,6 +302,12 @@ local function handle_items_payload(sender, data, sender_num, is_from_host)
 			mgr:remove_remote_peer(peer_id)
 		end
 		CSR_MP._items_buf["items_" .. tostring(peer_id)] = nil
+		csr_log(
+			"[CSR][peerleave] PLAYER_ITEMS REMOVED applied pid="
+				.. tostring(peer_id)
+				.. " from="
+				.. tostring(sender_num)
+		)
 		CSR_MP.refresh_items_panel()
 		return
 	end
@@ -338,6 +347,7 @@ local function handle_items_payload(sender, data, sender_num, is_from_host)
 		mgr:set_remote_peer_items(peer_id, counts, buf.name, order)
 	end
 	mp_log("applied items: peer " .. tostring(peer_id) .. " (" .. tostring(buf.name) .. ")")
+	csr_log("[CSR][peerleave] PLAYER_ITEMS applied pid=" .. tostring(peer_id) .. " name=" .. tostring(buf.name))
 	CSR_MP.refresh_items_panel()
 end
 
@@ -394,12 +404,23 @@ local function register_peer_removed_hook()
 	end
 	CSR_MP._peer_removed_hooked = true
 	Hooks:PostHook(BaseNetworkSession, "_on_peer_removed", "CSR_MP_OnPeerRemoved", function(self, peer, peer_id, reason)
+		csr_log(
+			string.format(
+				"[CSR][peerleave] _on_peer_removed FIRED pid=%s reason=%s host=%s",
+				tostring(peer_id),
+				tostring(reason),
+				tostring(CSR_MP.is_host())
+			)
+		)
 		if not peer_id then
 			return
 		end
 		local mgr = managers and managers.csr
 		if mgr and mgr.remove_remote_peer then
 			mgr:remove_remote_peer(peer_id)
+		end
+		if mgr and mgr.remote_peer_ids then
+			csr_log("[CSR][peerleave] after remove, remote_ids=" .. table.concat(mgr:remote_peer_ids(), ","))
 		end
 		CSR_MP._items_buf["items_" .. tostring(peer_id)] = nil
 		if CSR_MP.is_host() then
@@ -441,13 +462,52 @@ local function register_peer_removed_hook()
 		end
 		mp_log("peer entered lobby -> pushed CSR + host state to " .. tostring(pid))
 	end)
+
+	-- TEMP MP test: trace which leave path PD2 takes. Active bug = a guest leaving in the BRIEFING
+	-- (ingame_waiting_for_players) never reaches _on_peer_removed, so its Items section persists. These
+	-- show whether the host's session even sees the leave in-game. STRIP after MP confirmed. [CSR][mptest]
+	Hooks:PostHook(BaseNetworkSession, "on_peer_left", "CSR_MP_TraceLeft", function(self, peer, peer_id)
+		csr_log("[CSR][mptest] on_peer_left pid=" .. tostring(peer_id) .. " host=" .. tostring(CSR_MP.is_host()))
+	end)
+	Hooks:PostHook(BaseNetworkSession, "on_peer_lost", "CSR_MP_TraceLost", function(self, peer, peer_id)
+		csr_log("[CSR][mptest] on_peer_lost pid=" .. tostring(peer_id) .. " host=" .. tostring(CSR_MP.is_host()))
+	end)
+	Hooks:PostHook(BaseNetworkSession, "on_peer_kicked", "CSR_MP_TraceKicked", function(self, peer, peer_id, message_id)
+		csr_log("[CSR][mptest] on_peer_kicked pid=" .. tostring(peer_id))
+	end)
+	if HostNetworkSession and HostNetworkSession.remove_peer then
+		Hooks:PostHook(
+			HostNetworkSession,
+			"remove_peer",
+			"CSR_MP_TraceHostRemovePeer",
+			function(self, peer, peer_id, reason)
+				csr_log(
+					"[CSR][mptest] HostNetworkSession:remove_peer pid="
+						.. tostring(peer_id)
+						.. " reason="
+						.. tostring(reason)
+				)
+			end
+		)
+	end
+
 	mp_log("peer-removed hook registered")
+	csr_log("[CSR][peerleave] peer-removed hook REGISTERED")
 end
 
+-- Register in BOTH Lua states: MenuUpdate fires only in the menu (lobby), GameSetupUpdate only in-heist
+-- (briefing/endscreen run in the game state). Without the game-state defer the _on_peer_removed PostHook
+-- never installs in-heist, so a guest who leaves during the briefing is never cleared from the items panel.
 Hooks:Add("MenuUpdate", "CSR_MP_DeferPeerRemoved", function()
 	register_peer_removed_hook()
 	if CSR_MP._peer_removed_hooked then
 		Hooks:Remove("CSR_MP_DeferPeerRemoved")
+	end
+end)
+Hooks:Add("GameSetupUpdate", "CSR_MP_DeferPeerRemovedGame", function()
+	register_peer_removed_hook()
+	if CSR_MP._peer_removed_hooked then
+		Hooks:Remove("CSR_MP_DeferPeerRemovedGame")
 	end
 end)
 
@@ -490,6 +550,36 @@ CSR_MP.register_handler(CSR_MP.MSG.REQUEST_PROPS, function(sender, data, sender_
 	mp_log("replay props -> " .. tostring(target) .. " (" .. #CSR_MP._prop_log .. ")")
 end)
 
+-- Host helper: relay a received message to every peer except its origin (and self).
+-- Lets a client-originated event (e.g. COPIER_USE) reach the OTHER clients via the host,
+-- since PD2's chat transport only links each client to the host.
+function CSR_MP.relay_to_peers(msg_id, data, exclude_pid)
+	local session = managers.network and managers.network:session()
+	if not session or not session.peers then
+		return
+	end
+	for _, peer in pairs(session:peers() or {}) do
+		local pid = peer and peer:id()
+		if pid and pid ~= exclude_pid and pid ~= 1 then
+			LuaNetworking:SendToPeer(pid, msg_id, data)
+		end
+	end
+end
+
+-- Replicate a printer-use event (lid anim + sfx) to other peers. Host broadcasts to all;
+-- a client sends to the host, whose COPIER_USE handler relays to the remaining clients.
+function CSR_MP.broadcast_copier_use(spawn_key)
+	if not (CSR_MP.is_multiplayer() and spawn_key) then
+		return
+	end
+	if CSR_MP.is_host() then
+		LuaNetworking:SendToPeers(CSR_MP.MSG.COPIER_USE, tostring(spawn_key))
+	else
+		LuaNetworking:SendToPeer(1, CSR_MP.MSG.COPIER_USE, tostring(spawn_key))
+	end
+	mp_log("broadcast_copier_use " .. tostring(spawn_key))
+end
+
 -- Per-heist reset: host clears log; client requests host's set.
 Hooks:Add("BaseNetworkSessionOnLoadComplete", "CSR_MP_PropSyncReset", function()
 	if CSR_MP.is_host() then
@@ -519,6 +609,35 @@ function CSR_MP.request_host_state()
 	end
 	LuaNetworking:SendToPeer(1, CSR_MP.MSG.HANDSHAKE, "")
 	mp_log("request_host_state")
+end
+
+-- A single host-state pull is not enough: the host's HANDSHAKE_OK reply can be lost or truncated on
+-- the chat tunnel. If it never lands, host_seed stays nil for the whole heist, so the guest counts as
+-- non-guesting at mission end -> its present mission is never accounted -> the HANDSHAKE_OK catch-up
+-- later auto-grants (steals) that pick instead of surfacing it as a reminder. So keep re-pulling until
+-- host_seed is actually known (is_guesting()), or give up after a bounded number of tries.
+CSR_MP.HOST_STATE_RETRY_DELAY = 1.0
+CSR_MP.HOST_STATE_MAX_TRIES = 30
+
+function CSR_MP.ensure_host_state(tries)
+	if not CSR_MP.is_client() then
+		return
+	end
+	local mgr = managers and managers.csr
+	if mgr and mgr.is_guesting and mgr:is_guesting() then
+		return -- host_seed received; all needed data present
+	end
+	tries = (tonumber(tries) or 0) + 1
+	CSR_MP.request_host_state()
+	if tries >= CSR_MP.HOST_STATE_MAX_TRIES then
+		mp_log("ensure_host_state: gave up after " .. tostring(tries) .. " tries (host_seed still nil)")
+		return
+	end
+	if DelayedCalls then
+		DelayedCalls:Add("CSR_MP_EnsureHostState", CSR_MP.HOST_STATE_RETRY_DELAY, function()
+			CSR_MP.ensure_host_state(tries)
+		end)
+	end
 end
 
 function CSR_MP.broadcast_mission_set()

@@ -102,7 +102,7 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 
 		-- Match the lobby sidebar's vertical span so both screens read as the same column.
 		local top = tweak_data.menu.pd2_large_font_size + 16
-		local bottom = ws_panel:h() - tweak_data.menu.pd2_large_font_size * 1.5
+		local bottom = ws_panel:h() - tweak_data.menu.pd2_large_font_size * 1.5 - 20
 
 		-- Pass self as owner so the feature-row callbacks can reach toggle_feature_panel.
 		self._sidebar = CSRSidebar:new(ws_panel, top, bottom, self)
@@ -136,6 +136,29 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 				end
 			end)
 		end
+
+		-- Park the lobby-code widget in the top-right corner (overlaps the mission name otherwise).
+		self:_csr_reposition_lobby_code()
+	end
+
+	-- Park the MP lobby-code widget (MissionBriefingGui._lobby_code_text) in the top-right corner.
+	-- Vanilla only repositions it for real Crime Spree (crime_spree:is_active()), which is false in
+	-- CSR's standard gamemode, so without this it stays at the default x=0/y=80 top-left and overlaps
+	-- the mission name (job_text). The ready-button panel (self._panel) is right-aligned to the
+	-- saferect, so its right edge gives the corner anchor.
+	function MissionBriefingGui:_csr_reposition_lobby_code()
+		if not self._lobby_code_text then
+			return
+		end
+		local panel = self._lobby_code_text:panel()
+		if not (panel and alive(panel)) then
+			return
+		end
+		-- Top-right corner: the ready-button panel (self._panel) is right-aligned to the saferect,
+		-- so its right edge gives the corner anchor.
+		local right = (self._panel and alive(self._panel) and self._panel:right()) or self._safe_workspace:panel():w()
+		panel:set_right(right)
+		panel:set_y(10)
 	end
 
 	function MissionBriefingGui:_csr_remove_sidebar()

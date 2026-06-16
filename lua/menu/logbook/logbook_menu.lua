@@ -735,6 +735,7 @@ function CrimeSpreeLogbookMenuComponent:_create_statistics()
 				},
 				{ label = loc:text("csr_logbook_stat_most_purchases"), value = fmt(career("most_purchases")) },
 				{ label = loc:text("csr_logbook_stat_most_items"), value = fmt(career("most_items")) },
+				{ label = loc:text("csr_logbook_stat_most_damage_hit"), value = fmt(career("most_damage_hit")) },
 			},
 		},
 		{
@@ -742,6 +743,7 @@ function CrimeSpreeLogbookMenuComponent:_create_statistics()
 			rows = {
 				{ label = loc:text("csr_logbook_stat_missions"), value = fmt(career("total_missions")) },
 				{ label = loc:text("csr_logbook_stat_kills"), value = fmt(career("total_kills")) },
+				{ label = loc:text("csr_logbook_stat_specials"), value = fmt(career("total_specials")) },
 				{
 					label = loc:text("csr_logbook_stat_damage_dealt"),
 					value = fmt_compact(career("total_damage_dealt")),

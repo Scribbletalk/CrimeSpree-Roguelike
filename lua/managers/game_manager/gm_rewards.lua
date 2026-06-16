@@ -380,3 +380,20 @@ function CSRGameManager:mark_guest_grant(missions, gross)
 		self:save()
 	end
 end
+
+-- Account one host mission the guest PLAYED (present). Bumps grant_missions so the HANDSHAKE_OK
+-- catch-up sees this mission as already covered -> its pick surfaces as a normal choice instead of
+-- an auto-grant. Only missions completed while the guest is ABSENT stay below grant_missions and get
+-- auto-granted. Gross baseline is left untouched (advanced by the catch-up handler's push tracking).
+function CSRGameManager:note_guest_present_mission()
+	local key = self:_guest_session_key()
+	if not key then
+		return
+	end
+	self:_guest_session_entry(true)
+	local sess = self._meta.mp_sessions and self._meta.mp_sessions[key]
+	if sess then
+		sess.grant_missions = (tonumber(sess.grant_missions) or 0) + 1
+		self:save()
+	end
+end

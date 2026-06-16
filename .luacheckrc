@@ -25,7 +25,7 @@ read_globals = {
 globals = {
     -- SuperBLT
     "RequiredScript", "ModPath", "SavePath", "log", "file", "Hooks", "LuaNetworking",
-    "BeardLib",
+    "BeardLib", "BLT", "blt",
     -- PD2 class system
     "class",
     -- PD2 global state
@@ -52,16 +52,18 @@ globals = {
     "HudIconsTweakData", "HUDInteraction", "HUDManager", "HUDMissionBriefing",
     "HUDStageEndCrimeSpreeScreen", "HUDStageEndScreen", "HUDTeammate",
     -- PD2 player / weapon / enemy
-    "BaseNetworkSession", "UnitNetworkHandler", "ConnectionNetworkHandler",
+    "BaseNetworkSession", "HostNetworkSession", "ClientNetworkSession",
+    "UnitNetworkHandler", "ConnectionNetworkHandler",
     "BaseInteractionExt", "UseInteractionExt", "InteractionTweakData",
     "PlayerBase", "HuskPlayerBase", "PlayerDamage", "PlayerManager", "PlayerStandard", "StatisticsManager",
     "PlayerMovement", "HuskPlayerMovement",
     "CopDamage", "CivilianDamage", "TeamAIDamage",
     "NewRaycastWeaponBase", "RaycastWeaponBase", "NewNPCRaycastWeaponBase", "SentryGunWeapon",
-    "AmmoClip", "GageAssignmentBase", "WeaponDescription",
+    "AmmoClip", "GageAssignmentBase", "WeaponDescription", "TearGasGrenade",
+    "ProjectileBase", "ArrowBase", "ContourExt",
     -- PD2 AI / mission
     "GroupAIStateBase", "GroupAIStateBesiege", "IngameWaitingForPlayersState",
-    "TeamAILogicIdle", "CopLogicTravel",
+    "TeamAILogicIdle", "CopLogicTravel", "CopLogicIdle",
     "MissionEndState", "MissionManager", "MissionScript",
     "ElementAreaTrigger", "ElementSpawnEnemyDummy",
     -- PD2 economy / black market

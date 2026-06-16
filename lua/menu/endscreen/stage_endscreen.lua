@@ -61,6 +61,8 @@ function CSRCrimeSpreeResultTabItem:_setup()
 
 	self:_create_level(0.75)
 	self:_create_token_convert()
+	-- Reward cards disabled (kept for possible return); re-enable here + in the stages table below.
+	-- self:_create_rewards(0.75)
 end
 
 -- Failure branches kept as defensive mirror of vanilla (kicked / server left edge case).
@@ -142,32 +144,10 @@ function CSRCrimeSpreeResultTabItem:_create_level(total_w)
 		bonus:set_center_x(gain_x)
 		bonus:set_top(gain:bottom() + 10)
 
-		local bonus_amt = nil
-
-		if level ~= nil then
-			bonus_amt = self._level_panel:text({
-				vertical = "center",
-				blend_mode = "add",
-				w = 200,
-				align = "center",
-				alpha = 0,
-				layer = 10,
-				text = "+" .. managers.localization:text("menu_cs_level", {
-					level = level or 0,
-				}),
-				h = font_size,
-				font_size = font_size,
-				font = font,
-				color = color or tweak_data.screen_colors.crime_spree_risk,
-			})
-
-			bonus_amt:set_center_x(gain_x)
-			bonus_amt:set_top(bonus:bottom())
-		end
-
+		-- No "+N rank" glyph under the label: the big gain number above already shows the rank
+		-- gained. Tuple is { label_text, level }; level (nil on failure) gates the count-up below.
 		table.insert(self._levels.bonuses, {
 			bonus,
-			bonus_amt,
 			level,
 		})
 	end
@@ -322,11 +302,122 @@ function CSRCrimeSpreeResultTabItem:_create_token_convert()
 	}
 end
 
+-- Stage-3 reward cards (ported from vanilla CrimeSpreeResultTabItem): this heist's earned
+-- cash / XP / continental coins / loot, shown after the token convert. Display only - the values
+-- already accrued toward the run payout (gm_rewards.lua); read from _last_heist_rewards.heist_cards.
+function CSRCrimeSpreeResultTabItem:_create_rewards(total_w)
+	local r = managers.csr and managers.csr._last_heist_rewards
+	local amounts = r and r.heist_cards
+	if not amounts then
+		return
+	end
+
+	self._reward_panel = self._cs_panel:panel({
+		x = self._cs_panel:w() * (1 - total_w),
+		y = padding,
+		w = self._cs_panel:w() * total_w - padding * 2,
+		h = self._cs_panel:h() * 0.5,
+	})
+	local w = self._reward_panel:w() / #tweak_data.crime_spree.rewards
+
+	local function create_card(idx, panel, icon, rotation)
+		local scale = 0.65
+		local texture, rect, coords = tweak_data.hud_icons:get_icon_data(
+			idx == 1 and (icon or tweak_data.lootdrop.type_to_card_fallback)
+				or tweak_data.lootdrop.type_to_card_fallback
+		)
+		local upcard = panel:bitmap({
+			name = "upcard",
+			halign = "scale",
+			valign = "scale",
+			texture = texture,
+			w = math.round(0.7111111111111111 * panel:h() * scale),
+			h = panel:h() * scale,
+			layer = 20 - idx,
+		})
+
+		upcard:set_center_x(panel:w() * 0.5)
+		upcard:set_rotation(rotation)
+
+		if coords then
+			local tl = Vector3(coords[1][1], coords[1][2], 0)
+			local tr = Vector3(coords[2][1], coords[2][2], 0)
+			local bl = Vector3(coords[3][1], coords[3][2], 0)
+			local br = Vector3(coords[4][1], coords[4][2], 0)
+
+			upcard:set_texture_coordinates(tl, tr, bl, br)
+		else
+			upcard:set_texture_rect(unpack(rect))
+		end
+
+		return upcard
+	end
+
+	self._rewards = {}
+	local count = 0
+
+	for i, data in ipairs(tweak_data.crime_spree.rewards) do
+		local amount = math.floor(amounts[data.id] or 0)
+
+		if amount > 0 then
+			local cards = {}
+			local panel = self._reward_panel:panel({
+				alpha = 0,
+				w = w,
+				x = count * w,
+			})
+			local first_card_panel = self._reward_panel:panel({
+				w = w,
+				x = count * w,
+			})
+			local card = nil
+			local rotation = math.rand(-10, 10)
+			local num_cards = 1
+
+			for j = 1, num_cards do
+				card = create_card(j, j == 1 and first_card_panel or panel, data.icon, rotation)
+
+				card:hide()
+				table.insert(cards, card)
+			end
+
+			local reward_amount = panel:text({
+				vertical = "center",
+				h = 32,
+				wrap = true,
+				align = "center",
+				word_wrap = true,
+				blend_mode = "add",
+				layer = 11,
+				name = "reward" .. tostring(i),
+				text = managers.experience:cash_string(amount, data.cash_string or ""),
+				w = panel:w(),
+				font_size = tweak_data.menu.pd2_small_font_size,
+				font = tweak_data.menu.pd2_small_font,
+				color = Color.white,
+			})
+
+			reward_amount:set_top(card:bottom() + padding)
+
+			local _x, _y, _w, txt_h = reward_amount:text_rect()
+
+			reward_amount:set_h(txt_h)
+			table.insert(self._rewards, {
+				cards = cards,
+				first_card_panel = first_card_panel,
+				panel = panel,
+			})
+
+			count = count + 1
+		end
+	end
+end
+
 function CSRCrimeSpreeResultTabItem:set_stats(stats_data) end
 
 function CSRCrimeSpreeResultTabItem:feed_statistics(stats_data) end
 
--- Only gain count-up + token convert; timeline/reward-card stages dropped.
+-- Gain count-up -> token convert; reward-cards stage disabled (kept below); vanilla timeline dropped.
 CSRCrimeSpreeResultTabItem.stages = {
 	{
 		delay = 1,
@@ -336,6 +427,11 @@ CSRCrimeSpreeResultTabItem.stages = {
 		delay = 0.3,
 		func = "_update_token_convert",
 	},
+	-- Reward cards stage disabled (kept for possible return); re-enable with _create_rewards in _setup:
+	-- {
+	-- 	delay = 0.3,
+	-- 	func = "_update_reward_gain",
+	-- },
 }
 
 function CSRCrimeSpreeResultTabItem:_advance_stage(delay)
@@ -427,20 +523,18 @@ function CSRCrimeSpreeResultTabItem:_update_gain_calculate(t, dt)
 		t = t + 0.25
 
 		if bonus[2] then
-			bonus[2]:animate(callback(self, self, "fade_in"), fade_t, t)
-
 			t = t + fade_t + 0.5
 
 			self._levels.gain:animate(
 				callback(self, self, "count_text"),
 				"+",
 				gain_amt,
-				gain_amt + bonus[3],
+				gain_amt + bonus[2],
 				count_bonus_t,
 				t
 			)
 
-			gain_amt = gain_amt + bonus[3]
+			gain_amt = gain_amt + bonus[2]
 		end
 
 		t = t + count_bonus_t + 1
@@ -448,10 +542,6 @@ function CSRCrimeSpreeResultTabItem:_update_gain_calculate(t, dt)
 		if self:success() then
 			if i ~= #self._levels.bonuses then
 				bonus[1]:animate(callback(self, self, "fade_out"), fade_t * 0.66, t)
-			end
-
-			if bonus[2] then
-				bonus[2]:animate(callback(self, self, "fade_out"), fade_t * 0.66, t)
 			end
 
 			t = t + 0.4
@@ -598,6 +688,70 @@ function CSRCrimeSpreeResultTabItem:_update_token_convert(t, dt)
 		end
 		return
 	end
+end
+
+-- Reward-card animations (ported verbatim from vanilla CrimeSpreeResultTabItem).
+function CSRCrimeSpreeResultTabItem.animate_card_panel(o, reward_num)
+	wait(reward_num * 0.5)
+	over(0.5, function(p)
+		o:set_alpha(math.lerp(0, 1, p))
+	end)
+end
+
+function CSRCrimeSpreeResultTabItem.flip_card(card, reward_num)
+	wait(reward_num * 0.5)
+
+	local start_w = card:w()
+	local cx, cy = card:center()
+	local start_rotation = card:rotation()
+	local end_rotation = start_rotation * -1
+	local diff = end_rotation - start_rotation
+
+	card:set_valign("scale")
+	card:set_halign("scale")
+	card:show()
+	card:set_w(0)
+	managers.menu_component:post_event("loot_flip_card")
+	over(0.25, function(p)
+		card:set_rotation(start_rotation + math.sin(p * 45 + 45) * diff)
+
+		if card:rotation() == 0 then
+			card:set_rotation(360)
+		end
+
+		card:set_w(start_w * math.sin(p * 90))
+		card:set_center(cx, cy)
+	end)
+end
+
+function CSRCrimeSpreeResultTabItem.animate_card(o, reward_num, card_idx)
+	wait(reward_num * 0.5 + 0.5)
+	o:show()
+	over(0.25, function(p)
+		o:set_rotation(o:rotation() + 0.375 * card_idx * (1 - p * p))
+	end)
+end
+
+-- Stage 3: fan the reward cards in once the token convert has faded out.
+function CSRCrimeSpreeResultTabItem:_update_reward_gain(t, dt)
+	if not self:success() then
+		self:_advance_stage()
+		return
+	end
+
+	for reward_num, data in ipairs(self._rewards or {}) do
+		data.panel:animate(CSRCrimeSpreeResultTabItem.animate_card_panel, reward_num)
+
+		for idx, card in ipairs(data.cards or {}) do
+			if idx == 1 then
+				card:animate(CSRCrimeSpreeResultTabItem.flip_card, reward_num)
+			else
+				card:animate(CSRCrimeSpreeResultTabItem.animate_card, reward_num, idx)
+			end
+		end
+	end
+
+	self:_advance_stage()
 end
 
 -- =====================================================================

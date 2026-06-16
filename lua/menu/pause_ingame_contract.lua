@@ -40,6 +40,8 @@ local PAUSE_SIDEBAR_W = 160 -- mini-sidebar strip width; matches lobby CSRSideba
 local FRAME_TO_CELL = 72 / 64 -- frame overflows the cell symmetrically (same ratio as the sidebar)
 -- 4-direction 1px offsets for the stack-count outline; Diesel text has no native stroke.
 local BADGE_OUTLINE = { { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } }
+-- Caps the big-icon centring margin so the badge isn't dragged too far down (mirrors lobby sidebar).
+local BADGE_TOP_INSET = 9
 -- CSR heist marker: STANDARD gamemode + a temporary "crime_spree" job. Same
 -- signal heist_packages.lua uses; holds for host, guest and single-player.
 local function csr_heist_active()
@@ -297,26 +299,31 @@ local function csr_render_peer_items(ctx, peer, section_top, section_h)
 			layer = 4,
 		})
 
-		-- Stack badge: white "xN" with black multi-draw outline, top-right of the cell.
+		-- Stack badge: white "xN" with black multi-draw outline, top-right of the cell. Y math mirrors
+		-- the lobby sidebar (badge bottom = iy + inset + drop) so the number sits at the same height there;
+		-- a plain `vertical=top` at iy rendered it a font-height too low versus the lobby grid.
 		if entry.count > 1 then
+			local badge_drop = math.floor(tweak_data.menu.pd2_small_font_size * 0.2)
+			local badge_inset = math.min(glyph_inset, BADGE_TOP_INSET)
+			local badge_y = (iy + badge_inset + badge_drop) - cell
 			local badge = {
 				text = "x" .. tostring(entry.count),
 				font = tweak_data.menu.pd2_small_font,
 				font_size = tweak_data.menu.pd2_small_font_size,
 				align = "right",
-				vertical = "top",
+				vertical = "bottom",
 				w = cell,
 				h = cell,
 			}
 			badge.color = Color.black
 			badge.layer = 5
 			for _, off in ipairs(BADGE_OUTLINE) do
-				badge.x, badge.y = ix + off[1], iy + off[2]
+				badge.x, badge.y = ix + off[1], badge_y + off[2]
 				parent:text(badge)
 			end
 			badge.color = Color.white
 			badge.layer = 6
-			badge.x, badge.y = ix, iy
+			badge.x, badge.y = ix, badge_y
 			parent:text(badge)
 		end
 
@@ -434,14 +441,17 @@ local function csr_show_item_tooltip(self, target)
 		h = name_h,
 		layer = 1,
 	})
+	-- Split contraband ". But ..." drawback into a red second block (mirrors shop/lobby tooltips).
+	local main_desc, but_desc = _G.CSR.split_drawback(resolved_desc)
+	local desc_y = pad + name_h + 2
 	local desc_text = tip:text({
 		name = "tooltip_desc",
-		text = resolved_desc,
+		text = main_desc,
 		font = tweak_data.menu.pd2_small_font,
 		font_size = tweak_data.menu.pd2_small_font_size,
 		color = tweak_data.screen_colors.text,
 		x = pad,
-		y = pad + name_h + 2,
+		y = desc_y,
 		w = tip_w - pad * 2,
 		h = 160,
 		wrap = true,
@@ -451,7 +461,28 @@ local function csr_show_item_tooltip(self, target)
 	local _, _, _, dh = desc_text:text_rect()
 	desc_text:set_h(dh)
 
-	local tip_h = pad + name_h + 2 + dh + pad
+	local content_h = dh
+	if but_desc then
+		local but_text = tip:text({
+			name = "tooltip_but",
+			text = but_desc,
+			font = tweak_data.menu.pd2_small_font,
+			font_size = tweak_data.menu.pd2_small_font_size,
+			color = Color(1, 1, 0.3, 0.3),
+			x = pad,
+			y = desc_y + dh,
+			w = tip_w - pad * 2,
+			h = 160,
+			wrap = true,
+			word_wrap = true,
+			layer = 1,
+		})
+		local _, _, _, bh = but_text:text_rect()
+		but_text:set_h(bh)
+		content_h = dh + bh
+	end
+
+	local tip_h = pad + name_h + 2 + content_h + pad
 	tip:set_h(tip_h)
 	tip:rect({ name = "tooltip_bg", color = Color.black, alpha = 0.9, layer = 0, w = tip_w, h = tip_h })
 	BoxGuiObject:new(tip, { sides = { 1, 1, 1, 1 } })

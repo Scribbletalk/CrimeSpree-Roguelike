@@ -3,12 +3,12 @@
 -- (mission_lifecycle.lua) awards rank/tokens/loot exactly like a real completion.
 
 if not (Network and Network:is_server() and managers.network:session()) then
-	log("[CSR][DEBUG] instant_complete: ignored (guest or no session)")
+	csr_log("[CSR][DEBUG] instant_complete: ignored (guest or no session)")
 	return
 end
 
 if not managers.platform or managers.platform:presence() ~= "Playing" then
-	log("[CSR][DEBUG] instant_complete: ignored (not in a heist)")
+	csr_log("[CSR][DEBUG] instant_complete: ignored (not in a heist)")
 	return
 end
 
@@ -18,4 +18,4 @@ game_state_machine:change_state_by_name("victoryscreen", {
 	num_winners = num_winners,
 	personal_win = alive(managers.player:player_unit()),
 })
-log("[CSR][DEBUG] instant_complete: forced heist WIN")
+csr_log("[CSR][DEBUG] instant_complete: forced heist WIN")

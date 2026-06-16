@@ -232,6 +232,27 @@ function _G.CSR.item_text(key, src)
 	return managers.localization:text(key, src and src.loc_macros or nil)
 end
 
+-- Split a contraband description into (main, drawback). The drawback is the trailing
+-- sentence starting "But ...", separated by ". " (current loc) or a newline (legacy),
+-- or the whole string when it leads with "But ". `drawback` is nil when there is none.
+-- Anchoring on the sentence boundary avoids cutting at a stray "But " inside the main
+-- clause. Centralizes the split shared by the shop card and the lobby/pause tooltips.
+function _G.CSR.split_drawback(text)
+	text = text or ""
+	local dot = string.find(text, ". But ", 1, true)
+	if dot then
+		return text:sub(1, dot), text:sub(dot + 2)
+	end
+	local nl = string.find(text, "\nBut ", 1, true)
+	if nl then
+		return text:sub(1, nl - 1), text:sub(nl + 1)
+	end
+	if text:sub(1, 4) == "But " then
+		return "", text
+	end
+	return text, nil
+end
+
 -- Recursively dofile every .lua under `dir`; files self-register via register_item/modifier.
 local function run_lua_dir(dir, label)
 	local count = 0

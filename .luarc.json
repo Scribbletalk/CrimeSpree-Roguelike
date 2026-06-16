@@ -104,6 +104,7 @@
     "RaycastWeaponBase",
     "NewRaycastWeaponBase",
     "BotWeapon",
+    "TearGasGrenade",
     "BlackMarketManager",
     "MoneyManager",
     "ExperienceManager",

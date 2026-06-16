@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<unit type="gen" slot="1">
+	<object file="units/pd2_dlc_ecp/weapons/wpn_prj_ecp_arrow/wpn_prj_ecp_arrow" />
+	<!-- NO <network> tag: clients spawn this variant locally (throw_projectile picks
+		local_unit when not server). A sync="spawn" unit spawned without server
+		authority native-AVs the client (same trap as the scrapper prop). -->
+	<dependencies>
+		<depends_on bnk="soundbanks/regular_weapon_sfx" />
+	</dependencies>
+	<extensions>
+		<extension name="base" class="ArrowBase">
+			<var name="_tweak_projectile_entry" value="csr_ff_arrow" />
+		</extension>
+		<extension name="unit_data" class="ScriptUnitData" />
+		<extension name="damage" class="UnitDamage">
+			<var name="_skip_give_body_collision_damage" value="true" />
+		</extension>
+		<!-- ContourExt kept for material init (the arrow .material_config uses a
+			CONTOUR-enabled render template), mirroring the server variant so the
+			arrow renders identically on clients. The outline itself is suppressed. -->
+		<extension name="contour" class="ContourExt" />
+	</extensions>
+	<sounds>
+		<default_soundsource source="rp_wpn_prj_ecp_arrow" />
+		<soundsource name="snd" source="rp_wpn_prj_ecp_arrow" />
+	</sounds>
+</unit>

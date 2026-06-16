@@ -345,6 +345,10 @@ function CSRGameManager:add_item(peer_id, item_type)
 	-- Fold the local player's collection into the "Most Items Collected" career peak.
 	if peer_id == self:local_peer_id() then
 		self:record_items_peak(peer_id)
+		-- Logbook discovery: record as seen this run; promoted to unlocked at end_run.
+		if _G.CSR_Logbook and _G.CSR_Logbook.mark_seen then
+			_G.CSR_Logbook:mark_seen(item_type)
+		end
 	end
 	log_csr("add_item: peer=" .. tostring(peer_id) .. " type=" .. item_type .. " count=" .. entry.counts[item_type])
 	return true

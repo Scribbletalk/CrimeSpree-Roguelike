@@ -45,6 +45,7 @@ function CSR_MP.send_to_peers(msg_id, payload)
 	if not session then
 		return
 	end
+	csr_log("[CSR][mptest][native] send_to_peers id=" .. tostring(msg_id))
 	pcall(session.send_to_peers, session, dir_msg(), tostring(msg_id), tostring(payload or ""))
 end
 
@@ -58,6 +59,7 @@ function CSR_MP.send_to_peer(pid, msg_id, payload)
 	if not peer then
 		return
 	end
+	csr_log("[CSR][mptest][native] send_to_peer pid=" .. tostring(pid) .. " id=" .. tostring(msg_id))
 	pcall(session.send_to_peer, session, peer, dir_msg(), tostring(msg_id), tostring(payload or ""))
 end
 

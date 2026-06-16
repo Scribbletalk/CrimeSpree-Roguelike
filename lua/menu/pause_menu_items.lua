@@ -50,12 +50,51 @@ Hooks:Add("MenuManagerBuildCustomMenus", "CSR_PauseMenuReturnToLobby", function(
 
 	local node = nodes.pause
 
-	-- Strip the vanilla "Terminate Contract" item (end_game_cs). CSR replaces crime spree with its
-	-- own "Return to Lobby" flow; the vanilla terminator only surfaces for the host (visible_callback
-	-- gates on crime_spree_is_active, which is host-only here). delete_item is an idempotent no-op
-	-- once it is gone, so this is safe to run on every manager re-init / VR-toggle rebuild.
-	if node.delete_item then
-		node:delete_item("end_game_cs")
+	-- TEMP B4 diag: dump every pause-node item (id + text_id + localized text) so we can identify the
+	-- exact standard-mode quit button the user sees as "Terminate Contract". STRIP after B4. [CSR][mptest]
+	-- Gated on CSR_DEBUG via csr_log (debug-only; B4 is fixed -- kept behind the toggle, not unconditional).
+	csr_log(
+		"[CSR][mptest][pausemenu] build hook fired; node="
+			.. tostring(node)
+			.. " items="
+			.. tostring(node and node._items)
+	)
+	if node and node._items then
+		for _, it in ipairs(node._items) do
+			local p = it.parameters and it:parameters()
+			if p then
+				local tid = p.text_id
+				local txt = (tid and managers and managers.localization and managers.localization:text(tid)) or "?"
+				csr_log(
+					"[CSR][mptest][pausemenu] name="
+						.. tostring(p.name)
+						.. " text_id="
+						.. tostring(tid)
+						.. " text="
+						.. tostring(txt)
+				)
+			end
+		end
+	end
+
+	-- Hide the vanilla "Terminate contract" quit (item "abort_mission") inside CSR runs only.
+	-- CSR owns the quit flow via its own "Return to Lobby"; this standard-mode quit leaks in CSR
+	-- heists because they run the STANDARD gamemode (job_id "crime_spree"), so abort_mission's
+	-- crime_spree_not_is_active callback passes. We append a CSR-gated visible_callback: Item:visible()
+	-- AND-s every callback (coremenuitem.lua), so returning false here forces the item hidden whenever
+	-- in_csr_heist() is true. in_csr_heist() is job_id-based -> covers host AND guest, and stays false
+	-- in vanilla heists and real Crime Spree, so those keep their normal quit. Idempotent via a flag.
+	if node._items then
+		for _, item in ipairs(node._items) do
+			local p = item.parameters and item:parameters()
+			if p and p.name == "abort_mission" and not item._csr_hidden_in_heist then
+				item._csr_hidden_in_heist = true
+				item._visible_callback_list = item._visible_callback_list or {}
+				table.insert(item._visible_callback_list, function()
+					return not (managers and managers.csr and managers.csr.in_csr_heist and managers.csr:in_csr_heist())
+				end)
+			end
+		end
 	end
 
 	-- Idempotency: hook can fire on manager re-init / VR toggle.

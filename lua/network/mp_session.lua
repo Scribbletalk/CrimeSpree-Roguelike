@@ -226,16 +226,32 @@ if CSR_MP and CSR_MP.register_handler then
 			end
 		end
 
-		-- Late-join auto-grant: convert the host's progress into items for the guest (no choosing).
-		-- Runs as a first grant, or an INCREMENTAL delta when the host has completed more missions
-		-- since the last grant (snapshot keyed per host run). Guest-only; host/SP never reach here.
-		if _G.CSR_Shop and mgr and mgr.guest_grant_missions and _G.CSR_Shop.auto_grant_late_join then
+		-- Catch-up auto-grant for MISSED missions only: the first join, or host missions completed while
+		-- the guest was OFF the server. Missions the guest PLAYS are accounted in mission_lifecycle and
+		-- surface as a normal pick it chooses -- never auto-granted (the present guest also earns its own
+		-- tokens). `accounted` (guest_grant_missions) = host missions already covered on this client
+		-- (played-present + previously caught-up). Guest-only; host/SP never reach here.
+		--
+		-- Gate on `not in_csr_heist()`: the host is authoritative, so it finishes its MissionEndState and
+		-- pushes the incremented host-state WHILE the guest is still IN-GAME (job loaded), BEFORE the guest's
+		-- own mission_lifecycle:at_enter runs note_guest_present_mission() to bump `accounted`. A state-name
+		-- check ("victoryscreen") missed that pre-endscreen in-game window and the catch-up stole the present
+		-- pick. in_csr_heist() (crime_spree job loaded) covers the whole heist + endscreen window and clears
+		-- only when the job unloads back in the lobby -- by then accounting has caught up. So the catch-up
+		-- runs ONLY from the lobby, where a genuine absence is the only reason hmissions > accounted.
+		if
+			_G.CSR_Shop
+			and mgr
+			and mgr.guest_grant_missions
+			and _G.CSR_Shop.auto_grant_late_join
+			and not (mgr.in_csr_heist and mgr:in_csr_heist())
+		then
 			local pid = CSR_MP.local_peer_id()
 			local hrank = tonumber(payload.host_rank) or 0
 			local hmissions = tonumber(payload.host_missions_completed) or 0
 			local gross = tonumber(payload.host_tokens_gross) or 0
-			local prev = mgr:guest_grant_missions() -- nil before the first grant
-			if prev ~= hmissions then
+			local accounted = mgr:guest_grant_missions() or 0
+			if hmissions > accounted then
 				local prev_gross = mgr:guest_grant_gross()
 				local leftover = _G.CSR_Shop.auto_grant_late_join(pid, hrank, gross, hmissions, prev_gross)
 				-- Add (don't overwrite) the leftover: the guest may already hold a balance. set_tokens
@@ -250,15 +266,13 @@ if CSR_MP and CSR_MP.register_handler then
 					comp:refresh_for_rank_change()
 				end
 				if CSR_MP.log then
-					CSR_MP.log(
-						"late-join grant rank="
-							.. tostring(hrank)
-							.. " missions="
-							.. tostring(hmissions)
-							.. " leftover="
-							.. tostring(leftover)
-					)
+					CSR_MP.log("catch-up grant rank=" .. tostring(hrank) .. " missions=" .. tostring(hmissions))
 				end
+			else
+				-- Present or fully caught-up: no auto-grant. Keep the gross baseline current so a LATER
+				-- absence converts only host tokens earned while away, not present-period tokens (which
+				-- the guest already earned itself). Leaves accounted untouched.
+				mgr:mark_guest_grant(accounted, gross)
 			end
 		end
 	end)
@@ -280,6 +294,7 @@ if IngameWaitingForPlayersState and not _G._CSR_MP_SESSION_HOOKED then
 	-- assets_gui (the briefing bg video). Runs earlier than the MissionBriefingGui:init fallback so
 	-- the whole briefing builds with a valid current_level_data. Guest-gated + idempotent in helper.
 	Hooks:PreHook(IngameWaitingForPlayersState, "at_enter", "CSR_MP_GuestTempJob", function()
+		csr_log("[CSR][mptest][session] at_enter PreHook (guest temp-job)") -- [CSR][mptest]
 		if managers and managers.csr and managers.csr.ensure_guest_temp_job then
 			managers.csr:ensure_guest_temp_job()
 		end
@@ -291,16 +306,23 @@ if IngameWaitingForPlayersState and not _G._CSR_MP_SESSION_HOOKED then
 		end
 		-- Guest: clear stale state then pull fresh — request-reply is more reliable than waiting on a push.
 		if CSR_MP.is_client and CSR_MP.is_client() then
+			csr_log("[CSR][mptest][session] at_enter: client -> clear+request host state") -- [CSR][mptest]
 			if managers.csr and managers.csr.clear_mp_host_state then
 				managers.csr:clear_mp_host_state()
 			end
-			if CSR_MP.request_host_state then
+			-- Retry the pull until host_seed actually lands; a one-shot leaves host_seed nil if the reply
+			-- is lost/truncated, which makes the guest count as non-guesting at mission end and the
+			-- catch-up auto-grants (steals) its present pick. ensure_host_state polls until is_guesting().
+			if CSR_MP.ensure_host_state then
+				CSR_MP.ensure_host_state()
+			elseif CSR_MP.request_host_state then
 				CSR_MP.request_host_state()
 			end
 			return
 		end
 		-- Host: delayed push so state arrives after guests have cleared stale data.
 		if CSR_MP.is_host and CSR_MP.is_host() and CSR_MP.is_multiplayer() and csr_heist_active() then
+			csr_log("[CSR][mptest][session] at_enter: host -> delayed host-state push") -- [CSR][mptest]
 			DelayedCalls:Add("CSR_MP_HostStatePush", 0.75, broadcast_host_state)
 		end
 	end)

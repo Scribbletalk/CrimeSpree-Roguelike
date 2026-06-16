@@ -341,13 +341,30 @@ local function on_scrapper_spawn(payload)
 		return
 	end
 	spawn_at(pos, rot, def)
+	-- TEMP MP-sync test: confirm the client actually mirrored the host's scrapper. STRIP. [CSR][mptest]
+	csr_log("[CSR][mptest][heist] scrapper mirrored on client key=" .. tostring(key))
 end
 
-if _G.CSR_MP and _G.CSR_MP.register_handler and _G.CSR_MP.MSG then
+-- Register LAZILY: at file-load _G.CSR_MP may not exist yet (this file hooks
+-- lib/setups/setup, which can run before mp_sync.lua's lib/entry creates CSR_MP),
+-- so a file-scope register_handler silently no-ops and clients never mirror host
+-- scrapper spawns. Defer to BaseNetworkSessionOnLoadComplete (game/network state).
+local _scrapper_handler_registered = false
+local function register_scrapper_handler()
+	if _scrapper_handler_registered then
+		return
+	end
+	if not (_G.CSR_MP and _G.CSR_MP.register_handler and _G.CSR_MP.MSG) then
+		return
+	end
 	_G.CSR_MP.register_handler(_G.CSR_MP.MSG.SCRAPPER_SPAWN, function(sender, data)
 		on_scrapper_spawn(data)
 	end)
+	_scrapper_handler_registered = true
 end
+
+register_scrapper_handler() -- immediate attempt for states where CSR_MP is already loaded
+Hooks:Add("BaseNetworkSessionOnLoadComplete", "CSR_ScrapperSpawner_RegisterHandler", register_scrapper_handler)
 
 Hooks:Add("GameSetupUpdate", "CSR_ScrapperProximityContour", function(t, dt)
 	local list = _G.CSR_DebugSpawnedUnits

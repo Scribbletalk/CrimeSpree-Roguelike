@@ -128,6 +128,31 @@ function CSRMissionsMenuComponent:_collect_peers_for_items_panel(local_pid)
 		end
 	end
 
+	-- DIAG: split out / live session / CSR remote-store sources to locate a stale peer.
+	local out_ids, sess_ids, rem_ids = {}, {}, {}
+	for _, p in ipairs(out) do
+		out_ids[#out_ids + 1] = tostring(p.id)
+	end
+	if session and session.peers then
+		for pid in pairs(session:peers() or {}) do
+			sess_ids[#sess_ids + 1] = tostring(pid)
+		end
+	end
+	local dmgr = managers and managers.csr
+	if dmgr and dmgr.remote_peer_ids then
+		for _, pid in ipairs(dmgr:remote_peer_ids()) do
+			rem_ids[#rem_ids + 1] = tostring(pid)
+		end
+	end
+	csr_log(
+		"[CSR][peerleave] collect_peers out="
+			.. table.concat(out_ids, ",")
+			.. " session="
+			.. table.concat(sess_ids, ",")
+			.. " remote="
+			.. table.concat(rem_ids, ",")
+	)
+
 	return out
 end
 

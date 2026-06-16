@@ -32,6 +32,30 @@ local function dbg_mult(stat, value)
 	if mgr and mgr._debug_stat then
 		mgr:_debug_stat("rank_passive", stat, value)
 	end
+	-- TEMP MP-sync test: log every rank-passive's computed value once per (stat,rank) so host and
+	-- client logs can be compared for parity (same rank -> identical scaling). The authority gate at
+	-- each call site means this also shows WHICH machine applied each scaling. Unconditional, throttled
+	-- (one line per stat per rank). STRIP after MP confirmed. [CSR][mptest]
+	local r = run_rank()
+	local seen = _G._CSR_mptest_rankseen
+	if not seen then
+		seen = {}
+		_G._CSR_mptest_rankseen = seen
+	end
+	local k = tostring(stat) .. ":" .. tostring(r)
+	if not seen[k] then
+		seen[k] = true
+		local role = (Network and Network:is_server()) and "host" or "client"
+		csr_log(
+			string.format(
+				"[CSR][mptest][heist] rank_passive %s role=%s rank=%s value=%s",
+				tostring(stat),
+				role,
+				tostring(r),
+				tostring(value)
+			)
+		)
+	end
 end
 
 local function is_bot_unit(unit)

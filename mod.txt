@@ -22,6 +22,14 @@
 			"script_path": "lua/core/extension_api.lua"
 		},
 		{
+			"hook_id": "lib/entry",
+			"script_path": "lua/debug/silence_nethelper_log.lua"
+		},
+		{
+			"hook_id": "lib/setups/setup",
+			"script_path": "lua/debug/silence_nethelper_log.lua"
+		},
+		{
 			"hook_id": "*",
 			"script_path": "lua/core/item_dispatch.lua"
 		},

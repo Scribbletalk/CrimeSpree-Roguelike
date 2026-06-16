@@ -352,7 +352,8 @@ function CrimeSpreeBlackMarketShopPage:_build_card_visuals(card, entry)
 	})
 
 	local full_desc = loc_or_blank(entry.desc, entry)
-	local main_desc, but_desc = string.match(full_desc, "^(.-)\n(But.+)$")
+	-- Contraband downsides read ". But ..."; split so the drawback renders red (shared helper).
+	local main_desc, but_desc = _G.CSR.split_drawback(full_desc)
 	card.effect_text = panel:text({
 		name = "effect",
 		text = main_desc or full_desc,

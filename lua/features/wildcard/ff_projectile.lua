@@ -44,7 +44,9 @@ if req == "lib/tweak_data/tweakdata" then
 		if not tweak_data.blackmarket.projectiles.csr_ff_arrow then
 			tweak_data.blackmarket.projectiles.csr_ff_arrow = {
 				unit = "units/payday2_csr/wildcards/ff_arrow/ff_arrow",
-				local_unit = "units/payday2_csr/wildcards/ff_arrow/ff_arrow",
+				-- Clients use local_unit (no <network> tag); the sync="spawn" server
+				-- unit native-AVs when a client spawns it without server authority.
+				local_unit = "units/payday2_csr/wildcards/ff_arrow/ff_arrow_local",
 				no_cheat_count = true,
 				impact_detonation = true,
 				client_authoritative = true,

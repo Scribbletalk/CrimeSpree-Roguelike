@@ -479,6 +479,37 @@ end
 local ENEMY_HEALTH_PCT_PER_RANK = 5
 local ENEMY_DAMAGE_PCT_PER_RANK = 5
 
+-- Restore pristine enemy HEALTH_INIT so ModifierEnemyHealth (which multiplies it in place and never
+-- reverts) can't compound on re-fire. Runs on host AND client: each machine must inflate its OWN
+-- tweak_data, because client-dealt bullet damage is synced as a FRACTION of the LOCAL _HEALTH_INIT
+-- (copdamage damage_bullet -> sync_damage_bullet) -- without it, enemies are tanky only vs the host's
+-- weapons. Returns (restored_count, snapshotted) for logging.
+function CSRGameManager:_restore_enemy_health_baseline()
+	local ctd = tweak_data and tweak_data.character
+	if not (ctd and ctd.enemy_list) then
+		return 0, false
+	end
+	local snapshotted = false
+	if not _G.CSR_EnemyHealthBaseline then
+		local base = {}
+		for _, name in ipairs(ctd:enemy_list()) do
+			if ctd[name] and ctd[name].HEALTH_INIT then
+				base[name] = ctd[name].HEALTH_INIT
+			end
+		end
+		_G.CSR_EnemyHealthBaseline = base
+		snapshotted = true
+	end
+	local restored = 0
+	for name, hp in pairs(_G.CSR_EnemyHealthBaseline) do
+		if ctd[name] then
+			ctd[name].HEALTH_INIT = hp
+			restored = restored + 1
+		end
+	end
+	return restored, snapshotted
+end
+
 function CSRGameManager:apply_modifiers()
 	if not managers or not managers.modifiers then
 		return
@@ -488,19 +519,44 @@ function CSRGameManager:apply_modifiers()
 		managers.modifiers._modifiers.csr = nil
 	end
 
-	-- Client: only enemy damage modifier runs locally (PlayerDamage is per-peer; HP scaling is host-only).
+	-- Client: apply enemy HP + DAMAGE scaling locally (the host-only spawn/pager/group_ai mutations below
+	-- stay host-authoritative). Both are LOCAL changes, no networking:
+	--   * Enemy DAMAGE: ModifierEnemyDamage scales "PlayerDamage:TakeDamageBullet", computed on the victim
+	--     -- the client must run it so enemy->local-player damage is inflated.
+	--   * Enemy HP: ModifierEnemyHealth inflates the client's OWN tweak_data HEALTH_INIT. Client-dealt
+	--     bullet damage is synced as a FRACTION of the local _HEALTH_INIT (copdamage damage_bullet ->
+	--     sync_damage_bullet); without inflating it here, enemies are tanky only vs the host's weapons.
 	-- Re-applied when host_rank arrives mid-load (see HANDSHAKE_OK in mp_session.lua).
 	if not Network:is_server() then
 		local rank = self:host_rank() or 0
-		if rank > 0 and _G.ModifierEnemyDamage then
-			managers.modifiers:add_modifier(
-				_G.ModifierEnemyDamage:new({ damage = rank * ENEMY_DAMAGE_PCT_PER_RANK }),
-				"csr"
+		-- TEMP MP-sync test: compare rank/percent against the host log. STRIP. [CSR][mptest]
+		csr_log(
+			string.format(
+				"[CSR][mptest][heist] enemy_scaling role=client rank=%d -> +%d%% HP, +%d%% DMG",
+				rank,
+				rank * ENEMY_HEALTH_PCT_PER_RANK,
+				rank * ENEMY_DAMAGE_PCT_PER_RANK
 			)
+		)
+		if rank > 0 then
+			if _G.ModifierEnemyHealth then
+				self:_restore_enemy_health_baseline()
+				managers.modifiers:add_modifier(
+					_G.ModifierEnemyHealth:new({ health = rank * ENEMY_HEALTH_PCT_PER_RANK }),
+					"csr"
+				)
+			end
+			if _G.ModifierEnemyDamage then
+				managers.modifiers:add_modifier(
+					_G.ModifierEnemyDamage:new({ damage = rank * ENEMY_DAMAGE_PCT_PER_RANK }),
+					"csr"
+				)
+			end
 			self:debug_log(
 				string.format(
-					"client enemy-damage modifier: rank=%d -> +%d%% DMG",
+					"client enemy scaling: rank=%d -> +%d%% HP, +%d%% DMG",
 					rank,
+					rank * ENEMY_HEALTH_PCT_PER_RANK,
 					rank * ENEMY_DAMAGE_PCT_PER_RANK
 				)
 			)
@@ -528,36 +584,16 @@ function CSRGameManager:apply_modifiers()
 		end
 	end
 
-	-- Same trap for ModifierEnemyHealth: multiplies HEALTH_INIT in place, never reverts.
-	-- Restore from snapshot before every apply. (ModifierEnemyDamage uses modify_value, no mutation needed.)
-	local ctd = tweak_data and tweak_data.character
-	if ctd and ctd.enemy_list then
-		local snapshotted = false
-		if not _G.CSR_EnemyHealthBaseline then
-			local base = {}
-			for _, name in ipairs(ctd:enemy_list()) do
-				if ctd[name] and ctd[name].HEALTH_INIT then
-					base[name] = ctd[name].HEALTH_INIT
-				end
-			end
-			_G.CSR_EnemyHealthBaseline = base
-			snapshotted = true
-		end
-		local restored = 0
-		for name, hp in pairs(_G.CSR_EnemyHealthBaseline) do
-			if ctd[name] then
-				ctd[name].HEALTH_INIT = hp
-				restored = restored + 1
-			end
-		end
-		self:debug_log(
-			string.format(
-				"enemy HP baseline %s, restored pristine HEALTH_INIT for %d enemies (no compounding)",
-				snapshotted and "snapshotted" or "reused",
-				restored
-			)
+	-- ModifierEnemyHealth multiplies HEALTH_INIT in place and never reverts; restore pristine first.
+	-- (ModifierEnemyDamage uses modify_value, no mutation needed.)
+	local restored, snapshotted = self:_restore_enemy_health_baseline()
+	self:debug_log(
+		string.format(
+			"enemy HP baseline %s, restored pristine HEALTH_INIT for %d enemies (no compounding)",
+			snapshotted and "snapshotted" or "reused",
+			restored
 		)
-	end
+	)
 
 	-- Same trap for modifiers that mutate tweak_data.group_ai in place and never revert:
 	-- special_unit_spawn_limits (more medics/dozers), FBI_tank.unit_types (dozer-type appends),
@@ -629,6 +665,16 @@ function CSRGameManager:apply_modifiers()
 
 	-- Per-rank HP/damage scaling is continuous so it's injected directly, not passport-registered.
 	local rank = self:host_rank() or 0
+	-- TEMP MP-sync test: host applies enemy HP + DMG for the whole crew (HP mutates tweak_data, synced
+	-- to clients via the spawned units). Compare rank against each client log. STRIP. [CSR][mptest]
+	csr_log(
+		string.format(
+			"[CSR][mptest][heist] enemy_scaling role=host rank=%d -> +%d%% HP, +%d%% DMG",
+			rank,
+			rank * ENEMY_HEALTH_PCT_PER_RANK,
+			rank * ENEMY_DAMAGE_PCT_PER_RANK
+		)
+	)
 	if rank > 0 then
 		to_activate["ModifierEnemyHealth"] = { health = rank * ENEMY_HEALTH_PCT_PER_RANK }
 		to_activate["ModifierEnemyDamage"] = { damage = rank * ENEMY_DAMAGE_PCT_PER_RANK }

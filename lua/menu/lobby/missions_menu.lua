@@ -65,7 +65,7 @@ function CSRMissionsMenuComponent:_setup()
 	})
 
 	-- Hoisted so sidebar height can be pinned to match the cards' bottom edge.
-	local bottom = parent:bottom() - tweak_data.menu.pd2_large_font_size * 1.5
+	local bottom = parent:bottom() - tweak_data.menu.pd2_large_font_size * 1.5 - 20
 
 	-- Always called: sets self._title_bottom for the sidebar anchor; on end-screen
 	-- the visible elements are hidden inside _create_title, preserving the geometry.
@@ -257,7 +257,7 @@ function CSRMissionsMenuComponent:_setup()
 	-- icon -- the first thing seen post-heist. One-shot consume; the lobby keeps only the blue tint.
 	if not self._is_lobby then
 		local consumed = mgr and mgr.consume_modifier_glow and mgr:consume_modifier_glow()
-		log( -- TEMP siren debug (raw log: csr_log is CSR_DEBUG-gated)
+		csr_log( -- TEMP siren debug (raw log: csr_log is CSR_DEBUG-gated)
 			"[CSR][siren] _setup consume: consumed="
 				.. tostring(consumed)
 				.. " sidebar="
@@ -351,12 +351,11 @@ function CSRMissionsMenuComponent:_create_title()
 	self:_reposition_lobby_code()
 end
 
--- Park the MP lobby-code widget right of the header; vanilla never moves it for CSR, so without
--- this it sits at (0,80) and overlaps the sidebar.
+-- Park the MP lobby-code widget so it clears CSR chrome; vanilla never moves it for CSR, so without
+-- this it sits at (0,80) top-left. Lobby: right of the header (vertically centered in the title band).
+-- End-screen: top-right corner -- the title is hidden there, so the right-of-header anchor would land
+-- in empty top-left space and overlap the mission name.
 function CSRMissionsMenuComponent:_reposition_lobby_code()
-	if not self._is_lobby then
-		return
-	end
 	local mcm = managers and managers.menu_component
 	local code_gui = mcm and mcm._lobby_code_gui
 	if not (code_gui and code_gui.panel) then
@@ -366,11 +365,17 @@ function CSRMissionsMenuComponent:_reposition_lobby_code()
 	if not (panel and alive(panel)) then
 		return
 	end
-	local gap = 24
-	local x = (self._title_right or 0) + gap
-	local header_h = self._title_bottom or 0
-	local y = math.floor(header_h / 2 - (5 + tweak_data.menu.pd2_medium_font_size / 2))
-	panel:set_position(x, y)
+	if self._is_lobby then
+		local gap = 24
+		local x = (self._title_right or 0) + gap
+		local header_h = self._title_bottom or 0
+		local y = math.floor(header_h / 2 - (5 + tweak_data.menu.pd2_medium_font_size / 2))
+		panel:set_position(x, y)
+	else
+		-- End-screen: top-right corner.
+		panel:set_right(self._ws:panel():right())
+		panel:set_y(10)
+	end
 end
 
 function CSRMissionsMenuComponent:_create_sidebar(bottom)
@@ -1988,12 +1993,12 @@ end
 function CSRSidebar:play_modifier_siren()
 	for _, btn in ipairs(self._buttons) do
 		if btn._feature_key == "modifiers" and btn.play_siren then
-			log("[CSR][siren] play_modifier_siren: modifiers button found, arming") -- TEMP siren debug
+			csr_log("[CSR][siren] play_modifier_siren: modifiers button found, arming") -- TEMP siren debug
 			btn:play_siren()
 			return
 		end
 	end
-	log("[CSR][siren] play_modifier_siren: NO modifiers button found") -- TEMP siren debug
+	csr_log("[CSR][siren] play_modifier_siren: NO modifiers button found") -- TEMP siren debug
 end
 
 -- CSRSidebarSeparator — fork of vanilla CrimeNetSidebarSeparator; 10px non-interactive row.
@@ -2227,7 +2232,7 @@ function CSRSidebarItem:update(t, dt)
 	self._siren_blue:set_alpha(blue_a)
 	if not self._siren_logged then -- TEMP siren debug
 		self._siren_logged = true
-		log(
+		csr_log(
 			"[CSR][siren] update ticking: tt="
 				.. string.format("%.2f", tt)
 				.. " red_a="

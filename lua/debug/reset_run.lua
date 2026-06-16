@@ -13,4 +13,4 @@ if mgr.reset_mp_earnings then
 end
 -- Deactivate run + wipe inventory + save. No reward computation, no claim node.
 mgr:end_run()
-log("[CSR][DEBUG] reset_run: local CSR run cleared with no rewards")
+csr_log("[CSR][DEBUG] reset_run: local CSR run cleared with no rewards")

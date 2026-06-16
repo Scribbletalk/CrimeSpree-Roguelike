@@ -149,10 +149,42 @@ if Hooks then
 		end
 	end)
 
+	-- FSS re-runs blt_keybinds_manager.lua on EVERY menu<->heist transition and rebuilds
+	-- fs_filtered_keybinds from a file-scope `state` snapshot, REPLACING the table. If that
+	-- snapshot lands on StateMenu (Global.load_level still false at the instant FSS re-runs),
+	-- our run_in_game bind is dropped for the whole heist -> key is silently dead. The boot
+	-- hooks above can't cover this: they fire once, the rebuild happens again every heist.
+	-- Re-assert exactly once per heist entry, from GameSetupUpdate (fires only in-heist,
+	-- strictly after FSS's transition rebuild); MenuUpdate re-arms it for the next heist.
+	-- These per-frame hooks exist solely to patch FSS, so only register them when FSS is
+	-- actually present -- players without FSS add zero per-frame work.
+	local _fss_rearm_hooks_added = false
+	local function add_fss_rearm_hooks()
+		if _fss_rearm_hooks_added then
+			return
+		end
+		if not (_G.BLT and BLT.Keybinds and BLT.Keybinds.fs_filtered_keybinds) then
+			return
+		end
+		_fss_rearm_hooks_added = true
+		local _fss_rearm = false
+		Hooks:Add("GameSetupUpdate", "CSR_FSSFix_WildcardInHeist", function()
+			if not _fss_rearm then
+				_fss_rearm = true
+				ensure_wildcard_in_fss_list()
+			end
+		end)
+		Hooks:Add("MenuUpdate", "CSR_FSSFix_WildcardRearm", function()
+			_fss_rearm = false
+		end)
+	end
+
 	-- Cover the case where the key was already bound from a previous session:
 	-- FSS's bootstrap (which runs after lib/entry but before LocalizationManagerPostInit)
-	-- skipped our bind because state==StateMenu at main menu. Re-attach here.
+	-- skipped our bind because state==StateMenu at main menu. Re-attach here, and -- now that
+	-- FSS's bootstrap has run -- register the per-heist re-assert hooks iff FSS is loaded.
 	Hooks:Add("LocalizationManagerPostInit", "CSR_FSSFix_WildcardOnLocPost", function()
 		ensure_wildcard_in_fss_list()
+		add_fss_rearm_hooks()
 	end)
 end

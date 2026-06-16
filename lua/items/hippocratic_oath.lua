@@ -466,6 +466,25 @@ local function is_oath_medic_unit(unit)
 	return false
 end
 
+-- Host-side: distance from an Oath medic to its owner, or nil if `unit` isn't our medic /
+-- the owner is gone. Drives the combat leash (suppress target acquisition past LEASH_DISTANCE).
+local function oath_medic_owner_dist(unit)
+	if not (alive(unit) and unit:movement()) then
+		return nil
+	end
+	local key = unit:key()
+	for peer_id, s in pairs(state) do
+		if s and s.medic_unit_key == key then
+			local owner = get_peer_player_unit(peer_id)
+			if alive(owner) and owner:movement() then
+				return mvector3.distance(unit:movement():m_pos(), owner:movement():m_newest_pos())
+			end
+			return nil
+		end
+	end
+	return nil
+end
+
 -- =====================================================
 -- One-time global hooks (per-frame tick, pulse draw, per-heist reset, MP heal handler)
 -- =====================================================
@@ -699,6 +718,31 @@ _G.CSR.register_item({
 					end
 				end
 				return original(data, my_data, objective, ...)
+			end
+		end,
+
+		["lib/units/enemies/cop/logics/coplogicidle"] = function()
+			-- Combat leash: our medic only acquires/keeps attack targets within LEASH_DISTANCE of
+			-- its owner. _get_priority_attention is the single target-acquisition chokepoint for
+			-- BOTH idle (coplogicidle.lua:225) and attack (coplogicattack.lua:871); returning nil
+			-- past the leash means idle never enters attack and attack exits via
+			-- _chk_exit_attack_logic -> back to follow/travel home. Within range it fights vanilla.
+			-- Scoped by unit-key, so every other cop hits vanilla untouched. This is what makes the
+			-- leash actually win: re-issuing follow alone loses the tug-of-war with attack movement.
+			if _G._CSR_HIPPOCRATIC_ATTN_HOOKED then
+				return
+			end
+			_G._CSR_HIPPOCRATIC_ATTN_HOOKED = true
+			local original = CopLogicIdle._get_priority_attention
+			function CopLogicIdle._get_priority_attention(data, attention_objects, reaction_func)
+				if data and data.unit then
+					local d = oath_medic_owner_dist(data.unit)
+					if d and d > LEASH_DISTANCE then
+						dbg("attn-suppress d=%.0f -> drop target (combat leash)", d)
+						return nil
+					end
+				end
+				return original(data, attention_objects, reaction_func)
 			end
 		end,
 

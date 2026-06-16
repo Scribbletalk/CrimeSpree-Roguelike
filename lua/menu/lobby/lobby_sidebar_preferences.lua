@@ -198,14 +198,14 @@ function CSRMissionsMenuComponent:_populate_preferences_panel()
 		}
 	end
 
+	local skip_bs = make_toggle(managers.localization:text("csr_pref_skip_blackscreen"), "skip_blackscreen")
+	table.insert(self._preferences_buttons, skip_bs)
+
 	local btn = make_toggle(managers.localization:text("csr_pref_block_item_heal"), "block_item_heal")
 	table.insert(self._preferences_buttons, btn)
 
 	local wc_bar = make_toggle(managers.localization:text("csr_pref_hud_wildcard_bar"), "hud_wildcard_use_bar")
 	table.insert(self._preferences_buttons, wc_bar)
-
-	local skip_bs = make_toggle(managers.localization:text("csr_pref_skip_blackscreen"), "skip_blackscreen")
-	table.insert(self._preferences_buttons, skip_bs)
 
 	local sfx = make_slider(managers.localization:text("csr_pref_item_sound_volume"), "sfx_volume")
 	table.insert(self._preferences_buttons, sfx)

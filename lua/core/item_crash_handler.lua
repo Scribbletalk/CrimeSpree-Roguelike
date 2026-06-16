@@ -204,4 +204,4 @@ function _G.CSR_SafeOverride(class, method, owner, original_fn, new_fn)
 	end
 end
 
-log("[CSR] Item crash handler installed")
+csr_log("[CSR] Item crash handler installed")

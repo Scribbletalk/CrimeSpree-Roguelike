@@ -239,7 +239,7 @@ function CrimeSpreeBlackMarketMenuComponent:close()
 				prev = _G.CSR_post_mission_music
 			end
 			if _G.CSR_DEBUG then
-				log("[CSR][music] BM close restore: " .. tostring(prev))
+				csr_log("[CSR][music] BM close restore: " .. tostring(prev))
 			end
 			managers.music:post_event("stop_all_music")
 			if

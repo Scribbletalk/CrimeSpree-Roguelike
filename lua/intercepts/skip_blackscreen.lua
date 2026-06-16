@@ -23,7 +23,7 @@ Hooks:PostHook(IngameWaitingForPlayersState, "update", "CSR_AutoSkipBlackscreen"
 			if managers.hud and managers.hud.blackscreen_fade_out_mid_text then
 				managers.hud:blackscreen_fade_out_mid_text()
 			end
-			log("[CSR] Client blackscreen safety timeout -- forcing fade")
+			csr_log("[CSR] Client blackscreen safety timeout -- forcing fade")
 		end
 	end
 

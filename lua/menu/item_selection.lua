@@ -1010,6 +1010,17 @@ local function csr_restore_lobby_chrome()
 	end
 end
 
+-- Repaint the live lobby reminder against current pick state. on_item_added refreshes the
+-- component that registered it, but the visible lobby comp is repainted only by its own refresh,
+-- which the open/close paths otherwise skip -- a wildcard swap leaves the item count unchanged,
+-- so without this the reminder lingers at its pre-pick count.
+local function csr_refresh_lobby_reminder(mcm)
+	local lobby_comp = mcm and mcm._crime_spree_missions
+	if lobby_comp and lobby_comp.refresh_for_rank_change then
+		lobby_comp:refresh_for_rank_change()
+	end
+end
+
 function _G.CSR_CloseItemSelection()
 	local mcm = managers and managers.menu_component
 	if not mcm then
@@ -1026,6 +1037,10 @@ function _G.CSR_CloseItemSelection()
 	end
 
 	csr_restore_lobby_chrome()
+
+	-- A wildcard swap leaves the item count unchanged, so the close path must repaint the
+	-- lobby reminder itself or it lingers at its pre-pick count after the window closes.
+	csr_refresh_lobby_reminder(mcm)
 
 	-- Restore _alive_components order from snapshot (see CSR_OpenItemSelection).
 	local snap = _G._csr_alive_snapshot
@@ -1080,10 +1095,7 @@ function _G.CSR_OpenItemSelection(num_to_select)
 	local pool = build_item_pool()
 	local has_real_offer = pool[1] and pool[1].id ~= "none"
 	if (tonumber(num_to_select) or 0) <= 0 or not has_real_offer then
-		local lobby_comp = mcm._crime_spree_missions
-		if lobby_comp and lobby_comp.refresh_for_rank_change then
-			lobby_comp:refresh_for_rank_change()
-		end
+		csr_refresh_lobby_reminder(mcm)
 		csr_log("[CSR] item selection: nothing owed / no offer — open suppressed")
 		return
 	end

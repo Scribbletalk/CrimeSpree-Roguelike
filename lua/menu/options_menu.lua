@@ -43,6 +43,9 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_OptionsLocalization", function(loc
 		csr_grant_coj_title = "Grant Cup of Joe",
 		csr_grant_coj_desc = "Gives one Cup of Joe (the per-item-file test item) to isolate its "
 			.. "effect. Click again for another stack.",
+		csr_grant_pen_title = "Grant Tactical Pen",
+		csr_grant_pen_desc = "Gives one Tactical Pen (+13%/stack damage to enemies within 7m). "
+			.. "Click again for another stack.",
 		csr_force_fwb_title = "Force: First World Bank",
 		csr_force_fwb_desc = "Sets your next heist to First World Bank (red2) so you can test it. "
 			.. "Requires an active run: click this, then open the Crime Spree contract -- it will be the only "
@@ -84,6 +87,13 @@ Hooks:Add("MenuManagerInitialize", "CSR_OptionsCallbacks", function(menu_manager
 		local mgr = managers.csr
 		if mgr and mgr.add_item then
 			mgr:add_item(mgr:local_peer_id(), "aloe_leaf")
+		end
+	end
+
+	MenuCallbackHandler.csr_grant_tactical_pen = function(self, item)
+		local mgr = managers.csr
+		if mgr and mgr.add_item then
+			mgr:add_item(mgr:local_peer_id(), "tactical_pen")
 		end
 	end
 
@@ -161,6 +171,15 @@ Hooks:Add("MenuManagerPopulateCustomMenus", "CSR_OptionsPopulate", function(menu
 		callback = "csr_grant_aloe_leaf",
 		menu_id = "csr_debug_menu",
 		priority = 0,
+	})
+
+	MenuHelper:AddButton({
+		id = "grant_tactical_pen",
+		title = "csr_grant_pen_title",
+		desc = "csr_grant_pen_desc",
+		callback = "csr_grant_tactical_pen",
+		menu_id = "csr_debug_menu",
+		priority = -1,
 	})
 
 	MenuHelper:AddButton({

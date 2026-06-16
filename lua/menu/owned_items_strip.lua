@@ -389,14 +389,18 @@ function CSROwnedItemsStrip:_show_tooltip(target)
 		h = name_h,
 		layer = 5,
 	})
+	-- Split contraband ". But ..." drawback into a red second block (mirrors shop cards).
+	local full_desc = _G.CSR.item_text(def.desc, def) or ""
+	local main_desc, but_desc = _G.CSR.split_drawback(full_desc)
+	local desc_y = pad + name_h + 2
 	local desc_text = tip:text({
 		name = "tooltip_desc",
-		text = _G.CSR.item_text(def.desc, def) or "",
+		text = main_desc or full_desc,
 		font = tweak_data.menu.pd2_small_font,
 		font_size = tweak_data.menu.pd2_small_font_size,
 		color = tweak_data.screen_colors.text,
 		x = pad,
-		y = pad + name_h + 2,
+		y = desc_y,
 		w = tip_w - pad * 2,
 		h = 160,
 		wrap = true,
@@ -406,7 +410,28 @@ function CSROwnedItemsStrip:_show_tooltip(target)
 	local _, _, _, dh = desc_text:text_rect()
 	desc_text:set_h(dh)
 
-	local tip_h = pad + name_h + 2 + dh + pad
+	local content_h = dh
+	if but_desc then
+		local but_text = tip:text({
+			name = "tooltip_but",
+			text = but_desc,
+			font = tweak_data.menu.pd2_small_font,
+			font_size = tweak_data.menu.pd2_small_font_size,
+			color = Color(1, 1, 0.3, 0.3),
+			x = pad,
+			y = desc_y + dh,
+			w = tip_w - pad * 2,
+			h = 160,
+			wrap = true,
+			wrap_word = true,
+			layer = 5,
+		})
+		local _, _, _, bh = but_text:text_rect()
+		but_text:set_h(bh)
+		content_h = dh + bh
+	end
+
+	local tip_h = pad + name_h + 2 + content_h + pad
 	tip:set_h(tip_h)
 	tip:rect({
 		name = "tooltip_bg",

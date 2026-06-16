@@ -20,6 +20,13 @@ local function tally(key, amount)
 	end
 end
 
+local function tally_max(key, amount)
+	local mgr = managers and managers.csr
+	if mgr and mgr.tally_combat_max then
+		mgr:tally_combat_max(key, amount)
+	end
+end
+
 -- Damage dealt: on_damage_dealt fires only when the local player is the attacker (copdamage.lua
 -- and civiliandamage.lua gate the call on attacker_unit == player_unit). damage_info.damage is
 -- the amount applied this hit.
@@ -28,6 +35,7 @@ if PlayerManager and not _G._CSR_CombatStat_Dealt then
 	Hooks:PostHook(PlayerManager, "on_damage_dealt", "CSR_CombatStat_Dealt", function(_, unit, damage_info)
 		if damage_info and in_csr_heist() then
 			tally("damage_dealt", damage_info.damage or 0)
+			tally_max("max_hit", damage_info.damage or 0) -- biggest single hit (career record)
 		end
 	end)
 end
@@ -56,13 +64,23 @@ if PlayerDamage and not _G._CSR_CombatStat_Taken then
 	end
 end
 
+-- A "special" is any enemy with a priority_shout (the special-callout voice line): taser, cloaker,
+-- bulldozer/medic/sniper/shield/phalanx. Regular cops/heavies carry only silent_priority_shout.
+local function is_special_char(name)
+	local cdata = name and tweak_data and tweak_data.character and tweak_data.character[name]
+	return (cdata and cdata.priority_shout ~= nil) or false
+end
+
 -- Kills: StatisticsManager:killed is the local player's per-kill recorder (drives the end-screen
--- kill count); one call == one kill by this player.
+-- kill count); one call == one kill by this player. data.name is the character tweak_table key.
 if StatisticsManager and not _G._CSR_CombatStat_Kills then
 	_G._CSR_CombatStat_Kills = true
-	Hooks:PostHook(StatisticsManager, "killed", "CSR_CombatStat_Kills", function()
+	Hooks:PostHook(StatisticsManager, "killed", "CSR_CombatStat_Kills", function(_, data)
 		if in_csr_heist() then
 			tally("kills", 1)
+			if data and is_special_char(data.name) then
+				tally("specials_killed", 1)
+			end
 		end
 	end)
 end

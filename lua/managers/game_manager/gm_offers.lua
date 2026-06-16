@@ -114,6 +114,9 @@ function CSRGameManager:ensure_offers(peer_id, n)
 	if dirty then
 		self:save()
 	end
+	csr_log(
+		"[CSR][mptest][offers] ensure_offers pid=" .. tostring(peer_id) .. " now=" .. tostring(#entry.pending_offers)
+	)
 end
 
 function CSRGameManager:pending_offer_count(peer_id)
@@ -136,6 +139,7 @@ function CSRGameManager:peek_offer(peer_id)
 			defs[#defs + 1] = def
 		end
 	end
+	csr_log("[CSR][mptest][offers] peek_offer pid=" .. tostring(peer_id) .. " cards=" .. tostring(#defs))
 	return defs
 end
 

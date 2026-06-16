@@ -99,7 +99,7 @@ function CSR_LogbookProgress:mark_seen(item_id)
 	end
 end
 
--- Called at the start of a new run: promote anything seen last run to unlocked.
+-- Called at run end (end_run): promote everything seen this run to unlocked.
 function CSR_LogbookProgress:unlock_seen()
 	local had_seen = next(self._seen_this_run) ~= nil
 	for item_id, _ in pairs(self._seen_this_run) do

@@ -24,7 +24,7 @@ local HEAL_TICK = 1.0 -- seconds between heal pulses while armed
 -- Standstill / visual tuning.
 local STILL_EPS = 0 -- ZERO tolerance: ANY m_pos delta > 0 disarms. "stand still" = literally not moving.
 local GROW_TIME = 0.5 -- seconds the zone takes to expand 0 -> AURA_RADIUS once armed, then it holds
-local AURA_ALPHA = 0.08 -- held zone opacity (opacity_add blend; vanilla glows sit 0.07-0.15)
+local AURA_ALPHA = 0.06 -- held zone opacity (opacity_add blend; vanilla glows sit 0.07-0.15)
 local HEARTBEAT_TIMEOUT = HEAL_TICK * 1.6 -- remote zone expires this long after the last AURA_PULSE
 local ALLY_VOLUME = 0.25 -- allies hear the bloom cue, but much quieter than the owner (full vol)
 

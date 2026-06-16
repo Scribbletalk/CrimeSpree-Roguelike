@@ -319,7 +319,7 @@ end
 -- during a CSR heist; flush_heist_tally banks the totals into _meta.stats ONCE at heist end, so
 -- we never touch disk per bullet. reset at heist start, flush at heist end (mission_lifecycle.lua).
 function CSRGameManager:reset_heist_tally()
-	self._heist_tally = { kills = 0, damage_dealt = 0, damage_taken = 0 }
+	self._heist_tally = { kills = 0, specials_killed = 0, damage_dealt = 0, damage_taken = 0, max_hit = 0 }
 end
 
 function CSRGameManager:tally_combat(key, amount)
@@ -330,6 +330,18 @@ function CSRGameManager:tally_combat(key, amount)
 	tally[key] = (tally[key] or 0) + (tonumber(amount) or 0)
 end
 
+-- Runtime per-heist peak (not a running sum); flushed via record_career_max at heist end.
+function CSRGameManager:tally_combat_max(key, amount)
+	local tally = self._heist_tally
+	if not tally then
+		return
+	end
+	amount = tonumber(amount) or 0
+	if amount > (tally[key] or 0) then
+		tally[key] = amount
+	end
+end
+
 function CSRGameManager:flush_heist_tally()
 	local tally = self._heist_tally
 	if not tally then
@@ -338,9 +350,12 @@ function CSRGameManager:flush_heist_tally()
 	self._meta.stats = self._meta.stats or {}
 	local s = self._meta.stats
 	s.total_kills = (s.total_kills or 0) + (tally.kills or 0)
+	s.total_specials = (s.total_specials or 0) + (tally.specials_killed or 0)
 	s.total_damage_dealt = (s.total_damage_dealt or 0) + (tally.damage_dealt or 0)
 	s.total_damage_taken = (s.total_damage_taken or 0) + (tally.damage_taken or 0)
 	self:save()
+	-- All-time biggest single hit (record, not a sum); save() guarded internally to peaks only.
+	self:record_career_max("most_damage_hit", tally.max_hit or 0)
 	self._heist_tally = nil
 end
 
@@ -474,6 +489,10 @@ function CSRGameManager:end_run()
 	self._state.peer_items = {}
 	self._state.mp_session = {}
 	log_csr("end_run: run ended at rank=" .. tostring(self._state.rank))
+	-- Logbook: a finished run permanently unlocks everything collected during it.
+	if _G.CSR_Logbook and _G.CSR_Logbook.unlock_seen then
+		_G.CSR_Logbook:unlock_seen()
+	end
 	for _, fn in ipairs(self._callbacks.on_mission_completed) do
 		fn()
 	end
@@ -713,7 +732,7 @@ function CSRGameManager:_debug_stat(group, stat, value)
 	end
 	if g[stat] ~= value then
 		g[stat] = value
-		log(string.format("[CSR][dbg] %s '%s' bonus -> %.4f", group, stat, value))
+		csr_log(string.format("[CSR][dbg] %s '%s' bonus -> %.4f", group, stat, value))
 	end
 end
 

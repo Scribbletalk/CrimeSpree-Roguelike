@@ -706,6 +706,15 @@ function CSRMissionBriefing:init(hud, workspace)
 		local missions_s = missions_p .. tostring(missions_done)
 		local rank_s = rank_p .. tostring((C.host_rank and C:host_rank()) or (C.rank and C:rank()) or 0) .. " " .. glyph
 		local diff_s = diff_p .. diff_str
+		-- TEMP MP test: what the guest header resolves (B2 = labels missing on client). [CSR][mptest]
+		csr_log(
+			"[CSR][mptest][briefing] header diff="
+				.. tostring(diff_id)
+				.. " missions="
+				.. tostring(missions_done)
+				.. " rank="
+				.. tostring((C.host_rank and C:host_rank()) or (C.rank and C:rank()) or 0)
+		)
 
 		-- Right half of the saferect, matching vanilla MissionBriefingGui._panel geometry.
 		local fw = self._foreground_layer_one:w()

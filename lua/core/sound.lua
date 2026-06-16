@@ -23,6 +23,28 @@ local function snd_err(msg)
 	log("[CSR][snd] " .. tostring(msg))
 end
 
+-- SuperBLT's native XAudio must be set up before any buffer loads. SuperBLT normally
+-- auto-calls blt.xaudio.setup() at init, but on some installs/states it never runs
+-- (every loadbuffer then fails: "XAudio Warning: blt.xaudio.setup() has not been
+-- called!" + alErr) -- this is what silenced ALL CSR audio on a client. Force it
+-- ourselves; idempotent via issetup(). pcall: setup() is native and may throw if the
+-- audio device truly can't open.
+local function ensure_xaudio_setup()
+	if not (blt and blt.xaudio) then
+		return false
+	end
+	if blt.xaudio.issetup and blt.xaudio.issetup() then
+		return true
+	end
+	if blt.xaudio.setup then
+		local ok = pcall(blt.xaudio.setup)
+		local now_setup = blt.xaudio.issetup and blt.xaudio.issetup()
+		snd_dbg("ensure_xaudio_setup: setup() ok=" .. tostring(ok) .. " issetup=" .. tostring(now_setup))
+		return now_setup and true or false
+	end
+	return false
+end
+
 -- Snapshot ModPath at load — other mods can overwrite the global later.
 local SAVED_MOD_PATH = ModPath
 
@@ -113,6 +135,9 @@ function _G.CSR._load_sound(name, def)
 	if not def then
 		return
 	end
+	-- Guarantee SuperBLT's native XAudio is initialized before loadbuffer; without this
+	-- every buffer fails on installs where blt.xaudio.setup() was never auto-called.
+	ensure_xaudio_setup()
 	local base_dir = def._addon_dir -- set for add-on sounds; nil for built-in CSR sounds
 	if def.path then
 		local buf = load_buffer_raw(def.path, name, base_dir)
@@ -144,10 +169,73 @@ local function load_all_registered()
 	end
 end
 
+-- A registered sound counts as loaded if it has a single buffer or >=1 variant.
+local function is_loaded(name)
+	local e = loaded_buffers[name]
+	if type(e) == "table" then
+		return e[1] ~= nil
+	end
+	return e ~= nil
+end
+
+local function any_missing()
+	for name in pairs(_G.CSR._sound_registrations) do
+		if not is_loaded(name) then
+			return true
+		end
+	end
+	return false
+end
+
+-- Buffer creation can fail at the initial-load window (e.g. XAudio not yet set up) but
+-- succeed once ensure_xaudio_setup() has run / the audio device is ready. Re-attempt
+-- only the still-missing sounds on a bounded schedule so the client recovers its audio
+-- mid-session instead of staying silent forever.
+local reload_sweeps = 0
+local MAX_RELOAD_SWEEPS = 12
+local function reload_missing_sweep()
+	if not any_missing() then
+		snd_dbg("reload sweep: all sounds loaded after " .. reload_sweeps .. " sweeps")
+		return
+	end
+	reload_sweeps = reload_sweeps + 1
+	for name, def in pairs(_G.CSR._sound_registrations) do
+		if not is_loaded(name) then
+			_G.CSR._load_sound(name, def)
+		end
+	end
+	if any_missing() and reload_sweeps < MAX_RELOAD_SWEEPS then
+		DelayedCalls:Add("CSR_SoundReloadSweep_" .. reload_sweeps, 4.0, reload_missing_sweep)
+	elseif any_missing() then
+		snd_err("reload sweep: gave up after " .. reload_sweeps .. " sweeps; some sounds still unavailable")
+	end
+end
+
+-- Item/active sounds must not fire on the post-heist endscreen (victory/gameover).
+local function in_endscreen()
+	if not game_state_machine then
+		return false
+	end
+	local s = game_state_machine:current_state_name()
+	return s == "victoryscreen" or s == "gameoverscreen"
+end
+
 -- opts: unit=UnitSource(3D), position=static-3D, neither=2D; volume scaled by sfx_volume setting.
 function _G.CSR._play_sound(name, opts)
 	opts = opts or {}
+	if in_endscreen() then
+		return nil
+	end
 	local entry = loaded_buffers[name]
+	if not entry then
+		-- Lazy retry: buffer creation may have failed at the early load window but the
+		-- audio device can be valid now (e.g. mid-heist on a 2nd same-PC instance).
+		local def = _G.CSR._sound_registrations[name]
+		if def then
+			_G.CSR._load_sound(name, def)
+			entry = loaded_buffers[name]
+		end
+	end
 	if not entry then
 		snd_dbg("play: '" .. tostring(name) .. "' not loaded")
 		return nil
@@ -214,6 +302,12 @@ local function try_load()
 	load_all_registered()
 	_G.CSR._sound_loader_ready = true
 	snd_dbg("loader complete (" .. retry_count .. " retries)")
+
+	-- If any buffers failed (e.g. audio device not ready on a 2nd same-PC instance),
+	-- keep re-attempting on a bounded schedule so the client recovers its audio.
+	if any_missing() then
+		DelayedCalls:Add("CSR_SoundReloadSweep_start", 4.0, reload_missing_sweep)
+	end
 end
 
 DelayedCalls:Add("LoadSounds_Initial", 0.5, try_load)

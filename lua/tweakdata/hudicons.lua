@@ -55,6 +55,8 @@ local cup_of_joe_file = mod_path .. "assets/gui/items/common/cup_of_joe.dds"
 local cup_of_joe_path = "guis/textures/pd2/crime_spree/csr_cup_of_joe"
 local aloe_leaf_file = mod_path .. "assets/gui/items/common/aloe_leaf.dds"
 local aloe_leaf_path = "guis/textures/pd2/crime_spree/csr_aloe_leaf"
+local tactical_pen_file = mod_path .. "assets/gui/items/common/tactical_pen.dds"
+local tactical_pen_path = "guis/textures/pd2/crime_spree/csr_tactical_pen"
 local lockes_beret_file = mod_path .. "assets/gui/items/rare/locke_beret.dds"
 local lockes_beret_path = "guis/textures/pd2/crime_spree/csr_lockes_beret"
 -- Wildcard icons
@@ -162,6 +164,8 @@ if DB and DB.create_entry then
 	DB:create_entry(Idstring("texture"), Idstring(cup_of_joe_path), cup_of_joe_file)
 
 	DB:create_entry(Idstring("texture"), Idstring(aloe_leaf_path), aloe_leaf_file)
+
+	DB:create_entry(Idstring("texture"), Idstring(tactical_pen_path), tactical_pen_file)
 
 	DB:create_entry(Idstring("texture"), Idstring(lockes_beret_path), lockes_beret_file)
 
@@ -279,6 +283,11 @@ function HudIconsTweakData:init()
 
 	self.csr_aloe_leaf = {
 		texture = aloe_leaf_path,
+		texture_rect = { 0, 0, 128, 128 },
+	}
+
+	self.csr_tactical_pen = {
+		texture = tactical_pen_path,
 		texture_rect = { 0, 0, 128, 128 },
 	}
 

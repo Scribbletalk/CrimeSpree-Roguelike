@@ -61,6 +61,9 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 			guest_coin_mult = managers.csr:coin_streak_mult(host_n)
 			guest_p = managers.csr:heist_participation()
 			managers.csr:accrue_mp_earnings(gain, guest_coin_mult, guest_p)
+			-- Account this present mission so its rank pick surfaces as a normal choice the guest makes;
+			-- the HANDSHAKE_OK catch-up only auto-grants host missions the guest was ABSENT for.
+			managers.csr:note_guest_present_mission()
 		else
 			managers.csr:progress_rank(gain)
 			managers.csr:record_mission_completed()
@@ -92,13 +95,37 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 			loot_tokens = CSR_Shop.accrue_loot_tokens(pid, loot_cash)
 		end
 		local loot_ranks
+		local escalated_add = 0
 		if guesting then
 			loot_ranks = managers.csr:accrue_guest_loot_rank(loot_cash, guest_coin_mult, guest_p)
 		else
 			loot_ranks = managers.csr:accrue_loot_rank(loot_cash)
 			-- Bank this heist's escalated coins (host/SP). Total rank = mission-length gain + loot
 			-- ranks; multiplier uses missions_completed, already incremented above.
-			managers.csr:accrue_escalated_coins(gain + (loot_ranks or 0))
+			escalated_add = managers.csr:accrue_escalated_coins(gain + (loot_ranks or 0))
+		end
+
+		-- Per-heist reward components for the end-screen reward cards (display only; these already
+		-- accrued toward the run payout above). Mirrors the banked values per role: host shows the
+		-- escalated coins it banked; guest scales by participation + streak at host difficulty.
+		local total_rank = (gain or 0) + (loot_ranks or 0)
+		local heist_cards
+		if guesting then
+			local r = managers.csr:_rewards_for(total_rank, managers.csr:host_reward_difficulty_index())
+			heist_cards = {
+				experience = math.round(r.experience * (guest_p or 1)),
+				cash = math.round(r.cash * (guest_p or 1)),
+				continental_coins = math.round(r.continental_coins * (guest_coin_mult or 1) * (guest_p or 1)),
+				loot_drop = math.round(r.loot_drop * (guest_p or 1)),
+			}
+		else
+			local r = managers.csr:_rewards_for(total_rank, managers.csr:reward_difficulty_index())
+			heist_cards = {
+				experience = r.experience,
+				cash = r.cash,
+				continental_coins = math.round(escalated_add or 0),
+				loot_drop = r.loot_drop,
+			}
 		end
 
 		-- Runtime stash for end-screen conversion animation (stage_endscreen.lua), not serialized.
@@ -110,6 +137,7 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 			loot_cash = loot_cash,
 			per_token = per_token,
 			remainder = (reward_entry and reward_entry.loot_token_cash) or 0,
+			heist_cards = heist_cards,
 		}
 
 		-- Shop restock: completing a heist is the shop's refresh boundary. Per-peer + local.
@@ -194,7 +222,7 @@ if IngameWaitingForPlayersState and not _G._CSR_HeistParticipation_Hooked then
 			managers.csr:reset_heist_tally()
 		end
 		if _G.CSR_DEBUG then
-			log("[CSR] heist join captured: t_join=" .. tostring(t))
+			csr_log("[CSR] heist join captured: t_join=" .. tostring(t))
 		end
 	end)
 end
