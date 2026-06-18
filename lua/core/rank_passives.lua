@@ -13,7 +13,7 @@ _G.CSR_ARMOR_PER_RANK = ARMOR_PER_RANK
 _G.CSR_HP_PER_RANK = HP_PER_RANK
 local DMG_PER_RANK = 0.01
 local BOT_HP_PER_RANK = 0.01
-local BOT_DMG_PER_RANK = 0.10
+local BOT_DMG_PER_RANK = 0.1
 
 -- Rank we're playing at. host_rank() so clients scale off the host's synced rank.
 -- Gated on in_csr_heist() (not is_run_active) so HP/armor/damage never leak into vanilla
@@ -99,7 +99,7 @@ if PlayerDamage and not _G._CSR_RankPassive_Armor then
 	end
 end
 
--- Ranged damage. Bots skip — they go through the NewRaycastWeaponBase path below.
+-- Ranged damage. Bots skip — they go through the NewNPCRaycastWeaponBase path below.
 if RaycastWeaponBase and not _G._CSR_RankPassive_Dmg then
 	_G._CSR_RankPassive_Dmg = true
 	local orig = RaycastWeaponBase._get_current_damage
@@ -239,13 +239,22 @@ if TeamAIDamage and not _G._CSR_BotHP then
 	end)
 end
 
--- Bot weapon damage. Host-only — bot AI fires server-side.
-if NewRaycastWeaponBase and not _G._CSR_BotDmg then
+-- Bot weapon damage. Bots use NewNPCRaycastWeaponBase (overrides _fire_raycast) - hooking the parent
+-- NewRaycastWeaponBase never runs for bots. Host-only; skip AP shoot-through re-queue (double-scale).
+if NewNPCRaycastWeaponBase and not _G._CSR_BotDmg then
 	_G._CSR_BotDmg = true
-	local orig = NewRaycastWeaponBase._fire_raycast
+	local orig = NewNPCRaycastWeaponBase._fire_raycast
 	if orig then
-		function NewRaycastWeaponBase:_fire_raycast(user_unit, from_pos, direction, dmg_mul, ...)
-			if Network:is_server() and is_bot_unit(user_unit) then
+		function NewNPCRaycastWeaponBase:_fire_raycast(
+			user_unit,
+			from_pos,
+			direction,
+			dmg_mul,
+			shoot_player,
+			shoot_through_data,
+			...
+		)
+			if not shoot_through_data and Network:is_server() and is_bot_unit(user_unit) then
 				local r = run_rank()
 				if r > 0 then
 					local mul = 1 + BOT_DMG_PER_RANK * r
@@ -253,7 +262,7 @@ if NewRaycastWeaponBase and not _G._CSR_BotDmg then
 					dmg_mul = (dmg_mul or 1) * mul
 				end
 			end
-			return orig(self, user_unit, from_pos, direction, dmg_mul, ...)
+			return orig(self, user_unit, from_pos, direction, dmg_mul, shoot_player, shoot_through_data, ...)
 		end
 	end
 end

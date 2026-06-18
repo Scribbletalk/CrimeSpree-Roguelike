@@ -58,14 +58,14 @@ globals = {
     "PlayerBase", "HuskPlayerBase", "PlayerDamage", "PlayerManager", "PlayerStandard", "StatisticsManager",
     "PlayerMovement", "HuskPlayerMovement",
     "CopDamage", "CivilianDamage", "TeamAIDamage",
-    "NewRaycastWeaponBase", "RaycastWeaponBase", "NewNPCRaycastWeaponBase", "SentryGunWeapon",
+    "NewRaycastWeaponBase", "RaycastWeaponBase", "NewNPCRaycastWeaponBase", "NPCRaycastWeaponBase", "SentryGunWeapon",
     "AmmoClip", "GageAssignmentBase", "WeaponDescription", "TearGasGrenade",
     "ProjectileBase", "ArrowBase", "ContourExt",
     -- PD2 AI / mission
     "GroupAIStateBase", "GroupAIStateBesiege", "IngameWaitingForPlayersState",
-    "TeamAILogicIdle", "CopLogicTravel", "CopLogicIdle",
+    "TeamAILogicIdle", "CopLogicTravel", "CopLogicIdle", "CopLogicSniper", "CopBrain",
     "MissionEndState", "MissionManager", "MissionScript",
-    "ElementAreaTrigger", "ElementSpawnEnemyDummy",
+    "ElementAreaTrigger", "ElementSpawnEnemyDummy", "ElementCarry",
     -- PD2 economy / black market
     "MoneyManager", "BlackMarketGui", "BlackMarketManager",
     -- PD2 crime spree (vanilla base classes CSR extends)
