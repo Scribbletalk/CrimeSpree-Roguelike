@@ -256,6 +256,12 @@ function CSRGameManager:reward_per_rank_cash()
 	return 200000 * (REWARD_PAYOUT_MULT[idx] or 1)
 end
 
+-- Current rank-loot carry (cash) not yet converted to a full rank. Read this BEFORE accrue_loot_rank
+-- to snapshot the endscreen's pre-fill; accrual mutates loot_rank_cash to the new remainder.
+function CSRGameManager:loot_rank_carry()
+	return self._state.loot_rank_cash or 0
+end
+
 -- Feed completed-heist loot into the rank accumulator; every full reward_per_rank_cash() grants +1 rank.
 function CSRGameManager:accrue_loot_rank(loot_cash)
 	loot_cash = tonumber(loot_cash) or 0

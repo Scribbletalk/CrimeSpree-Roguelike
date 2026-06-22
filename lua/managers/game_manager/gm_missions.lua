@@ -14,8 +14,12 @@ local RANK_OVERRIDE = {
 	vit = 4, -- White House (added via extra_heists, id = stage_id "vit")
 	cook_off = 1, -- Cook Off
 	cane = 1, -- Santa's Workshop
+	peta_1 = 4, -- This Was Not The Deal (Goat Sim day 1; added via extra_heists, id = stage_id "peta_1"; add=14 would be +3)
 	peta_2 = 4, -- Dirty Work (Goat Sim day 2; added via extra_heists, id = stage_id "peta_2")
 	crojob2_d = 2, -- Bomb: Forest (added via extra_heists, id = stage_id "crojob2_d"; level_id crojob3; add=14 would be +3)
+	watchdogs_2_d = 1, -- Watchdogs day 2 "Boat load" (added via extra_heists, id = stage_id "watchdogs_2_d"; level_id watchdogs_2_day; add=6 would be +2)
+	brb = 2, -- Brooklyn Bank (base CS mission, id "brb"; add=8 would be +3)
+	pines = 1, -- White Xmas (base CS mission, id "pines"; add=7 would be +2)
 }
 
 -- 3-tier mission list from tweak_data with DLC filter. Cached because the reroll animation queries it per-frame.
@@ -123,10 +127,15 @@ end
 -- One mission per bucket (1=stealth, 2=short loud, 3=long loud), all 3 guaranteed
 -- distinct. A heist can live in several buckets at once (loud+stealth, or add 9-10
 -- spans short+long), so a naive per-bucket roll could repeat an id across slots.
-function CSRGameManager:get_random_missions()
+-- exclude_id (optional): seed it as "used" so the just-completed heist is kept out of
+-- the auto-rolled set. Reroll passes nothing, so the mission can return on a reroll.
+function CSRGameManager:get_random_missions(exclude_id)
 	local lists = self:_mission_lists()
 	local set = {}
 	local used = {}
+	if exclude_id then
+		used[exclude_id] = true
+	end
 	for i = 1, 3 do
 		local list = lists[i]
 		if list and #list > 0 then
@@ -166,8 +175,10 @@ function CSRGameManager:get_random_mission()
 end
 
 -- Roll a fresh set of mission ids (dense; no nil holes) and clear the current pick.
-function CSRGameManager:generate_mission_set()
-	local missions = self:get_random_missions()
+-- exclude_id (optional): the just-completed heist, kept out of this roll. Omitted by
+-- reroll_mission_set, so a reroll can bring the completed mission back.
+function CSRGameManager:generate_mission_set(exclude_id)
+	local missions = self:get_random_missions(exclude_id)
 	local ids = {}
 	for i = 1, 3 do
 		local m = missions[i]

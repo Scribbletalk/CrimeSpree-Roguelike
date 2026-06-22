@@ -406,6 +406,10 @@
 			"script_path": "lua/intercepts/end_spree_rewards.lua"
 		},
 		{
+			"hook_id": "lib/managers/crimespreemanager",
+			"script_path": "lua/intercepts/crimenet_lobby.lua"
+		},
+		{
 			"hook_id": "lib/managers/menumanagerpd2",
 			"script_path": "lua/intercepts/lobby_routing.lua"
 		},

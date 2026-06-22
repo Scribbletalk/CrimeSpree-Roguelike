@@ -9,7 +9,7 @@ if not (_G.CSR and _G.CSR.register_item) then
 	return
 end
 
-local RADIUS = 700 -- 7m (PD2 units: 1m = 100)
+local RADIUS = 500 -- 5m (PD2 units: 1m = 100)
 local BONUS = 0.13 -- +13% damage per stack (additive / linear)
 
 -- Ring visual: white, semi-transparent. A flat circle outline on the ground at the player's feet,

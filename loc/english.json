@@ -74,6 +74,8 @@
 	"csr_chat_scrapped": "scrapped (x$count)",
 
 	"csr_header_title": "Crime Spree Roguelike",
+	"csr_contract_in_progress_title": "Playing Crime Spree Roguelike Online.",
+	"csr_contract_in_progress_desc": "The cash, XP, coins and loot cards you earn online bank to your own progress and pay out when you end your own Crime Spree run - even if you finish at rank 0.",
 	"csr_end_spree": "End Spree",
 	"csr_return_to_lobby": "Return to Lobby",
 	"csr_current_spree": "Current Spree: $status",
@@ -142,6 +144,9 @@
 	"csr_black_market_buy": "Buy",
 	"csr_black_market_sold": "SOLD",
 	"csr_token_convert_title": "CASH >>> TOKENS",
+	"csr_reward_loot_label": "Loot",
+	"csr_reward_rank_label": "Rank",
+	"csr_reward_tokens_label": "Gage Tokens",
 	"csr_gage_line_greeting_1": "Hello, stranger.",
 	"csr_gage_line_greeting_2": "'What are you buying?' Heh, always wanted to say that.",
 	"csr_gage_line_greeting_3": "Back so soon? Let's see what I've got.",

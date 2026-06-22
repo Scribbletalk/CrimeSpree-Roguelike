@@ -89,6 +89,11 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 		end)
 
 		local pid = managers.csr:local_peer_id()
+		-- Snapshot loot carry BEFORE accrual so the endscreen can pre-fill the rank/token bars.
+		-- accrue_* mutates these in place to the post-heist remainder, so read them now.
+		local start_carry = managers.csr:loot_rank_carry()
+		local _pre_entry = managers.csr:peer_entry(pid)
+		local start_carry_tok = (_pre_entry and _pre_entry.loot_token_cash) or 0
 		local completion_tokens, loot_tokens = 0, 0
 		if _G.CSR_Shop then
 			completion_tokens = CSR_Shop.award_completion_tokens(pid, gain)
@@ -138,6 +143,10 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 			per_token = per_token,
 			remainder = (reward_entry and reward_entry.loot_token_cash) or 0,
 			heist_cards = heist_cards,
+			mission_rank = gain,
+			per_rank = managers.csr:reward_per_rank_cash(),
+			start_carry = start_carry,
+			start_carry_tok = start_carry_tok,
 		}
 
 		-- Shop restock: completing a heist is the shop's refresh boundary. Per-peer + local.
@@ -146,8 +155,10 @@ Hooks:PostHook(MissionEndState, "at_enter", "CSR_MissionLifecycle_AtEnter", func
 		end
 
 		-- New mission set — host/SP only (guest's lobby is driven by host).
+		-- Exclude the just-completed heist so it can't reappear in the auto-roll; a paid
+		-- reroll omits the exclusion, so the mission can still come back if rerolled.
 		if not guesting then
-			managers.csr:generate_mission_set()
+			managers.csr:generate_mission_set(played_id)
 			-- Flag the modifiers THIS mission unlocked for the panel's blue tint + siren (per-mission
 			-- precision; guests detect lazily on panel build once the host's rank syncs).
 			managers.csr:refresh_modifier_highlight()

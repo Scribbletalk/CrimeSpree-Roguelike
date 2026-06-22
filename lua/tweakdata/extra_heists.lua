@@ -27,7 +27,7 @@ local EXTRA = {
 	crojob2_d = { value = 14 },
 	bph = { value = 13 },
 	nmh = { value = 13, ghost = 0 },
-	des = { value = 14 },
+	-- des = { value = 14 }, -- Henry's Rock: disabled until its optimization issues are fixed (re-enable then)
 	peta_1 = { value = 14 },
 	peta_2 = { value = 14 },
 	mex = { value = 14 },

@@ -164,7 +164,12 @@ function CSRContractMenuComponent:_setup()
 	self._desc_text:set_font_size(font_size * scale)
 	CrimeNetGui.make_color_text(self, self._desc_text, tweak_data.screen_colors.important_1)
 
-	if managers.crime_spree:in_progress() then
+	if not self:_is_host() then
+		-- Joining another player's CSR lobby from Crime.Net: always show the client join-preview.
+		-- We can't gate on managers.crime_spree:in_progress() like vanilla did -- CSR keeps the
+		-- joining client on the STANDARD gamemode, so that vanilla flag stays false here.
+		self:_setup_continue_client(text_w, text_h)
+	elseif managers.crime_spree:in_progress() then
 		self:_setup_continue_crime_spree(text_w, text_h)
 	else
 		self:_setup_new_crime_spree(text_w, text_h)
@@ -410,69 +415,40 @@ function CSRContractMenuComponent:_setup_continue_client(text_w, text_h)
 		w = text_w,
 		h = self._contract_panel:h() - text_h - padding * 3 - tweak_data.menu.pd2_medium_font_size,
 	})
-	local text = self._contract_panel:text({
+
+	local title = self._contract_panel:text({
 		vertical = "top",
 		wrap = true,
 		align = "left",
 		wrap_word = true,
-		text = managers.localization:to_upper_text("menu_cs_in_progress"),
+		text = managers.localization:text("csr_contract_in_progress_title"),
 		font_size = tweak_data.menu.pd2_medium_font_size,
 		font = tweak_data.menu.pd2_medium_font,
-		color = tweak_data.screen_colors.text,
+		color = tweak_data.screen_colors.important_1,
 	})
 
-	BlackMarketGui.make_fine_text(self, text)
-	text:set_bottom(self._info_panel:top())
-	text:set_left(self._info_panel:left())
+	BlackMarketGui.make_fine_text(self, title)
+	title:set_bottom(self._info_panel:top())
+	title:set_left(self._info_panel:left())
 
+	-- Vanilla level-mismatch warnings dropped (they compared the vanilla CS spree level, meaningless
+	-- under CSR). A joining guest just needs to know how MP rewards bank to their own run.
 	local desc = self._info_panel:text({
 		vertical = "top",
 		wrap = true,
 		align = "left",
 		wrap_word = true,
 		x = 0,
-		text = managers.localization:text("menu_cs_in_progress_desc"),
+		text = managers.localization:text("csr_contract_in_progress_desc"),
 		w = text_w,
 		h = text_h,
 		font_size = tweak_data.menu.pd2_small_font_size,
 		font = tweak_data.menu.pd2_small_font,
-		color = tweak_data.screen_colors.text,
+		color = tweak_data.screen_colors.important_1,
 		y = padding,
 	})
 
 	BlackMarketGui.make_fine_text(self, desc)
-
-	local level_desc_text, level_desc_col = nil
-	local level_higher = self:_host_spree_level() < managers.crime_spree:spree_level()
-	local level_lower = managers.crime_spree:spree_level() < self:_host_spree_level()
-
-	if level_higher then
-		level_desc_text = "menu_cs_in_progress_desc_higher"
-		level_desc_col = tweak_data.screen_colors.important_1
-	elseif level_lower then
-		level_desc_text = "menu_cs_in_progress_desc_lower"
-		level_desc_col = tweak_data.screen_colors.heat_warm_color
-	end
-
-	if level_desc_text then
-		local level_warning = self._info_panel:text({
-			vertical = "top",
-			wrap = true,
-			align = "left",
-			wrap_word = true,
-			x = 0,
-			text = managers.localization:text(level_desc_text),
-			w = text_w,
-			h = text_h,
-			font_size = tweak_data.menu.pd2_small_font_size,
-			font = tweak_data.menu.pd2_small_font,
-			color = level_desc_col,
-			y = padding,
-		})
-
-		BlackMarketGui.make_fine_text(self, level_warning)
-		level_warning:set_top(desc:bottom() + padding)
-	end
 end
 
 function CSRContractMenuComponent:mouse_moved(o, x, y)
