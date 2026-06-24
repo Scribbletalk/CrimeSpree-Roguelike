@@ -59,11 +59,10 @@ function CSRCrimeSpreeResultTabItem:_setup()
 		y = padding,
 	})
 
-	-- Vanilla "+N rank / Mission Complete" gain display disabled (kept for possible return); the
-	-- reward panel below owns the rank count-up now. Re-enable with the _update_gain_calculate stage.
+	-- Gain display disabled (kept): reward panel owns the count-up. Re-enable: _update_gain_calculate.
 	-- self:_create_level(0.75)
 	self:_create_reward_panel()
-	-- Reward cards disabled (kept for possible return); re-enable here + in the stages table below.
+	-- Reward cards disabled (kept). Re-enable here + in the stages table below.
 	-- self:_create_rewards(0.75)
 end
 
@@ -146,8 +145,7 @@ function CSRCrimeSpreeResultTabItem:_create_level(total_w)
 		bonus:set_center_x(gain_x)
 		bonus:set_top(gain:bottom() + 10)
 
-		-- No "+N rank" glyph under the label: the big gain number above already shows the rank
-		-- gained. Tuple is { label_text, level }; level (nil on failure) gates the count-up below.
+		-- Tuple is { label_text, level }; nil level on failure skips the count-up.
 		table.insert(self._levels.bonuses, {
 			bonus,
 			level,
@@ -165,10 +163,8 @@ function CSRCrimeSpreeResultTabItem:_create_level(total_w)
 	-- Rank/missions totals are in the status bar strip; this tab owns only the gain animation.
 end
 
--- The only animation panel: display-only reward readout. Three centered columns - rank gain + Crime
--- Spree glyph (left, yellow), loot money (center), Gage Token gain + coin (right, white). Both bars
--- fill off the same loot_cash pool; the center money then fades, the rank/token columns persist.
--- Wallet already credited at mission end; reads stashed _last_heist_rewards.
+-- Three-column reward readout: rank+glyph (left, yellow), loot money (center), tokens+coin (right).
+-- Both bars fill from loot_cash; center fades after drain. Reads _last_heist_rewards.
 function CSRCrimeSpreeResultTabItem:_create_reward_panel()
 	if not self:success() then
 		return
@@ -196,7 +192,6 @@ function CSRCrimeSpreeResultTabItem:_create_reward_panel()
 		return
 	end
 
-	-- Full width: three centered columns - rank (left), loot money (center), tokens (right).
 	local panel_w = cs_panel:w()
 
 	-- Yellow rank matches the Crime Spree glyph (crime_spree_risk == Color(1,1,0)); white tokens.
@@ -216,7 +211,7 @@ function CSRCrimeSpreeResultTabItem:_create_reward_panel()
 	local icon_size = math.floor(num_size * 0.45)
 	local gap = 6
 
-	-- Vertically center the stack (number row, label, bar) inside the panel.
+	-- Layout: number row -> label -> bar, vertically centered in the panel.
 	local panel_h = 100
 	local stack_h = num_size + 6 + small_size + 10 + bar_h
 	local row_y = math.floor((panel_h - stack_h) / 2)
@@ -233,13 +228,11 @@ function CSRCrimeSpreeResultTabItem:_create_reward_panel()
 	})
 	panel:set_y(math.floor(cs_panel:h() * 0.16))
 
-	-- Build a centered number column at column center cx, with a label and bar below. `suffix` is a
-	-- font glyph baked into the number text (rank's Crime Spree glyph); `icon_tex` is a bitmap drawn
-	-- right of the number (token coin). Returns the number text + bar fill (handles update() touches).
+	-- Build one reward column: number, label, progress bar. suffix = glyph baked in text; icon_tex = bitmap after number.
 	local function build_side(cx, color, label_key, suffix, icon_tex)
 		local gain
 		if icon_tex then
-			-- number (right-aligned) + coin bitmap, the pair centered on cx
+			-- number (right-aligned) + coin bitmap, centered on cx
 			local group_w = num_box_w + gap + icon_size
 			local group_x = math.floor(cx - group_w / 2)
 			gain = panel:text({
@@ -266,7 +259,7 @@ function CSRCrimeSpreeResultTabItem:_create_reward_panel()
 				y = row_y + math.floor((num_size - icon_size) / 2),
 			})
 		else
-			-- glyph baked into the text; centered across the whole zone
+			-- glyph baked into number text, centered across zone width
 			gain = panel:text({
 				text = "+0" .. (suffix or ""),
 				font = num_font,
@@ -315,8 +308,7 @@ function CSRCrimeSpreeResultTabItem:_create_reward_panel()
 		return gain, bar
 	end
 
-	-- Rank shows the Crime Spree glyph (font char 0xE018, same as the lobby/briefing rank readout);
-	-- tokens show the gage-coin bitmap after the number.
+	-- Rank: CS glyph (0xE018) baked in text. Tokens: gage-coin bitmap after the number.
 	local rank_suffix = " " .. utf8.char(0xE018)
 	local rank_gain, rank_bar = build_side(zone_w * 0.5, rank_color, "csr_reward_rank_label", rank_suffix, nil)
 	local tok_gain, tok_bar = build_side(
@@ -327,8 +319,7 @@ function CSRCrimeSpreeResultTabItem:_create_reward_panel()
 		"guis/textures/pd2/crime_spree/csr_gage_token"
 	)
 
-	-- CENTER: money (the single source feeding both bars; fades out once drained, leaving the center
-	-- free for future item bonuses). No bar; vertically centered on its own two lines.
+	-- Center: loot money (feeds both bars, fades after drain). No bar.
 	local money_h = small_size + 4 + money_size
 	local money_top = math.floor((panel_h - money_h) / 2)
 	local money_label = panel:text({
@@ -368,9 +359,7 @@ function CSRCrimeSpreeResultTabItem:_create_reward_panel()
 	rank_bar:set_w(math.floor((start_carry / per_rank) * bar_w))
 	tok_bar:set_w(math.floor((start_carry_tok / per_token) * bar_w))
 
-	-- Accumulator ranges for the converting phase. Both pools equal loot_cash by construction
-	-- (start_carry_tok + loot_cash == loot_tokens*per_token + remainder), so both bars drain in
-	-- lockstep with the center money reaching $0.
+	-- Fractional bar fill ranges for the converting phase (both pools equal loot_cash by construction).
 	local r_acc_from = start_carry / per_rank
 	local r_acc_to = (start_carry + loot_cash) / per_rank
 	local tok_pool = math.max(0, loot_tokens * per_token + remainder - start_carry_tok)
@@ -402,9 +391,7 @@ function CSRCrimeSpreeResultTabItem:_create_reward_panel()
 	}
 end
 
--- Stage-3 reward cards (ported from vanilla CrimeSpreeResultTabItem): this heist's earned
--- cash / XP / continental coins / loot, shown after the token convert. Display only - the values
--- already accrued toward the run payout (gm_rewards.lua); read from _last_heist_rewards.heist_cards.
+-- Stage-3 reward cards (ported verbatim): display-only; values already credited in gm_rewards.lua.
 function CSRCrimeSpreeResultTabItem:_create_rewards(total_w)
 	local r = managers.csr and managers.csr._last_heist_rewards
 	local amounts = r and r.heist_cards
@@ -648,8 +635,7 @@ function CSRCrimeSpreeResultTabItem:_update_gain_calculate(t, dt)
 	self:_advance_stage(t)
 end
 
--- State machine: fade_in -> flat_show -> flat_hold -> money_in -> money_hold -> converting ->
--- money_out (center fades) -> hold -> done (rank/token columns stay). Sub-state in _csr_rp_state.
+-- Reward panel animation state machine. Sub-state in _csr_rp_state.
 function CSRCrimeSpreeResultTabItem:_update_reward_panel(t, dt)
 	local cc = self._csr_reward
 	if not cc then
@@ -879,10 +865,7 @@ function CSRStageEndScreenGui:init(saferect_ws, fullrect_ws, statistics_data)
 
 	self._panel:set_right(self._safe_workspace:panel():w())
 
-	-- CSR gate 2: reserve the forked missions-strip height like vanilla CS, plus
-	-- clearance for the reminder stack (BM + unselected-items bars) that
-	-- CSRMissionsMenuComponent anchors above the missions strip, so the stats
-	-- tabs don't get overlapped. ~one reminder-bar of lift.
+	-- CSR gate 2: reserve missions-strip height + reminder-bar clearance above it.
 	local reminder_clearance = tweak_data.menu.pd2_medium_font_size * 2
 	self._panel:set_bottom(
 		self._safe_workspace:panel():h() - (CSRMissionsMenuComponent.get_height() + padding) - reminder_clearance

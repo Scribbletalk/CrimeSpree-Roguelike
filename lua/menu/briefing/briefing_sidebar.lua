@@ -79,9 +79,8 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 				)
 			)
 		end
-		-- Parity with briefing_wiring / HUD header: a guest's current_job may not have settled to
-		-- "crime_spree" yet (csr_briefing_active false), so fall back to is_guesting so the sidebar
-		-- still builds. Hardens against the host-state-arrives-late race.
+		-- Guest's current_job may not have settled yet; fall back to is_guesting to avoid
+		-- the host-state-arrives-late race.
 		local is_guesting = managers and managers.csr and managers.csr.is_guesting and managers.csr:is_guesting()
 		if not (csr_briefing_active() or is_guesting) then
 			if _G.CSR_DEBUG then
@@ -100,24 +99,17 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 			return
 		end
 
-		-- Match the lobby sidebar's vertical span so both screens read as the same column.
+		-- Match lobby sidebar vertical span; pass self so feature-row callbacks reach toggle_feature_panel.
 		local top = tweak_data.menu.pd2_large_font_size + 16
 		local bottom = ws_panel:h() - tweak_data.menu.pd2_large_font_size * 1.5 - 20
 
-		-- Pass self as owner so the feature-row callbacks can reach toggle_feature_panel.
 		self._sidebar = CSRSidebar:new(ws_panel, top, bottom, self)
 
-		-- Anchor fields read by the borrowed feature-panel helpers (lobby pair: missions_menu.lua):
-		--   _csr_fp_parent       -- saferect ws_panel; feature panels + tooltip live here
-		--   _csr_fp_right_anchor -- panel whose :left() bounds the feature panel on the right
+		-- Anchor fields used by borrowed feature-panel helpers (see missions_menu.lua).
 		self._csr_fp_parent = ws_panel
 		self._csr_fp_right_anchor = self._panel
 
-		-- Build the three feature panels (Items / Modifiers / Rewards).
-		-- The helper is a no-op without _sidebar + _csr_fp_right_anchor +
-		-- _csr_fp_parent, all of which we just set. After this returns
-		-- self._feature_panels = { items, modifiers, rewards }, all hidden,
-		-- ready for toggle_feature_panel() to flip them on.
+		-- Build Items / Modifiers / Rewards panels (all hidden; toggle_feature_panel shows them).
 		if self._create_feature_panels then
 			self:_create_feature_panels()
 		end
@@ -141,11 +133,8 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 		self:_csr_reposition_lobby_code()
 	end
 
-	-- Park the MP lobby-code widget (MissionBriefingGui._lobby_code_text) in the top-right corner.
-	-- Vanilla only repositions it for real Crime Spree (crime_spree:is_active()), which is false in
-	-- CSR's standard gamemode, so without this it stays at the default x=0/y=80 top-left and overlaps
-	-- the mission name (job_text). The ready-button panel (self._panel) is right-aligned to the
-	-- saferect, so its right edge gives the corner anchor.
+	-- Move the MP lobby-code widget to the top-right corner. Vanilla only does this when
+	-- crime_spree:is_active(), which is false in CSR's standard gamemode.
 	function MissionBriefingGui:_csr_reposition_lobby_code()
 		if not self._lobby_code_text then
 			return
@@ -154,8 +143,6 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 		if not (panel and alive(panel)) then
 			return
 		end
-		-- Top-right corner: the ready-button panel (self._panel) is right-aligned to the saferect,
-		-- so its right edge gives the corner anchor.
 		local right = (self._panel and alive(self._panel) and self._panel:right()) or self._safe_workspace:panel():w()
 		panel:set_right(right)
 		panel:set_y(10)
@@ -201,9 +188,8 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 		self._csr_fp_right_anchor = nil
 	end
 
-	-- Hide all CSR briefing chrome while the item-selection modal is open, restore on close.
-	-- Driven per-frame from update(): forced each frame because the on_item_added refresh
-	-- callbacks (reminder / items panel) can re-show a panel mid-modal after a pick.
+	-- Hide/restore all CSR briefing chrome while item-selection modal is open. Per-frame driven
+	-- because on_item_added callbacks can re-show panels mid-modal.
 	function MissionBriefingGui:_csr_set_chrome_hidden(hidden)
 		if hidden then
 			if self._sidebar then
@@ -288,12 +274,12 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 	Hooks:PostHook(MissionBriefingGui, "init", "CSR_BriefingSidebarInit", function(self)
 		self:_csr_build_sidebar()
 
-		-- Re-sync peer items; _remote_peer_items are wiped across menu->game transition.
+		-- Re-sync peer items; wiped across menu->game transition.
 		if self._sidebar and _G.CSR_MP and _G.CSR_MP.is_multiplayer and _G.CSR_MP.is_multiplayer() then
 			_G.CSR_MP.broadcast_own_items()
 			if _G.CSR_MP.is_client and _G.CSR_MP.is_client() then
 				_G.CSR_MP.request_all_items()
-				-- Mid-heist drop-in guests may have missed the lobby ping; pull host-state here as fallback.
+				-- Drop-in guests may have missed the lobby ping; pull host-state as fallback.
 				if _G.CSR_MP.request_host_state then
 					_G.CSR_MP.request_host_state()
 				end
@@ -336,7 +322,7 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 	local orig_mouse_moved = MissionBriefingGui.mouse_moved
 	if orig_mouse_moved then
 		function MissionBriefingGui:mouse_moved(x, y)
-			-- Modal open or sub-screen on top: clear sticky hover (-9999 pushes pointer outside all inside() checks).
+			-- Modal open: clear sticky hover (-9999 pushes pointer outside all inside() checks).
 			if _G._csr_item_selection or not self._enabled then
 				if self._sidebar and self._sidebar.mouse_moved then
 					self._sidebar:mouse_moved(-9999, -9999)
@@ -428,9 +414,8 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 	end)
 end
 
--- MissionBriefingGui receives mouse_pressed/mouse_moved from MenuComponentManager but NOT
--- mouse_released (it's a special-cased gui, not a live component routed via mouse_released).
--- Forward release here so a Preferences slider drag started in the briefing can end.
+-- MissionBriefingGui is not routed mouse_released by MenuComponentManager, so forward it here
+-- so Preferences slider drags can complete.
 if MenuComponentManager and not _G._CSR_BRIEFING_PREF_RELEASE_HOOKED then
 	_G._CSR_BRIEFING_PREF_RELEASE_HOOKED = true
 	Hooks:PostHook(MenuComponentManager, "mouse_released", "CSR_Briefing_PrefRelease", function(self, o, button, x, y)

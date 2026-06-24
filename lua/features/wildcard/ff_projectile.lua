@@ -1,19 +1,6 @@
--- Registers the csr_ff_arrow custom projectile entry used by Familiar Friend.
--- Clone of ecp_arrow but pointing at our own .unit which lacks AmmoClip
--- (pickup) — fixes the player picking up our VFX arrows. Slot=1 + no AmmoClip
--- also keeps throwable-outline HUDs from finding our arrows. Also schedules
--- auto-despawn so stuck arrows don't litter the world after corpses despawn.
---
--- Hooked at three load points (see mod.txt):
---   lib/tweak_data/tweakdata                  → register entries AFTER
---                                               tweak_data = TweakData:new() has
---                                               finished populating
---   lib/units/weapons/projectiles/arrowbase   → auto-despawn on init
---   lib/units/contourext                      → suppress any outline added by HUDs
---
--- IMPORTANT: do NOT PostHook TweakData:init / BlackMarketTweakData:_init_projectiles
--- — by the time this file runs, init has already executed and the PostHook never
--- fires. Mutate the already-populated globals directly.
+-- Registers the csr_ff_arrow projectile entries used by Familiar Friend.
+-- Custom unit (no AmmoClip) prevents players picking up VFX arrows; see pd2_custom_projectile_needs_local_unit_no_sync.md.
+-- Mutates already-populated tweak_data globals directly (PostHook on init fires too late).
 
 if not RequiredScript then
 	return
@@ -22,11 +9,7 @@ end
 local req = string.lower(RequiredScript)
 
 if req == "lib/tweak_data/tweakdata" then
-	-- tweak_data global is fully populated by the time this post-hook runs.
-
-	-- Required by ArrowBase:_setup_from_tweak_data — reads damage / launch_speed
-	-- from tweak_data.projectiles[self._tweak_projectile_entry]. Missing entry
-	-- → nil deref → FATAL per spawn.
+	-- ArrowBase:_setup_from_tweak_data reads tweak_data.projectiles[entry]; missing = nil crash.
 	if tweak_data and tweak_data.projectiles and not tweak_data.projectiles.csr_ff_arrow then
 		tweak_data.projectiles.csr_ff_arrow = {
 			damage = 50,
@@ -38,21 +21,19 @@ if req == "lib/tweak_data/tweakdata" then
 		}
 	end
 
-	-- Required by ProjectileBase.throw_projectile — reads unit / local_unit
-	-- from tweak_data.blackmarket.projectiles[projectile_type].
+	-- ProjectileBase.throw_projectile reads unit/local_unit from blackmarket.projectiles.
+	-- local_unit has no sync="spawn" network tag; server unit native-AVs on clients.
 	if tweak_data and tweak_data.blackmarket and tweak_data.blackmarket.projectiles then
 		if not tweak_data.blackmarket.projectiles.csr_ff_arrow then
 			tweak_data.blackmarket.projectiles.csr_ff_arrow = {
 				unit = "units/payday2_csr/wildcards/ff_arrow/ff_arrow",
-				-- Clients use local_unit (no <network> tag); the sync="spawn" server
-				-- unit native-AVs when a client spawns it without server authority.
 				local_unit = "units/payday2_csr/wildcards/ff_arrow/ff_arrow_local",
 				no_cheat_count = true,
 				impact_detonation = true,
 				client_authoritative = true,
 			}
 		end
-		-- Required by MP sync (get_index_from_projectile_id walks this list).
+		-- MP sync: get_index_from_projectile_id walks this list.
 		if tweak_data.blackmarket._projectiles_index then
 			local already = false
 			for _, name in ipairs(tweak_data.blackmarket._projectiles_index) do
@@ -86,10 +67,8 @@ if req == "lib/units/weapons/projectiles/arrowbase" then
 end
 
 if req == "lib/units/contourext" then
-	-- Proactive contour suppression: if any HUD mod tries to add a contour to our
-	-- ff_arrow unit, immediately revert it. ContourExt is kept on the unit for
-	-- material init (the arrow's render template needs the contour material slot),
-	-- but no actual outline should ever render.
+	-- Suppress any contour HUD mods add to ff_arrow. ContourExt stays on the unit
+	-- for material init, but the arrow must never render an outline.
 	Hooks:PostHook(
 		ContourExt,
 		"add",

@@ -3,8 +3,7 @@ if not (_G.CSR and _G.CSR.register_modifier) then
 	return
 end
 
--- True only while a CSR heist with this modifier active is running. CSR runs the STANDARD
--- gamemode, so gate on managers.csr:in_csr_heist() (crime_spree:is_active() is always false here).
+-- CSR runs STANDARD gamemode; gate on in_csr_heist(), not crime_spree:is_active().
 local function is_phalanx_formation_active()
 	local mgr = managers and managers.csr
 	if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist() and mgr.active_modifiers) then
@@ -26,11 +25,8 @@ _G.CSR.register_modifier({
 	class = "ModifierShieldPhalanx",
 	data = {},
 	hooks = {
-		-- Bot bullets pierce phalanx_minion (Winters escort) shields when the bot has the vanilla
-		-- "Piercing" Crew Ability (sets _is_team_ai + _has_ap_rounds). Vanilla AP shoot-through in
-		-- _fire_raycast re-hits phalanx shields on its queued follow-up raycast, so we pre-scan the
-		-- bullet path and add any phalanx shield units to ignore_units; restored in PostHook so the
-		-- skip never leaks into the next shot from the same bot weapon.
+		-- Bots with AP rounds (Piercing crew ability) pierce phalanx shields: pre-scan bullet path,
+		-- add phalanx_minion shield units to ignore_units; restore in PostHook to avoid leaking.
 		["lib/units/weapons/newnpcraycastweaponbase"] = function()
 			if _G._CSR_PHALANX_BOT_PIERCE_HOOKED then
 				return
@@ -91,7 +87,6 @@ _G.CSR.register_modifier({
 						return
 					end
 
-					-- Save and replace ignore_units; restored in PostHook.
 					self._csr_phalanx_pierce_active = true
 					self._csr_phalanx_pierce_orig = self._setup.ignore_units
 					local merged = {}
@@ -117,11 +112,8 @@ _G.CSR.register_modifier({
 			end)
 		end,
 
-		-- Shock & Awe melee knockback works on phalanx_minion (incl. Winters escort) while this modifier
-		-- is active. Vanilla phalanx_minion is knock-immune (shield_knocked=false, immune_to_knockback), so
-		-- flip is_immune_to_shield_knockback => playerstandard marks the hit as a shield_knock attempt, then
-		-- patch the tweak per-hit in damage_melee so result_type resolves to "shield_knock". Host-only (enemy
-		-- damage runs on its owner). Restored in PostHook so the flip never leaks to other hits.
+		-- Shock & Awe knockback on phalanx_minion: vanilla is knock-immune, so flip is_immune_to_shield_knockback
+		-- and patch tweak per-hit in damage_melee; restore in PostHook to avoid leaking. Host-only.
 		["lib/units/enemies/cop/copdamage"] = function()
 			if _G._CSR_PHALANX_KNOCK_HOOKED then
 				return
@@ -149,7 +141,6 @@ _G.CSR.register_modifier({
 				if not is_phalanx_formation_active() then
 					return
 				end
-				-- Temporarily allow knockback for this hit so damage_melee resolves "shield_knock".
 				self._csr_phalanx_knock = true
 				self._csr_saved_shield_knocked = self._char_tweak.damage.shield_knocked
 				self._csr_saved_immune_knockback = self._char_tweak.damage.immune_to_knockback
@@ -173,11 +164,8 @@ _G.CSR.register_modifier({
 			end)
 		end,
 
-		-- Phalanx spawn cap. The modifier reskins CS_shield/FBI_shield to Winters minions, but the vanilla
-		-- special-unit cap can fail to count phalanx_minion, so shields spawn unbounded. Re-enforce it: block
-		-- _spawn_in_group when living phalanx_minion >= the shield limit and the group spawns shields. Gated on
-		-- is_phalanx_formation_active() so the _police scan is skipped on every spawn outside a phalanx heist.
-		-- Host-only (besiege spawn logic runs on host).
+		-- Vanilla special-unit cap doesn't count phalanx_minion, so shields spawn unbounded.
+		-- Re-enforce: block _spawn_in_group when living phalanx_minion >= shield limit. Host-only.
 		["lib/managers/group_ai_states/groupaistatebesiege"] = function()
 			if _G._CSR_PHALANX_SPAWNCAP_HOOKED then
 				return

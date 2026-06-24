@@ -1,8 +1,6 @@
--- Familiar Friend (wildcard) — "Spike Nova": on key press, 360° AoE around the player
--- (csr_ff_arrow projectiles fly chest→enemy). Cooldown-gated, stealth-blocked. Active
--- item via the wildcard dispatcher (gates in_csr_heist/down/arrested for us).
--- 1000 dmg @rank0, +5%/rank; display HP → internal ×5 (dead_mans_trigger convention).
--- MP: damage dealt locally via damage_bullet (vanilla net); cross-peer arrow cosmetic DEFERRED.
+-- Familiar Friend (wildcard) - "Spike Nova": 360 AoE on key press; csr_ff_arrow projectiles fly to each hit enemy.
+-- 1000 display dmg @rank0 (+5%/rank); display HP -> internal x5 (dead_mans_trigger convention).
+-- MP: damage via damage_bullet (vanilla-authoritative); cross-peer arrow cosmetic deferred.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -19,8 +17,7 @@ local SPIKE_ORIGIN_Z = 80 -- chest height above player feet (caster anchor)
 local SPIKE_TARGET_Z = 80 -- enemy chest height (aim point)
 local SPIKE_PROJECTILE_ENTRY = "csr_ff_arrow"
 
--- Per-heist cooldown timestamp. File-local: the file is dofile'd once, so this is
--- shared across every closure below. Reset in spawned_player.
+-- Per-heist cooldown timestamp; reset in spawned_player.
 local cooldown_end = 0
 
 local function csr_mgr()
@@ -51,7 +48,7 @@ local function has_los(geometry_mask, from_pos, to_pos)
 	return not blocked
 end
 
--- col_ray MUST carry a real Body (native methods called on it); position COPIED.
+-- col_ray needs a real Body (native methods called on it); position COPIED from movement.
 local function make_fake_col_ray(unit)
 	local pos = Vector3(0, 0, 0)
 	if unit:movement() and unit:movement().m_pos then
@@ -69,8 +66,7 @@ local function make_fake_col_ray(unit)
 	}
 end
 
--- Fire one csr_ff_arrow from spawn_pos toward target_pos (client_authoritative,
--- so each peer fires locally and the engine handles its own arrow).
+-- Fire one csr_ff_arrow locally (client-authoritative projectile).
 local function fire_arrow_at(spawn_pos, target_pos)
 	if not ProjectileBase or not ProjectileBase.throw_projectile then
 		return
@@ -99,8 +95,7 @@ local function spawn_spikes_to_targets(caster_chest_pos, targets)
 	end
 end
 
--- Apply the Spike Nova damage. Called after the charge wind-up. Re-validates
--- state because the player may have died / cuffed / re-entered stealth during it.
+-- Apply nova damage after wind-up; re-validates state (player may have died / cuffed during delay).
 local function fire_spike_nova(player_unit, stacks)
 	if not alive(player_unit) then
 		return
@@ -131,8 +126,7 @@ local function fire_spike_nova(player_unit, stacks)
 	local rank = (mgr and mgr.rank and mgr:rank()) or 0
 	local max_damage = BASE_DISPLAY_DAMAGE * DISPLAY_SCALE * (1 + rank * LEVEL_PCT)
 
-	-- Attack SFX at chest height (position-based: each call gets a fresh source,
-	-- no collision with the gup_charge that fired CHARGE_DELAY earlier).
+	-- Attack SFX at chest height; fresh source, no collision with the gup_charge that played CHARGE_DELAY earlier.
 	if _G.CSR and _G.CSR.play_sound then
 		_G.CSR.play_sound("gup_attack", { position = player_pos + Vector3(0, 0, SPIKE_ORIGIN_Z) })
 	end
@@ -153,8 +147,7 @@ local function fire_spike_nova(player_unit, stacks)
 	local enemy_mask = managers.slot:get_mask("enemies")
 	local enemies = World:find_units_quick("sphere", player_pos, RADIUS, enemy_mask)
 
-	-- Target chest positions for the spike VFX, captured before damage_bullet
-	-- (dead units' movement() may return stale positions after the kill anim).
+	-- Capture target positions before damage_bullet (dead units' movement() may stale after kill anim).
 	local spike_targets = {}
 
 	for _, unit in ipairs(enemies) do
@@ -207,7 +200,7 @@ local function play_cooldown_ready()
 	end
 end
 
--- Dispatcher entry point. player_unit is the local player (dispatcher-validated).
+-- Wildcard dispatcher entry point; player_unit is the local player (pre-validated).
 local function activate_spike_nova(player_unit)
 	local mgr = csr_mgr()
 	if not mgr then

@@ -1,9 +1,5 @@
--- CSRMissionsMenuComponent — Heister feature-panel (extends class from missions_menu.lua).
--- Two sections: PLAYER STATS (vanilla _get_armor_stats formulas) + per-weapon DAMAGE.
--- CSR rank passives + item buffs ARE folded in here as a preview: values are computed as
--- if in_csr_heist() (live owned()/host_rank()), and tinted green (boosted) / red (reduced)
--- vs the un-buffed base. See _populate_heister_panel for the two folding mechanisms.
--- Borrowed by MissionBriefingGui (briefing_sidebar.lua METHODS_TO_BORROW).
+-- CSRMissionsMenuComponent heister panel: PLAYER STATS + per-weapon DAMAGE preview.
+-- CSR rank/item buffs folded in and tinted green/red vs un-buffed base. Borrowed by briefing_sidebar.lua.
 
 if not RequiredScript then
 	return
@@ -15,14 +11,13 @@ end
 
 local items_panel_padding = 16
 
--- One-decimal with trailing zeros stripped ("230.0" → "230", "4.5" → "4.5").
+-- One-decimal, trailing zeros stripped ("230.0" -> "230", "4.5" -> "4.5").
 local function csr_round1(n)
 	return (string.format("%.1f", n):gsub("%.?0+$", ""))
 end
 
--- TOTAL (base + skill) for one stat, mirrors PlayerInventoryGui:_get_armor_stats.
--- Calls vanilla getters: health/stamina/dodge route through fns CSR items hook, so forcing
--- in_csr_heist() true around this (see with_csr_heist_forced) makes those three reflect buffs.
+-- Per-stat total (base + skill), mirrors PlayerInventoryGui:_get_armor_stats.
+-- health/stamina/dodge route through vanilla getters that CSR hooks, so with_csr_heist matters.
 local function csr_heister_stat_value(stat_name, name, upgrade_level, detection_risk, mult)
 	local player = managers.player
 	if stat_name == "health" then
@@ -44,9 +39,7 @@ local function csr_heister_stat_value(stat_name, name, upgrade_level, detection_
 	return 0
 end
 
--- Raw per-stat values (numbers). Formatting + buff-tinting happen at render.
--- Respects whatever in_csr_heist() returns at call time: gate off = base, forced on = buffed
--- for the three stats routed through a buffed vanilla fn (health / stamina / dodge).
+-- Collect raw stat values; honors whatever in_csr_heist() returns at call time.
 local function csr_collect_heister_stats()
 	local mult = (tweak_data.gui and tweak_data.gui.stats_present_multiplier) or 10
 	local pd = tweak_data.player
@@ -98,10 +91,8 @@ local function csr_collect_heister_stats()
 	return out
 end
 
--- Pin in_csr_heist() to `value` while fn runs so the live item/passive hooks (all gated on it)
--- fold their buffs in (true) or stay out (false). MUST force BOTH directions: when this panel
--- renders inside a heist the live gate is already true, so an un-forced base call would also be
--- buffed → base == buffed → no tint. Restored even on error (instance shadow removed).
+-- Shadow in_csr_heist() with a forced return while fn runs, then restore.
+-- Must force BOTH directions: mid-heist the live gate is true, so un-forced base == buffed -> no tint.
 local function with_csr_heist(value, fn)
 	local mgr = managers and managers.csr
 	if not (mgr and mgr.in_csr_heist) then
@@ -119,13 +110,13 @@ local function with_csr_heist(value, fn)
 	return nil
 end
 
--- CSR multiplier for stats whose buff hooks a fn this panel never calls (armor, movement).
--- Constants mirror rank_passives.lua + the item files — Rule #13: no shared accumulator exists.
+-- Explicit multiplier for armor/movement: their CSR buff hooks a fn this panel never calls.
+-- Constants mirror rank_passives.lua + item files (Rule #13: no shared accumulator).
 local function csr_stat_offpath_mult(key, mgr, rank)
 	if key == "armor" then
 		local glass = mgr:owned("glass_pistol")
 		return (1 + 0.025 * rank) -- rank_passives ARMOR_PER_RANK
-			* ((glass > 0) and 1 / (2 * glass) or 1) -- glass_pistol DIV_PER_STACK (÷2 per stack, linear)
+			* ((glass > 0) and 1 / (2 * glass) or 1) -- glass_pistol DIV_PER_STACK
 			* (1 + 0.50 * mgr:owned("dozer_guide")) -- dozer_guide ARMOR_BONUS
 	elseif key == "movement" then
 		local m = 1
@@ -142,11 +133,11 @@ local function csr_stat_offpath_mult(key, mgr, rank)
 	return 1
 end
 
--- CSR damage multiplier (kind = "ranged" | "melee"). Mirrors the item files + rank DMG_PER_RANK.
+-- CSR damage multiplier for ranged or melee; mirrors item files + rank DMG_PER_RANK.
 local function csr_weapon_dmg_mult(kind, mgr, rank)
 	local glass = mgr:owned("glass_pistol")
 	local m = (1 + 0.01 * rank) -- rank_passives DMG_PER_RANK
-		* ((glass > 0) and 2 * glass or 1) -- glass_pistol DMG_MUL_PER_STACK (×2 per stack, linear)
+		* ((glass > 0) and 2 * glass or 1) -- glass_pistol DMG_MUL_PER_STACK
 		* (1 + 0.10 * mgr:owned("evidence_rounds")) -- evidence_rounds PER_STACK
 	if kind == "melee" then
 		m = m * (1 + 1.0 * mgr:owned("jiro_last_wish")) -- jiro_last_wish MELEE_BONUS_PER_STACK
@@ -154,7 +145,7 @@ local function csr_weapon_dmg_mult(kind, mgr, rank)
 	return m
 end
 
--- Localized weapon name from an equipped crafted table; prefers the player's custom name.
+-- Localized weapon name; prefers player's custom name over tweak_data name_id.
 local function csr_weapon_display_name(category)
 	local bm = managers.blackmarket
 	local data = (category == "primaries") and bm:equipped_primary() or bm:equipped_secondary()
@@ -169,9 +160,8 @@ local function csr_weapon_display_name(category)
 	return name, slot
 end
 
--- One weapon row per slot: { slot = "PRIMARY", name = "AMCAR", dmg = "120", color = <Color> }.
--- Each slot pcall-guarded — equipped_* / WeaponDescription throw outside an active loadout.
--- mgr/rank drive the CSR damage preview; dmg is the buffed value, color encodes boost/reduce.
+-- Build weapon rows { slot, name, dmg, color } for primary/secondary/melee/throwable.
+-- Each slot is pcall-guarded; dmg is the CSR-buffed value, color encodes boost/reduce.
 local function csr_collect_weapon_rows(mgr, rank)
 	local bm = managers.blackmarket
 	local mult = (tweak_data.gui and tweak_data.gui.stats_present_multiplier) or 10
@@ -195,7 +185,7 @@ local function csr_collect_weapon_rows(mgr, rank)
 			end
 			out.name = name
 			local data = (category == "primaries") and bm:equipped_primary() or bm:equipped_secondary()
-			-- Inventory-accurate base damage = base + mods + skills, same path BlackMarketGui uses.
+			-- Inventory-accurate base = base + mods + skills, same path BlackMarketGui uses.
 			local base, mods, skill = WeaponDescription._get_stats(data.weapon_id, category, slot)
 			if base and base.damage then
 				local v = (base.damage.value or 0)
@@ -212,7 +202,7 @@ local function csr_collect_weapon_rows(mgr, rank)
 	gun_row("primaries", "PRIMARY")
 	gun_row("secondaries", "SECONDARY")
 
-	-- Melee: stats expose a min..max range; mirror the BM menu's min–max display.
+	-- Melee exposes min..max; mirror the BM menu min-max display.
 	local melee = { slot = "MELEE", name = "—", dmg = nil, color = Color.white }
 	pcall(function()
 		local id = bm:equipped_melee_weapon()
@@ -226,17 +216,15 @@ local function csr_collect_weapon_rows(mgr, rank)
 			local factor = (mgr and csr_weapon_dmg_mult("melee", mgr, rank)) or 1
 			local mn = math.round((st.min_damage or 0) * mult * factor)
 			local mx = math.round((st.max_damage or st.min_damage or 0) * mult * factor)
-			-- "X (Y)": X = uncharged hit (min_damage), Y = full-charge hit (max_damage).
+			-- "X (Y)": X = uncharged (min_damage), Y = full-charge (max_damage).
 			melee.dmg = (mn == mx) and tostring(mx) or (mn .. " (" .. mx .. ")")
 			melee.color = dmg_color(factor)
 		end
 	end)
 	rows[#rows + 1] = melee
 
-	-- Throwable: damage lives in tweak_data.projectiles (NOT .blackmarket.projectiles).
-	-- Grenades deal explosion/fire damage, scaled host-side for the whole crew by rank passives
-	-- (DMG_PER_RANK) and Glass Pistol (×2/stack AoE) — clients included via host sim. Preview both
-	-- + tint. evidence_rounds (firearms/turrets) and jiro (melee) don't touch throwables, so excluded.
+	-- Throwable damage is in tweak_data.projectiles (NOT .blackmarket.projectiles).
+	-- Grenade dmg is host-sim'd for the whole crew; evidence_rounds/jiro don't apply to throwables.
 	local throwable = { slot = "THROWABLE", name = "—", dmg = nil, color = Color.white }
 	pcall(function()
 		local id, amount = bm:equipped_grenade()
@@ -249,7 +237,7 @@ local function csr_collect_weapon_rows(mgr, rank)
 		if ptw and ptw.damage then
 			local glass = (mgr and mgr:owned("glass_pistol")) or 0
 			local factor = (1 + 0.01 * rank) -- rank_passives DMG_PER_RANK
-				* ((glass > 0) and 2 * glass or 1) -- glass_pistol DMG_MUL_PER_STACK (now scales AoE)
+				* ((glass > 0) and 2 * glass or 1) -- glass_pistol DMG_MUL_PER_STACK (scales AoE)
 			throwable.dmg = tostring(math.round(ptw.damage * 10 * factor))
 			throwable.color = dmg_color(factor)
 		elseif amount then
@@ -261,9 +249,8 @@ local function csr_collect_weapon_rows(mgr, rank)
 	return rows
 end
 
--- Sectioned panel: PLAYER STATS (5 zebra rows) + per-weapon header + DAMAGE row.
--- Values preview CSR rank passives + item buffs (see folding mechanisms below); each value is
--- tinted green (boosted) / red (reduced) / white (unchanged). Row heights shrink to fit. Idempotent.
+-- Build PLAYER STATS + per-weapon DAMAGE sections. Idempotent; clears previous content first.
+-- Two folding mechanisms: (1) shadow in_csr_heist for health/stamina/dodge; (2) explicit mult for armor/movement.
 function CSRMissionsMenuComponent:_populate_heister_panel()
 	if not self._feature_panels or not alive(self._feature_panels.heister) then
 		return
@@ -281,20 +268,17 @@ function CSRMissionsMenuComponent:_populate_heister_panel()
 	local mgr = managers and managers.csr
 	local rank = (mgr and mgr.host_rank and mgr:host_rank()) or 0
 
-	-- Mechanism 1 (health/stamina/dodge): the real hooks fold buffs into vanilla getters when the
-	-- gate is on. Force BOTH directions so the comparison is valid even mid-heist (live gate true):
-	-- base_stats = gate forced OFF (vanilla); buffed_stats = gate forced ON. Distinct tables.
+	-- Force gate OFF for base, ON for buffed; both calls needed even mid-heist (live gate is true).
 	local base_stats = with_csr_heist(false, csr_collect_heister_stats) or csr_collect_heister_stats()
 	local buffed_stats = with_csr_heist(true, csr_collect_heister_stats) or csr_collect_heister_stats()
 
-	-- Mechanism 2 (armor/movement): their buff hooks a fn the menu never calls — layer explicitly.
+	-- Armor/movement: apply explicit multiplier (their hooks bypass this panel's call path).
 	if mgr and mgr.owned then
 		for _, s in ipairs(buffed_stats) do
 			s.value = s.value * csr_stat_offpath_mult(s.key, mgr, rank)
 		end
 	end
 
-	-- Merge base vs buffed by index → display string + tint.
 	local function stat_color(buf, base)
 		if buf > base + 0.01 then
 			return tweak_data.screen_colors.stats_positive
@@ -303,7 +287,7 @@ function CSRMissionsMenuComponent:_populate_heister_panel()
 		end
 		return Color.white
 	end
-	-- health/armor → whole numbers (decimals aren't meaningful); movement/stamina keep one decimal.
+	-- health/armor as integers; movement/stamina keep one decimal.
 	local function fmt_stat(s)
 		if s.pct then
 			return math.round(s.value) .. "%"
@@ -327,8 +311,7 @@ function CSRMissionsMenuComponent:_populate_heister_panel()
 	local inner_w = panel:w() - pad * 2
 	local dim = Color.white:with_alpha(0.5)
 
-	-- Fit check: PLAYER STATS header + one header per weapon are fixed-height; the value rows
-	-- (5 stats + 1 DAMAGE per weapon) scale to fill what's left. Shrink line_h on overflow.
+	-- Headers are fixed height; value rows scale to fill remaining space, clamped to pd2_small+2.
 	local n_value = #stats + #weapons
 	local n_headers = 1 + #weapons
 	local hdr_h = tweak_data.menu.pd2_small_font_size + 4
@@ -343,7 +326,7 @@ function CSRMissionsMenuComponent:_populate_heister_panel()
 
 	local y = pad
 
-	-- Section header: small dim caps with a thin underline; no zebra.
+	-- Small dim caps label + 1px underline; no zebra.
 	local function header(label)
 		content:text({
 			text = label,
@@ -358,7 +341,7 @@ function CSRMissionsMenuComponent:_populate_heister_panel()
 			vertical = "center",
 			layer = 2,
 		})
-		-- Right edge (8 + inner_w) matches the right-aligned value text inside the offset rows below.
+		-- Underline spans full inner_w to align with right-aligned values in rows below.
 		content:rect({
 			color = dim,
 			x = 8,
@@ -370,8 +353,7 @@ function CSRMissionsMenuComponent:_populate_heister_panel()
 		y = y + hdr_h + row_gap
 	end
 
-	-- Two-column data row (label left, value right) with optional zebra band.
-	-- value_color tints the right-hand value (green boosted / red reduced / white neutral).
+	-- Two-column row: label left, value right; optional zebra band; value_color for buff tint.
 	local function value_row(label, value, zebra, indent, value_color)
 		local row = content:panel({ x = pad, y = y, w = inner_w, h = line_h, layer = 5 })
 		if zebra then
@@ -409,7 +391,6 @@ function CSRMissionsMenuComponent:_populate_heister_panel()
 		value_row(s.label, s.value, i % 2 == 1, 0, s.color)
 	end
 
-	-- Each weapon: its own header (SLOT: name) + divider line, then a DAMAGE row.
 	for _, w in ipairs(weapons) do
 		y = y + section_gap
 		header(w.slot .. ": " .. w.name)

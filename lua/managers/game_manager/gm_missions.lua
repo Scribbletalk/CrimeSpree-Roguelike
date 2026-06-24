@@ -19,10 +19,11 @@ local RANK_OVERRIDE = {
 	crojob2_d = 2, -- Bomb: Forest (added via extra_heists, id = stage_id "crojob2_d"; level_id crojob3; add=14 would be +3)
 	watchdogs_2_d = 1, -- Watchdogs day 2 "Boat load" (added via extra_heists, id = stage_id "watchdogs_2_d"; level_id watchdogs_2_day; add=6 would be +2)
 	brb = 2, -- Brooklyn Bank (base CS mission, id "brb"; add=8 would be +3)
+	pbr2 = 4, -- Birth of Sky (base CS mission, id "pbr2"; add=9 would be +3)
 	pines = 1, -- White Xmas (base CS mission, id "pines"; add=7 would be +2)
 }
 
--- 3-tier mission list from tweak_data with DLC filter. Cached because the reroll animation queries it per-frame.
+-- 3-tier mission list from tweak_data with DLC filter. Cached (queried per-frame by reroll animation).
 function CSRGameManager:_mission_lists()
 	if self._mission_lists_cache then
 		return self._mission_lists_cache
@@ -83,8 +84,7 @@ function CSRGameManager:rank_for_mission(mission_id)
 	return 3
 end
 
--- Rank for the just-played heist. Resolves from Global.game_settings.level_id because
--- current_mission() is already cleared by the time the end screen builds.
+-- Resolves from Global.game_settings.level_id because current_mission() is cleared before the end screen.
 function CSRGameManager:rank_for_current_level()
 	local gs = Global and Global.game_settings
 	local level_id = gs and gs.level_id
@@ -124,11 +124,9 @@ local function pick_unused(list, used)
 	return candidates[math.random(1, #candidates)]
 end
 
--- One mission per bucket (1=stealth, 2=short loud, 3=long loud), all 3 guaranteed
--- distinct. A heist can live in several buckets at once (loud+stealth, or add 9-10
--- spans short+long), so a naive per-bucket roll could repeat an id across slots.
--- exclude_id (optional): seed it as "used" so the just-completed heist is kept out of
--- the auto-rolled set. Reroll passes nothing, so the mission can return on a reroll.
+-- One distinct mission per bucket (1=stealth, 2=short loud, 3=long loud).
+-- Heists can span buckets (e.g. loud+stealth), so dedup by id across slots.
+-- exclude_id: skip the just-completed heist; reroll omits it so the same heist can return.
 function CSRGameManager:get_random_missions(exclude_id)
 	local lists = self:_mission_lists()
 	local set = {}
@@ -139,8 +137,7 @@ function CSRGameManager:get_random_missions(exclude_id)
 	for i = 1, 3 do
 		local list = lists[i]
 		if list and #list > 0 then
-			-- Bucket exhausted of unique ids: fall back to any unused mission across all
-			-- buckets so the slot still fills (degenerate tiny-pool case only).
+			-- Bucket exhausted: fall back to any unused mission from any bucket.
 			local pick = pick_unused(list, used)
 			if not pick then
 				for j = 1, 3 do
@@ -174,9 +171,8 @@ function CSRGameManager:get_random_mission()
 	return pool[math.random(1, #pool)]
 end
 
--- Roll a fresh set of mission ids (dense; no nil holes) and clear the current pick.
--- exclude_id (optional): the just-completed heist, kept out of this roll. Omitted by
--- reroll_mission_set, so a reroll can bring the completed mission back.
+-- Roll a fresh set (dense, no nil holes) and clear the current pick.
+-- exclude_id: keep the just-completed heist out; reroll omits it so the mission can return.
 function CSRGameManager:generate_mission_set(exclude_id)
 	local missions = self:get_random_missions(exclude_id)
 	local ids = {}
@@ -190,10 +186,7 @@ function CSRGameManager:generate_mission_set(exclude_id)
 	self._state.current_mission = nil
 	log_csr("generate_mission_set: " .. table.concat(ids, ", "))
 	self:save()
-	-- Push full host-state, not just the set: this also clears the guest's host_current_mission
-	-- (we just nilled current_mission), so a reroll/regen drops the stale selection highlight
-	-- instead of leaving it pointing at an id no longer in the set. broadcast_host_state re-sends
-	-- the mission set internally, so guests still get the new cards.
+	-- Broadcast full host-state (not just the set) so a reroll also clears the guest's stale selection.
 	if _G.CSR_MP and _G.CSR_MP.broadcast_host_state then
 		_G.CSR_MP.broadcast_host_state()
 	elseif _G.CSR_MP and _G.CSR_MP.broadcast_mission_set then
@@ -206,8 +199,7 @@ function CSRGameManager:reroll_mission_set()
 	return self:generate_mission_set()
 end
 
--- Ensure a non-empty set exists before the lobby renders (old saves + run that starts without rolling).
--- Guests skip: they mirror the host's set via MISSION_SET sync.
+-- Ensure a non-empty set before the lobby renders. Guests skip (they mirror the host via MISSION_SET sync).
 function CSRGameManager:ensure_mission_set()
 	if self:_is_guesting() then
 		return
@@ -218,7 +210,7 @@ function CSRGameManager:ensure_mission_set()
 	end
 end
 
--- Resolve stored ids to full tweak_data mission tables. Unresolvable slots return nil (panel skips them).
+-- Resolve stored ids to tweak_data mission tables. Unresolvable slots return nil.
 -- While guesting, mirrors the host's synced set.
 function CSRGameManager:mission_set()
 	local ids = self._state.mission_set
@@ -244,20 +236,20 @@ function CSRGameManager:set_mp_host_mission_set(ids)
 	self._state.mp_session.host_mission_set = type(ids) == "table" and ids or nil
 end
 
--- Host's synced mission-set ids (for guest reroll-change detection); nil before first sync.
+-- Host's synced set ids for guest reroll-change detection; nil before first sync.
 function CSRGameManager:mp_host_mission_set_ids()
 	local mp = self._state.mp_session
 	return mp and mp.host_mission_set or nil
 end
 
--- Host's currently-selected mission id, synced for the guest's lobby highlight (display only).
+-- Host's selected mission id, synced for the guest lobby highlight (display only).
 function CSRGameManager:set_mp_host_current_mission(id)
 	self._state.mp_session = self._state.mp_session or {}
 	self._state.mp_session.host_current_mission = id
 end
 
 function CSRGameManager:current_mission()
-	-- While guesting, mirror the host's synced pick (display only); own pick otherwise.
+	-- While guesting, mirror the host's synced pick (display only).
 	if self:_is_guesting() then
 		return self._state.mp_session and self._state.mp_session.host_current_mission or nil
 	end
@@ -277,7 +269,7 @@ function CSRGameManager:select_mission(mission_id)
 	end
 	self._state.current_mission = mission_data.id
 
-	-- Engine wiring: mirrors vanilla _setup_temporary_job + activate_temporary_job + _setup_global_from_mission_id.
+	-- Mirrors vanilla _setup_temporary_job + activate_temporary_job + _setup_global_from_mission_id.
 	local narrative_job = tweak_data
 		and tweak_data.narrative
 		and tweak_data.narrative.jobs
@@ -297,7 +289,7 @@ function CSRGameManager:select_mission(mission_id)
 	if Network:is_server() and MenuCallbackHandler and MenuCallbackHandler.update_matchmake_attributes then
 		MenuCallbackHandler:update_matchmake_attributes()
 	end
-	-- Sync level selection to guests immediately so they load the same level on Start.
+	-- Sync to guests so they load the same level on Start.
 	if _G.CSR_MP and _G.CSR_MP.broadcast_host_state then
 		_G.CSR_MP.broadcast_host_state()
 	end
@@ -309,6 +301,6 @@ function CSRGameManager:select_mission(mission_id)
 			.. tostring(mission_data.level and mission_data.level.level_id)
 			.. ")"
 	)
-	-- Save immediately; the in-game manager is a fresh init that reads from disk.
+	-- Save now; the in-game manager is a fresh init that reads from disk.
 	self:save()
 end

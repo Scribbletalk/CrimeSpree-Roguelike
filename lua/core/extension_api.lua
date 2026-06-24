@@ -32,12 +32,8 @@ _G.CSR._hooks_by_req = _G.CSR._hooks_by_req or {} -- [req_lower] = { {type=, fn=
 _G.CSR._installed_hooks = _G.CSR._installed_hooks or {} -- ["type|req"] = true
 _G.CSR._loaded_reqs = _G.CSR._loaded_reqs or {} -- [req_lower] = true
 
--- Active-wildcard registry. DEFINED HERE (not in wildcard_dispatcher.lua) because
--- items register their active from a lib/managers/playermanager hook, which fires
--- during lib/entry's body (PlayerManager is required in setup.lua) — BEFORE the
--- dispatcher's own lib/entry POST-hook loads. extension_api bootstraps first, so
--- defining the registrar here guarantees it exists when item hooks run. The
--- dispatcher only READS CSR_WildcardActives at key-press time (CSR_TriggerWildcard).
+-- Active-wildcard registry lives here (not in wildcard_dispatcher.lua) because item
+-- hooks fire before the dispatcher's lib/entry post-hook. Dispatcher reads at key-press.
 _G.CSR_WildcardActives = _G.CSR_WildcardActives or {}
 function _G.CSR_RegisterWildcardActive(item_type, activate)
 	if not item_type or type(activate) ~= "function" then
@@ -56,7 +52,7 @@ function _G.CSR._install_hook(item_type, req_lower, fn)
 		return
 	end
 	_G.CSR._installed_hooks[gkey] = true
-	-- Tag the owner so item_crash_handler can wrap any Hooks:* the installer registers.
+	-- Tag owner so item_crash_handler can wrap hooks registered by this installer.
 	local prev_owner = _G.CSR._installing_owner
 	_G.CSR._installing_owner = item_type
 	local ok, err = pcall(fn)
@@ -84,7 +80,7 @@ function _G.CSR.on_script_loaded(req)
 	end
 end
 
--- Dedup key: modifiers use def.id (no def.type); must be unique per script target.
+-- Modifiers use def.id (no def.type); key must be unique per script target.
 local function index_item_hooks(def)
 	if type(def.hooks) ~= "table" then
 		return
@@ -106,7 +102,7 @@ local function index_item_hooks(def)
 	end
 end
 
--- Stamp the addon currently being loaded onto a def (load-order safe; nil outside addon load).
+-- Stamp the current addon onto a def at load time; nil outside addon load.
 local function autostamp_addon(def)
 	if def.addon == nil and _G.CSR._current_addon then
 		def.addon = _G.CSR._current_addon
@@ -137,7 +133,7 @@ function _G.CSR.register_modifier(def)
 	if managers and managers.csr and managers.csr.register_modifier then
 		managers.csr:register_modifier(def)
 	end
-	-- Class-less modifiers (e.g. Guilty Conscience) use behavior hooks, same as items.
+	-- Class-less modifiers use behavior hooks the same way items do.
 	index_item_hooks(def)
 	return true
 end
@@ -160,8 +156,7 @@ function _G.CSR.register_sound(name, def)
 		log("[CSR][api] register_sound: (name string, def table) required -- ignored")
 		return false
 	end
-	-- Stamp the add-on folder so the loader resolves sound files relative to it
-	-- (nil for built-in sounds, which resolve against the mod folder).
+	-- Stamp addon dir for path resolution; nil for built-in CSR sounds.
 	if def._addon_dir == nil and _G.CSR._current_addon_dir then
 		def._addon_dir = _G.CSR._current_addon_dir
 	end
@@ -188,9 +183,8 @@ function _G.CSR.addon_name()
 	return _G.CSR._current_addon
 end
 
--- Register an addon icon into the texture DB. db_path = the string the author puts in their
--- item's `icon` field (must contain "/" so icon surfaces treat it as a full DB path); rel_file
--- = .dds path RELATIVE to the addon folder. Addon-load-time only. Returns db_path on success.
+-- Register an addon icon. db_path must contain "/" so icon surfaces treat it as a full DB path;
+-- rel_file is relative to the addon folder. Addon-load-time only; returns db_path on success.
 function _G.CSR.register_texture(db_path, rel_file)
 	if type(db_path) ~= "string" or type(rel_file) ~= "string" then
 		log("[CSR][api] register_texture: (db_path string, rel_file string) required -- ignored")
@@ -212,9 +206,8 @@ function _G.CSR.register_texture(db_path, rel_file)
 	return db_path
 end
 
--- Resolve an item/modifier icon to (texture, rect). A value containing "/" is a full
--- DB texture path (addon icon from register_texture, drawn whole at 128x128); anything
--- else is a built-in hud_icons id. Single source of truth for every CSR icon surface.
+-- Resolve icon to (texture, rect). "/" in value = full DB path (addon, 128x128);
+-- otherwise = built-in hud_icons id. Single source of truth for all CSR icon surfaces.
 function _G.CSR.icon_data(raw)
 	if type(raw) == "string" and raw:find("/", 1, true) then
 		return raw, { 0, 0, 128, 128 }
@@ -222,9 +215,7 @@ function _G.CSR.icon_data(raw)
 	return tweak_data.hud_icons:get_icon_data(raw)
 end
 
--- Resolve an item/modifier loc key, substituting the def's number macros (def.loc_macros) so tuning
--- constants defined once in the item file auto-fill $macros in the localized desc/effect/notes.
--- `src` is any table carrying loc_macros (a registry entry / def / logbook item_data); nil-safe.
+-- Localize a key with def.loc_macros substitution. src = any table with loc_macros; nil-safe.
 function _G.CSR.item_text(key, src)
 	if not (managers and managers.localization) then
 		return key or ""
@@ -232,11 +223,8 @@ function _G.CSR.item_text(key, src)
 	return managers.localization:text(key, src and src.loc_macros or nil)
 end
 
--- Split a contraband description into (main, drawback). The drawback is the trailing
--- sentence starting "But ...", separated by ". " (current loc) or a newline (legacy),
--- or the whole string when it leads with "But ". `drawback` is nil when there is none.
--- Anchoring on the sentence boundary avoids cutting at a stray "But " inside the main
--- clause. Centralizes the split shared by the shop card and the lobby/pause tooltips.
+-- Split contraband text into (main, drawback) on ". But " / newline / leading "But ".
+-- drawback is nil when absent. Used by shop card and lobby/pause tooltips.
 function _G.CSR.split_drawback(text)
 	text = text or ""
 	local dot = string.find(text, ". But ", 1, true)
@@ -253,7 +241,7 @@ function _G.CSR.split_drawback(text)
 	return text, nil
 end
 
--- Recursively dofile every .lua under `dir`; files self-register via register_item/modifier.
+-- Recursively dofile every .lua under dir; files self-register via register_item/modifier.
 local function run_lua_dir(dir, label)
 	local count = 0
 	local names = file.GetFiles(dir)
@@ -280,7 +268,7 @@ local function run_lua_dir(dir, label)
 	return count
 end
 
--- Drop a .lua under lua/items/ to add an item; no mod.txt edit needed.
+-- Drop a .lua under lua/items/ to add an item - no mod.txt edit needed.
 local function load_item_defs()
 	if not (file and file.GetFiles and ModPath) then
 		log("[CSR][api] items: file API or ModPath unavailable -- skipped")
@@ -299,9 +287,7 @@ local function load_modifier_defs()
 	csr_log("[CSR][api] modifiers: ran " .. count .. " modifier file(s)")
 end
 
--- User addon drop-in folder. Lives under mods/saves/ (SavePath) so CSR updates never
--- wipe it (updates replace the mod folder, not saves). For now we only ensure the
--- folder + README exist; the loader that reads addons from here lands in a later slice.
+-- User addon drop-in folder under mods/saves/ (survives mod updates). Ensures folder + README exist.
 local ADDON_FOLDER_NAME = "CSR Addons"
 local ADDON_README_TEXT = [[CSR Addons
 ==========
@@ -333,8 +319,7 @@ You can safely delete this README. It is only regenerated if the whole "CSR Addo
 folder is missing on launch.
 ]]
 
--- Idempotent: bails when the folder already exists, so a user-deleted README is not
--- regenerated unless the whole folder was removed (matches the ACH addon-folder model).
+-- Idempotent: bails if folder exists (a deleted README is NOT regenerated until the whole folder goes).
 local function ensure_addon_folder()
 	if not SavePath then
 		log("[CSR][api] addon folder: SavePath unavailable -- skipped")
@@ -366,9 +351,8 @@ local function ensure_addon_folder()
 	end
 end
 
--- Run each user addon's main.lua from mods/saves/<ADDON_FOLDER_NAME>/<addon>/. One main.lua
--- per addon folder (NOT recursive); the addon dofiles its own helpers via CSR.addon_dir().
--- Runs at hudiconstweakdata time, so DB is ready for register_texture inside main.lua.
+-- Run each addon's main.lua from mods/saves/<ADDON_FOLDER_NAME>/<addon>/. One main.lua per
+-- folder (not recursive). Runs at hudiconstweakdata time so DB is ready for register_texture.
 local function load_addons()
 	if not (file and file.GetDirectories and SavePath) then
 		log("[CSR][api] addons: file API or SavePath unavailable -- skipped")
@@ -390,7 +374,7 @@ local function load_addons()
 		if type(name) == "string" then
 			local dir = base .. name .. "/"
 
-			-- Skip folders without a main.lua so stray folders don't spam dofile errors.
+			-- Skip folders without main.lua.
 			local has_main = false
 			local names = file.GetFiles and file.GetFiles(dir)
 			if names then
@@ -425,7 +409,7 @@ load_modifier_defs()
 ensure_addon_folder()
 load_addons()
 
--- Drain scripts buffered before _G.CSR existed (loaded inside lib/entry before this ran).
+-- Drain scripts buffered before _G.CSR existed (lib/entry loads before this file).
 if _G.__CSR_pending_reqs then
 	local pending = _G.__CSR_pending_reqs
 	_G.__CSR_pending_reqs = nil

@@ -1,17 +1,12 @@
--- Keen Dispatch (stealth family) — shorter pager response window (less time to answer).
--- Reworked from the old "fewer pagers" effect. A pager rings nr_of_calls times (vanilla 2), each
--- waiting call_duration seconds (vanilla 6) before the next; the alarm trips after the last one.
--- Total answer window = 2 * 6 = 12s. Each tier shrinks call_duration by `count`s (per call), so the
--- total window drops by 2*count: tiers give 10/8/6/4s. data.count = seconds removed PER CALL; "max"
--- so the highest active tier wins. Effect is host-only (apply_modifiers); the custom class is defined
--- when the vanilla modifier file loads. The display number ($n) and EHI tracker both reflect the
--- TOTAL window (2*count), which is what the player actually experiences.
+-- Keen Dispatch (stealth family) - shrinks pager response window. Vanilla: 2 calls x 6s = 12s total.
+-- Each tier subtracts `count` seconds PER CALL (total drop = 2*count); tiers give 10/8/6/4s.
+-- Host-only (apply_modifiers); custom class defined when vanilla modifier file loads.
 if not (_G.CSR and _G.CSR.register_modifier) then
 	return
 end
 
 local T1, T2, T3, T4 = 1, 2, 3, 4
-local EHI_BASE_TIME = 12 -- EHI's pager tracker default (= vanilla 2 calls * 6s); verified in EHI InteractionExt.lua
+local EHI_BASE_TIME = 12 -- vanilla 2 calls * 6s; verified in EHI InteractionExt.lua
 
 -- Highest active Keen Dispatch tier's per-call seconds (0 if inactive / not in a CSR heist).
 local function active_pager_count()
@@ -40,9 +35,8 @@ _G.CSR.register_modifier({
 		{ loc = "menu_cs_modifier_less_pagers_4", data = { count = { T4, "max" } }, loc_macros = { n = T4 * 2 } },
 	},
 	hooks = {
-		-- Define the custom class once the vanilla modifier file has executed (BaseModifier exists).
-		-- Mirrors ModifierLessPagers' one-shot init shape; reads from the pristine baseline that
-		-- apply_modifiers restores before every apply, so the subtraction never compounds.
+		-- Define the custom class after vanilla modifier file loads (BaseModifier exists).
+		-- apply_modifiers restores pristine baseline before each apply, so subtraction never compounds.
 		["lib/modifiers/modifierlesspagers"] = function()
 			if _G.ModifierCSRPagerResponse then
 				return
@@ -62,10 +56,7 @@ _G.CSR.register_modifier({
 				cd[2][1], cd[2][2] = cd[2][1] - seconds, cd[2][2] - seconds
 			end
 		end,
-		-- Extra Heist Info support: sync EHI's pager countdown to the real (shortened) total window.
-		-- Runs on EVERY client (EHI display is local; the pager mechanic itself is host-authoritative),
-		-- and auto-restores to EHI_BASE_TIME when inactive / outside a CSR heist. Nil-guarded: EHI's
-		-- classes only exist if installed with the pager option enabled.
+		-- EHI compat: sync pager countdown to the shortened window; nil-guarded (EHI optional).
 		["lib/states/ingamewaitingforplayers"] = function()
 			if _G._CSR_KEEN_DISPATCH_EHI_HOOKED then
 				return

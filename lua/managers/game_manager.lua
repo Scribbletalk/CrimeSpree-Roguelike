@@ -95,8 +95,7 @@ function CSRGameManager:init()
 	self._meta = default_meta()
 	self._state = default_state()
 	self._registry = default_registry()
-	-- Remote peers' synced item counts for MP visibility: { [peer_id] = { counts, name } }.
-	-- Runtime-only (filled by mp_sync.lua, read via player_items) -- never saved to csr_save.json.
+	-- Runtime-only; filled by mp_sync.lua, never saved.
 	self._remote_peer_items = {}
 	self._callbacks = {
 		on_mission_started = {},
@@ -108,24 +107,21 @@ function CSRGameManager:init()
 	self:load()
 	self._debug = (self._meta.settings and self._meta.settings.debug_mode) == true
 	_G.CSR_DEBUG = self._debug
-	-- Loss penalty: if a heist was in flight when the game last closed (crash/alt-F4/quit), commit
-	-- the outcome now. Runs once per init, right after load() restored in_heist/heist_grace_over.
+	-- Commit any heist that was still in-flight at last shutdown (crash/quit).
 	self:_check_interrupted_heist()
-	-- Replay registrations into the fresh _registry every init (idempotent, never drains).
+	-- Replay item + modifier registrations into the fresh _registry (idempotent).
 	if _G.CSR and _G.CSR._apply_registrations then
 		_G.CSR._apply_registrations(self)
 	end
 	if _G.CSR and _G.CSR._apply_modifier_registrations then
 		_G.CSR._apply_modifier_registrations(self)
 	end
-	-- Tombstone frozen modifier-seq slots whose modifier is gone, so re-installing an add-on
-	-- does not restore it to an in-progress spree. Runs after registrations replay (by_id current).
+	-- Tombstone removed-addon modifier slots; runs after replay so by_id is current.
 	self:_prune_modifier_seq()
 	-- Drop owned items whose addon is no longer registered; re-arms the lobby pick reminder.
 	self:_drop_orphan_items()
 	self:_prune_expired_sessions()
-	-- Wire reconcile to every ownership/run transition so on_apply fires on save-reload too.
-	-- Fresh _callbacks table each init prevents stacking duplicate listeners.
+	-- Fresh _callbacks each init prevents stacking duplicate listeners across re-inits.
 	self._applied_callbacks = {}
 	local function reconcile_cb()
 		self:reconcile_callback_items()
@@ -136,8 +132,7 @@ function CSRGameManager:init()
 	self:on_item_removed(reconcile_cb)
 	self:reconcile_callback_items()
 	self:_setup_temporary_job()
-	-- MissionAssetsManager:init() ran before our narrative chain was set, so the Assets tab stayed empty.
-	-- Re-run _setup_mission_assets manually; clear first because it appends (would duplicate on re-init).
+	-- MissionAssetsManager ran before our chain was set; rebuild it so the Assets tab isn't empty.
 	if self:is_run_active() and managers.assets and managers.assets._setup_mission_assets then
 		if managers.assets._global then
 			managers.assets._global.assets = {}
@@ -147,9 +142,8 @@ function CSRGameManager:init()
 	log_csr("CSRGameManager initialised; version=" .. tostring(self._meta.version))
 end
 
--- Re-establish the crime_spree narrative chain from Global.game_settings.level_id each time managers init.
--- Without this the game-side manager has an empty chain (set by select_mission only on menu-side),
--- causing nil-crashes in HUDMissionBriefing / MissionBriefingGui on heist launch.
+-- Re-establish the crime_spree narrative chain each time managers init.
+-- Without this, HUDMissionBriefing nil-crashes on heist launch (chain only set by select_mission on menu side).
 function CSRGameManager:_setup_temporary_job()
 	-- Not gated on is_active() — a guest has is_active=false but still needs the chain for briefing surfaces.
 	local gs = Global and Global.game_settings
@@ -183,14 +177,9 @@ function CSRGameManager:_setup_temporary_job()
 	end
 end
 
--- MP guest only: the guest never runs select_mission, so its JobManager has no active job
--- (job_id nil) -> current_level_data() nil. EVERY briefing surface built from it is then empty,
--- incl. HUDMissionBriefing:reload which bails at `if not has_active_job() then return` BEFORE it
--- loads the contact assets_gui (the briefing bg video). Mirror the host's select_mission wiring:
--- set the narrative chain, then activate the temporary crime_spree job from game_settings.level_id
--- (vanilla network sync already set it for the heist load). Idempotent + guest-gated: the
--- has_active_job guard makes it a no-op for the host and for vanilla (non-CSR) heists where the
--- job is already active. Must run BEFORE the briefing builds (IngameWaitingForPlayersState:at_enter).
+-- Guest only: JobManager has no active job (job_id nil) because the guest never runs select_mission.
+-- Mirrors the host's job wiring so briefing surfaces (HUDMissionBriefing, Assets tab) aren't empty.
+-- Must run before IngameWaitingForPlayersState:at_enter builds the briefing. See csr_guest_temp_job_briefing_gap.md.
 function CSRGameManager:ensure_guest_temp_job()
 	if not (_G.CSR_MP and _G.CSR_MP.is_client and _G.CSR_MP.is_client()) then
 		return
@@ -229,11 +218,8 @@ function CSRGameManager:is_active()
 	return self._state.is_active == true
 end
 
--- True only while the local player is actually INSIDE a CSR heist (temp crime_spree job loaded).
--- THIS is the gate for every gameplay stat/buff hook so nothing leaks into vanilla heists.
--- Works for guests too: they load the same crime_spree job, even though is_active() is false for them.
--- Note: real vanilla Crime Spree also uses job_id "crime_spree"; CSR runs the STANDARD gamemode, so a
--- truthy crime_spree:is_active() means we're in actual CS (not CSR) -> bail. (Mirrors csr_heist_active().)
+-- Gate for all gameplay hooks. True inside a CSR heist on host AND guest.
+-- Bails if vanilla CS is active (same job_id, but CSR runs STANDARD gamemode). See csr_in_csr_heist_gameplay_gate.md.
 function CSRGameManager:in_csr_heist()
 	if not (managers and managers.job and managers.job.current_job_id) then
 		return false
@@ -255,18 +241,13 @@ function CSRGameManager:missions_completed()
 	return self._state.missions_completed or 0
 end
 
--- Career (cross-run) stat read. Values live in _meta.stats so they survive start_run().
--- Nil-safe -> default. Nothing writes here yet (the Logbook stats UI is scaffold-only;
--- the increment hooks are a later step). The UI reads through this so wiring the writes
--- later needs no UI change.
+-- Career (cross-run) stat read from _meta.stats; survives start_run(). Nil-safe -> default.
 function CSRGameManager:career_stat(key, default)
 	local v = self._meta.stats and self._meta.stats[key]
 	return v or default or 0
 end
 
--- Career stat writers (cross-run, _meta.stats). Each persists; called at most once per heist,
--- so the extra disk write is negligible. add_career_stat accumulates a running total;
--- record_career_max keeps an all-time peak.
+-- Career stat writers: add_career_stat accumulates a total; record_career_max keeps an all-time peak.
 function CSRGameManager:add_career_stat(key, amount)
 	amount = tonumber(amount) or 0
 	if amount == 0 then
@@ -286,8 +267,7 @@ function CSRGameManager:record_career_max(key, value)
 	end
 end
 
--- Per-wildcard career mission tally: counts heists completed while holding each wildcard, keyed by
--- item type in _meta.stats.wildcard_missions. Drives the Logbook "Favorite Wildcard" stat.
+-- Counts heists completed while holding each wildcard; drives the Logbook "Favorite Wildcard" stat.
 function CSRGameManager:record_wildcard_mission(wildcard_type)
 	if not wildcard_type then
 		return
@@ -299,8 +279,7 @@ function CSRGameManager:record_wildcard_mission(wildcard_type)
 	self:save()
 end
 
--- Wildcard with the most completed heists, as (type, count); nil if none recorded. Ties broken by
--- type name for a stable pick.
+-- Returns (type, count) for the most-used wildcard; nil if none recorded. Ties broken by name.
 function CSRGameManager:favorite_wildcard()
 	local wm = self._meta.stats and self._meta.stats.wildcard_missions
 	if not wm then
@@ -315,9 +294,8 @@ function CSRGameManager:favorite_wildcard()
 	return best_type, best_n
 end
 
--- Per-heist combat tally (runtime only). Combat hooks (combat_stats.lua) increment it every hit
--- during a CSR heist; flush_heist_tally banks the totals into _meta.stats ONCE at heist end, so
--- we never touch disk per bullet. reset at heist start, flush at heist end (mission_lifecycle.lua).
+-- Runtime per-heist accumulator; banked into _meta.stats once at heist end (never written per-bullet).
+-- reset at heist start, flush at heist end (mission_lifecycle.lua).
 function CSRGameManager:reset_heist_tally()
 	self._heist_tally = { kills = 0, specials_killed = 0, damage_dealt = 0, damage_taken = 0, max_hit = 0 }
 end
@@ -330,7 +308,7 @@ function CSRGameManager:tally_combat(key, amount)
 	tally[key] = (tally[key] or 0) + (tonumber(amount) or 0)
 end
 
--- Runtime per-heist peak (not a running sum); flushed via record_career_max at heist end.
+-- Per-heist peak tracker (not a running sum); flushed via record_career_max at heist end.
 function CSRGameManager:tally_combat_max(key, amount)
 	local tally = self._heist_tally
 	if not tally then
@@ -354,7 +332,6 @@ function CSRGameManager:flush_heist_tally()
 	s.total_damage_dealt = (s.total_damage_dealt or 0) + (tally.damage_dealt or 0)
 	s.total_damage_taken = (s.total_damage_taken or 0) + (tally.damage_taken or 0)
 	self:save()
-	-- All-time biggest single hit (record, not a sum); save() guarded internally to peaks only.
 	self:record_career_max("most_damage_hit", tally.max_hit or 0)
 	self._heist_tally = nil
 end
@@ -371,7 +348,7 @@ function CSRGameManager:difficulty()
 end
 
 function CSRGameManager:set_difficulty(diff)
-	-- Also persists as the remembered preference for the next contract open. Rejects unknown ids.
+	-- Also persists as the preference for the next contract open; rejects unknown ids.
 	if type(diff) ~= "string" then
 		return false
 	end
@@ -399,10 +376,8 @@ end
 -- =====================================================
 
 function CSRGameManager:local_peer_id()
-	-- Cached per session: the local peer id is stable for a session's lifetime, and
-	-- this is queried per-hit by combat item hooks. Cache is cleared on session load
-	-- (see CSR_ResetLocalPeerIdCache). Only a real resolved id is cached, never the
-	-- fallback, so a pre-session call doesn't pin the cache to 1.
+	-- Cached (queried per-hit); cleared on session load (CSR_ResetLocalPeerIdCache).
+	-- Only a real resolved id is cached so a pre-session call doesn't pin the cache to 1.
 	if self._cached_local_peer_id then
 		return self._cached_local_peer_id
 	end
@@ -437,7 +412,7 @@ end
 -- =====================================================
 
 function CSRGameManager:start_run()
-	-- Always resets: no "continue" flow; a leftover rank from a stale save would break the flat-1-rank balance.
+	-- Always resets; no "continue" flow (a stale rank would break balance).
 	if self._state.is_active then
 		log_csr(
 			"start_run: discarding a leftover active run (rank=" .. tostring(self._state.rank) .. ") and starting fresh"
@@ -527,17 +502,14 @@ function CSRGameManager:record_mission_completed()
 	return true
 end
 
--- One BM purchase: bumps the per-spree count and folds it into the "Most Purchases" career peak.
--- record_career_max only writes when the new value beats the record, so calling per-buy is cheap.
+-- Bumps per-spree purchase count and updates the "Most Purchases" career peak.
 function CSRGameManager:record_purchase()
 	self._state.run_purchases = (self._state.run_purchases or 0) + 1
 	self:record_career_max("most_purchases", self._state.run_purchases)
 end
 
--- Peak non-scrap inventory size held during one run -> "Most Items Collected" career record.
--- Reads live holdings (no per-spree counter needed: record_career_max only grows the peak, and
--- removals/tier-ups can't lower an already-captured max). Excludes is_scrap so printer-spammed
--- scrap can't game the record. Called from add_item (the single collection chokepoint).
+-- Updates "Most Items Collected" career peak from live non-scrap holdings.
+-- Called from add_item; excludes is_scrap so printer fodder can't inflate the record.
 function CSRGameManager:record_items_peak(peer_id)
 	local counts = self:player_items(peer_id)
 	local by_type = self._registry.by_type
@@ -565,7 +537,7 @@ function CSRGameManager:has_failed()
 	return self._state.failed == true
 end
 
--- Flag the run as failed (locked until Continue or End Spree). Does not end the run.
+-- Mark run failed (locked until Continue or End Spree); does not end the run.
 function CSRGameManager:mark_failed()
 	if not self._state.is_active then
 		log_csr("mark_failed: no active run; ignored")
@@ -589,8 +561,7 @@ function CSRGameManager:clear_failed()
 end
 
 function CSRGameManager:get_continue_cost()
-	-- Tied to the rank reached (a failed heist grants no rank, so this is the rank at failure).
-	-- base 0 -> rank 0 costs nothing; 3x sits above the 2x/rank end-spree payout for a real sting.
+	-- 3x per-rank sits above the 2x/rank end-spree payout, making continues a real sting.
 	local per = self:constant("continue_cost_per_rank") or 0
 	return per * (self._state.rank or 0)
 end
@@ -599,8 +570,7 @@ end
 -- Loss penalty: heist commit-on-start flag (host/SP)
 -- =====================================================
 
--- Arm the in-flight flag on heist start. Returns a fresh token; a later token invalidates any
--- grace timer still pending from a previous attempt (restart / fast finish).
+-- Arm the in-flight flag. Returns a token; a later token invalidates any pending grace timer.
 function CSRGameManager:begin_heist()
 	self._state.in_heist = true
 	self._state.heist_grace_over = false
@@ -620,8 +590,7 @@ function CSRGameManager:mark_heist_grace_over(token)
 	return true
 end
 
--- Heist resolved cleanly (win or wipe) -> clear the flag and bump the token so the pending
--- grace timer no-ops.
+-- Heist resolved cleanly (win or wipe) -> clear flag and bump token so any pending grace timer no-ops.
 function CSRGameManager:clear_in_heist()
 	self._state.in_heist = false
 	self._state.heist_grace_over = false
@@ -641,25 +610,21 @@ function CSRGameManager:heist_grace_seconds()
 	return self:constant("heist_grace_seconds") or 120
 end
 
--- A heist in flight at last shutdown (crash / alt-F4 / quit-to-menu) is a loss if its grace had
--- elapsed; within grace it is forgiven. Either way the flag is cleared so it fires only once.
+-- On init: in_heist still set at last shutdown means the game died mid-heist (crash / alt-F4 /
+-- quit-to-desktop). Always forgive it -- the game crashes too often to punish process death.
+-- Deliberate quit-to-menu still counts as a loss, but that path resolves live in quit_penalty.lua
+-- (clears in_heist before shutdown), so it never reaches here.
 function CSRGameManager:_check_interrupted_heist()
 	if not (self._state.is_active and self._state.in_heist) then
 		return
 	end
-	if self._state.heist_grace_over then
-		self._state.failed = true
-		log_csr("_check_interrupted_heist: heist interrupted past grace -> run marked FAILED")
-	else
-		log_csr("_check_interrupted_heist: heist interrupted within grace -> forgiven")
-	end
+	log_csr("_check_interrupted_heist: heist interrupted (crash/alt-F4/quit-to-desktop) -> forgiven")
 	self._state.in_heist = false
 	self._state.heist_grace_over = false
 	self:save()
 end
 
--- Pending rewards captured from a leftover pre-install VANILLA Crime Spree (see end_spree_rewards.lua).
--- Stored in _meta so they survive a relaunch until the player claims them via the reward screen.
+-- Leftover vanilla CS rewards captured before CSR was installed; claimed on next reward screen.
 function CSRGameManager:set_pending_vanilla_rewards(rewards)
 	self._meta.pending_vanilla_rewards = rewards
 	self:save()
@@ -682,9 +647,7 @@ function CSRGameManager:setting(key)
 	return self._meta.settings[key]
 end
 
--- defer_save: update the in-memory setting only (sound.lua etc. read it live) and skip the disk
--- write. Used by slider drag so we don't write csr_save.json every mouse-moved frame; the caller
--- commits one save on mouse_released.
+-- defer_save: update in-memory only (skip disk write). Use for slider drag; caller saves on mouse_released.
 function CSRGameManager:set_setting(key, value, defer_save)
 	self._meta.settings[key] = value
 	if key == "debug_mode" then
@@ -702,8 +665,7 @@ function CSRGameManager:item_heal_blocked()
 end
 
 -- =====================================================
--- Debug logging
--- _debug_stat logs only on value change to avoid flooding per-frame stat bonuses.
+-- Debug logging (_debug_stat logs only on value change to avoid per-frame flood)
 -- =====================================================
 
 function CSRGameManager:debug_enabled()
@@ -775,8 +737,7 @@ end
 -- Event registration
 -- =====================================================
 
--- Registers fn and returns an unsubscribe token. UI components MUST call it on teardown
--- or closures stack up for every lobby open.
+-- Returns an unsubscribe token; UI components MUST call it on teardown or closures stack per lobby open.
 local function register_callback(list, fn)
 	if type(fn) ~= "function" then
 		return function() end
@@ -858,8 +819,7 @@ function CSRGameManager:load()
 			self._meta[k] = v
 		end
 	end
-	-- version tracks the RUNNING mod, not whatever wrote the save (the merge above would
-	-- otherwise freeze a stale value forever). decoded.version is kept for the log/migration.
+	-- Always stamp the RUNNING version (not the saved one) so stale values don't freeze.
 	self._meta.version = CSRGameManager.VERSION
 	if type(decoded.state) == "table" then
 		for k, v in pairs(decoded.state) do
@@ -870,7 +830,7 @@ function CSRGameManager:load()
 	return true
 end
 
--- Static setting read before managers.csr exists (MenuManager:init runs before init_managers PostHook).
+-- Read a setting before managers.csr exists (MenuManager:init precedes init_managers PostHook).
 function CSRGameManager.peek_setting(key)
 	local f = io.open(save_path(SAVE_FILE), "r")
 	if not f then
@@ -932,8 +892,7 @@ Hooks:PostHook(Setup, "init_managers", "CSR_AttachGameManager", function(self, m
 	managers.csr = CSRGameManager:new()
 end)
 
--- Peer ids are reassigned when a new network session loads (join/host). Drop the
--- cached local peer id so the next query re-resolves it for the new session.
+-- Peer ids are reassigned per session; drop the cache so the next query re-resolves.
 Hooks:Add("BaseNetworkSessionOnLoadComplete", "CSR_ResetLocalPeerIdCache", function()
 	if managers and managers.csr then
 		managers.csr._cached_local_peer_id = nil

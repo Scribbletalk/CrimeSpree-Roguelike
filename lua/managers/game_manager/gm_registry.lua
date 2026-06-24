@@ -9,7 +9,7 @@ local function log_csr(msg)
 	end
 end
 
--- ===================================================== Registration
+-- Registration
 
 local KNOWN_RARITIES = {
 	common = true,
@@ -49,7 +49,7 @@ function CSRGameManager:register_item(def)
 		log("[CSR] register_item: '" .. t .. "' unknown rarity '" .. tostring(def.rarity) .. "' — skipped")
 		return false
 	end
-	-- effect is optional: declarative kind, callback escape-hatch, or passport-only (hooks in the item file).
+	-- effect is optional (hooks may live entirely in the item file).
 	local effect = def.effect
 	if effect ~= nil then
 		if type(effect) ~= "table" or not KNOWN_EFFECT_KINDS[effect.kind] then
@@ -60,14 +60,14 @@ function CSRGameManager:register_item(def)
 		end
 	end
 
-	-- Optional addon attribution for MP mismatch warnings. Non-string values are dropped but don't block registration.
+	-- Optional addon attribution for MP mismatch warnings; non-string values are dropped silently.
 	local addon = def.addon
 	if addon ~= nil and type(addon) ~= "string" then
 		log_csr("register_item: '" .. t .. "' ignoring non-string 'addon' field (got " .. type(addon) .. ")")
 		addon = nil
 	end
 
-	-- Optional icon scale multiplier (1.0 = default). Non-number values are dropped but don't block registration.
+	-- Optional icon scale multiplier (1.0 = default); non-number values dropped silently.
 	local icon_scale = def.icon_scale
 	if icon_scale ~= nil and type(icon_scale) ~= "number" then
 		log_csr("register_item: '" .. t .. "' ignoring non-number 'icon_scale' field (got " .. type(icon_scale) .. ")")
@@ -79,15 +79,12 @@ function CSRGameManager:register_item(def)
 		rarity = def.rarity,
 		name = def.name,
 		desc = def.desc,
-		-- Logbook detail text (optional).
 		full_desc = def.full_desc,
 		notes = def.notes,
 		icon = def.icon,
 		icon_scale = icon_scale,
-		-- Scrapper output; excluded from the selection-window roll.
-		is_scrap = def.is_scrap == true or nil,
-		-- Number macros for $-substitution in localized desc/effect/notes; single-sourced from the
-		-- def's tuning constants so a balance change auto-updates the text. Resolved via CSR.item_text.
+		is_scrap = def.is_scrap == true or nil, -- excluded from the selection-window roll
+		-- $-macro substitution in loc strings; single-sourced from the def's tuning constants.
 		loc_macros = def.loc_macros,
 		effect = effect,
 		on_apply = def.on_apply,
@@ -97,7 +94,7 @@ function CSRGameManager:register_item(def)
 	}
 	table.insert(self._registry.items, entry)
 	self._registry.by_type[t] = entry
-	-- Index by kind so dispatchers iterate only the relevant items (rebuilt on each init).
+	-- Index by effect kind for fast dispatcher iteration.
 	if effect then
 		local bucket = self._registry.by_kind[effect.kind]
 		if not bucket then
@@ -106,7 +103,7 @@ function CSRGameManager:register_item(def)
 		end
 		bucket[#bucket + 1] = entry
 	end
-	-- An item may have both an effect kind and callbacks; index them independently.
+	-- Items may have both an effect kind and callbacks; index both.
 	if entry.on_apply or entry.on_remove or entry.on_tick then
 		self._registry.callback_items[#self._registry.callback_items + 1] = entry
 	end
@@ -119,9 +116,8 @@ function CSRGameManager:registered_items()
 	return self._registry.items
 end
 
--- Sorted unique set of addon names across registered items + modifiers (lowercased).
--- Reads the raw _G.CSR registration lists (auto-stamped addon field) so a modifier-only
--- addon is included. Drives the MP join-gate (guest missing any host addon is blocked).
+-- Sorted unique addon names across all registrations (lowercased).
+-- Reads raw _G.CSR lists so modifier-only addons are included; drives the MP join-gate.
 function CSRGameManager:addon_signature()
 	local seen = {}
 	local function collect(list)
@@ -145,7 +141,7 @@ function CSRGameManager:addon_signature()
 	return out
 end
 
--- Icon scale multiplier for one item type (1.0 default). Used by all three icon-drawing surfaces.
+-- Icon scale multiplier for one item type (1.0 default).
 function CSRGameManager:item_icon_scale(item_type)
 	local entry = item_type and self._registry.by_type[item_type]
 	return (entry and entry.icon_scale) or 1
@@ -153,10 +149,10 @@ end
 
 -- =====================================================
 -- Modifiers (Crime Spree difficulty mods)
--- Each rank adds 1 loud + 1 stealth modifier, derived deterministically from (seed, rank).
--- Registry-driven: each modifier self-registers from lua/modifiers/<id>.lua.
+-- One loud + one stealth unlocks every 2 ranks; order derived deterministically from (seed, rank).
+-- =====================================================
 
--- Park-Miller LCG: reproducible shuffle from the run seed without touching math.random state.
+-- Park-Miller LCG: reproducible per-spree shuffle without touching math.random state.
 local function csr_modifier_rng(seed)
 	local state = (seed or 0) % 2147483647
 	if state <= 0 then
@@ -168,7 +164,7 @@ local function csr_modifier_rng(seed)
 	end
 end
 
--- Deterministic Fisher-Yates shuffle; returns a new array (catalog is never mutated).
+-- Fisher-Yates shuffle; returns a new array (catalog is never mutated).
 local function csr_shuffled(pool, seed)
 	local arr = {}
 	for i = 1, #pool do
@@ -182,8 +178,7 @@ local function csr_shuffled(pool, seed)
 	return arr
 end
 
--- Deterministic stealth sequence: seeded-random family pick + ascending tier order.
--- Returns the full sequence; active_modifiers slices the first n entries.
+-- Stealth sequence: seeded-random family order, ascending tier within each family.
 local function csr_stealth_sequence(families, seed)
 	local rnd = csr_modifier_rng(seed)
 	local taken = {}
@@ -215,7 +210,7 @@ local function csr_stealth_sequence(families, seed)
 	return out
 end
 
--- Stable id-sorted copy so the shuffle is independent of file load order.
+-- Stable sort so the shuffle is independent of file load order.
 local function csr_sorted_by_id(list)
 	local arr = {}
 	for i = 1, #list do
@@ -227,8 +222,7 @@ local function csr_sorted_by_id(list)
 	return arr
 end
 
--- Register one modifier from its passport; validates, dedupes by id, replayed on each init.
--- category "loud" or "stealth"; class/data optional (missing class is listed in UI but not applied).
+-- Register a modifier; validates and dedupes by id. Missing class = listed in UI but not applied.
 function CSRGameManager:register_modifier(def)
 	if type(def) ~= "table" then
 		log("[CSR] register_modifier: definition not a table — skipped")
@@ -274,21 +268,14 @@ function CSRGameManager:register_modifier(def)
 	return true
 end
 
--- Read-only modifier registry { loud = {...}, stealth_families = {...}, by_id }.
+-- Read-only registry { loud, stealth_families, by_id }.
 function CSRGameManager:modifier_catalog()
 	return self._registry.modifiers
 end
 
--- Build & FREEZE the per-spree modifier order once, then persist it. Before this, the
--- active set was re-derived from (seed, current pool) on every call -- so adding or
--- removing a modifier (e.g. installing an add-on) reshuffled an in-progress spree's
--- already-active modifiers. Freezing the sequence per spree fixes that: new content only
--- enters on a fresh spree (start_run clears it). loud is stored as ids and re-resolved
--- through by_id (a since-removed modifier simply drops out); stealth tiers are synthesized
--- per-tier and not in by_id, so their full self-contained entries are stored.
--- Deterministic per-spree sequence from a seed: loud stored as ids (re-resolved through by_id so
--- a since-removed modifier drops out), stealth as full synthesized entries. Host and guest build
--- the SAME sequence from the same seed value (Park-Miller LCG + Fisher-Yates).
+-- Build the per-spree modifier order from seed (Park-Miller LCG + Fisher-Yates).
+-- Loud stored as ids (re-resolved through by_id; removed mods drop out), stealth as full entries.
+-- Host and guest build the SAME sequence from the same seed; frozen on first use per spree.
 function CSRGameManager:_build_modifier_seq(seed)
 	seed = seed or 0
 	local mods = self._registry.modifiers
@@ -310,9 +297,8 @@ function CSRGameManager:_ensure_modifier_seq()
 	self:save()
 end
 
--- Resolve the frozen sequence for the run currently shown/applied. While guesting, build it
--- transiently from the HOST's synced seed (cached per host_seed, NEVER persisted -- the guest's
--- own _state.modifier_seq belongs to the guest's own spree). Otherwise use the persistent one.
+-- Return the frozen sequence for the active run. While guesting, build transiently from the
+-- host's seed (cached per host_seed, never persisted -- the guest's own seq is their own spree).
 function CSRGameManager:_resolve_modifier_seq()
 	if self:_is_guesting() then
 		local hseed = self._state.mp_session and self._state.mp_session.host_seed or 0
@@ -327,13 +313,9 @@ function CSRGameManager:_resolve_modifier_seq()
 	return self._state.modifier_seq
 end
 
--- Tombstone frozen-seq slots whose loud modifier is no longer registered (add-on removed).
--- The slot becomes `false` and is persisted, so RE-INSTALLING the add-on does NOT restore it
--- to an in-progress spree -- it stays dropped until a fresh spree (start_run re-rolls). Run at
--- init AFTER registrations replay (by_id reflects the currently installed add-ons). No backfill:
--- a dropped slot is just skipped, the spree keeps one fewer active modifier. (Stealth slots are
--- left as-is here: active_modifiers re-resolves them from the live registry per use, so a removed
--- stealth family drops out and a reworked one refreshes there -- no storage tombstone needed.)
+-- Tombstone loud-seq slots whose modifier is no longer registered (add-on removed).
+-- Slot becomes `false`; re-installing the add-on does NOT restore it until a fresh spree.
+-- Stealth slots are left as-is (active_modifiers re-resolves them live).
 function CSRGameManager:_prune_modifier_seq()
 	local seq = self._state.modifier_seq
 	if not (seq and type(seq.loud) == "table") then
@@ -353,12 +335,8 @@ function CSRGameManager:_prune_modifier_seq()
 	end
 end
 
--- Re-synthesize a frozen stealth-seq slot from the LIVE registry. The family is looked up by
--- the family id embedded in the stored entry id ("family_<tier>"); only that id (the frozen tier
--- identity) is read -- the stored entry's baked class/data/loc are ignored. Mirrors loud's by_id
--- re-resolution: a reworked mechanic (changed class/data/loc) applies to an in-progress spree, an
--- old-version save's stale baked payload is replaced with the current effect, and a since-removed
--- family drops out (returns nil). Fixes old saves applying the pre-rework stealth mechanic.
+-- Re-synthesize a stealth slot from the LIVE registry by parsing "family_<tier>" from the stored id.
+-- Mirrors loud's by_id re-resolution: reworked mechanics update in-progress sprees; removed families return nil.
 function CSRGameManager:_resolve_stealth_entry(stored)
 	if not stored or stored == false then
 		return nil
@@ -379,10 +357,8 @@ function CSRGameManager:_resolve_stealth_entry(stored)
 	}
 end
 
--- Active modifiers for the current run: the frozen per-spree sequence sliced to rank
--- (one more unlocks every 2 ranks). Frozen at first use, so pool changes never reshuffle it.
--- Both categories re-resolve their payload from the live registry (loud by id, stealth by tier
--- identity) so reworked mechanics reach in-progress sprees and removed modifiers drop out.
+-- Frozen sequence sliced to rank (one new modifier per 2 ranks).
+-- Both categories re-resolve payload from the live registry so reworks apply and removed mods drop out.
 function CSRGameManager:active_modifiers(category)
 	local rank = self:host_rank() or 0
 	if rank <= 0 then
@@ -399,9 +375,9 @@ function CSRGameManager:active_modifiers(category)
 	for i = 1, n do
 		local entry = seq[i]
 		if category == "loud" then
-			entry = by_id[entry] -- stored as id; re-resolve so a since-removed modifier drops out
+			entry = by_id[entry] -- re-resolve by id; removed mods return nil and drop out
 		else
-			entry = self:_resolve_stealth_entry(entry) -- re-synthesize from live registry (rework / old-save migration)
+			entry = self:_resolve_stealth_entry(entry) -- re-synthesize from live registry
 		end
 		if entry then
 			out[#out + 1] = entry
@@ -410,13 +386,11 @@ function CSRGameManager:active_modifiers(category)
 	return out
 end
 
--- ===================================================== New-modifier highlight (Modifiers panel)
--- Lets the Modifiers panel blue-tint the modifiers unlocked by the MOST RECENT mission and flash a
--- one-shot red/blue siren. The unlock count is ceil(rank/2) (one new modifier per 2 ranks, mirroring
--- active_modifiers' slice); modifier_hl_floor is the count that existed BEFORE the latest unlock, so
--- entries at sequence index > floor are "new". host_rank-driven, so it follows the host while guesting.
+-- =====================================================
+-- New-modifier highlight (Modifiers panel)
+-- Entries above modifier_hl_floor are newly unlocked by the latest mission. Drives blue tint + siren.
+-- =====================================================
 
--- Number of modifiers unlocked for the current run (matches active_modifiers' rank slice).
 function CSRGameManager:_modifier_unlock_count()
 	local rank = self:host_rank() or 0
 	if rank <= 0 then
@@ -425,11 +399,8 @@ function CSRGameManager:_modifier_unlock_count()
 	return math.ceil(rank / 2)
 end
 
--- Observe the unlock count; when it GREW since the last observation, move the floor to the pre-growth
--- count (only the newest batch stays flagged) and arm the glow. Called at mission completion (host/SP,
--- per-mission precision) and on every panel build (guest + safety net). A nil seen-count means an
--- in-progress save predating this feature: baseline silently (no retroactive flash). A shrink (fresh
--- spree, or guesting a lower-rank host) re-baselines without flashing.
+-- Update the floor when the unlock count grows; arms the glow for the panel siren.
+-- Nil seen-count (old save) baselines silently; shrink (fresh spree) re-baselines without flash.
 function CSRGameManager:refresh_modifier_highlight()
 	local count = self:_modifier_unlock_count()
 	local seen = self._state.modifier_hl_count
@@ -450,13 +421,12 @@ function CSRGameManager:refresh_modifier_highlight()
 	end
 end
 
--- Sequence-index threshold for the Modifiers panel: entries at index > floor are newly unlocked.
--- nil (never grew) -> nothing highlighted.
+-- Entries at sequence index > floor are newly unlocked; nil means nothing highlighted.
 function CSRGameManager:modifier_highlight_floor()
 	return self._state.modifier_hl_floor
 end
 
--- One-shot: true the first time after new modifiers unlocked, then cleared (drives the 3s siren).
+-- One-shot: true once after new modifiers unlock, then cleared (drives the 3s siren).
 function CSRGameManager:consume_modifier_glow()
 	if self._state.modifier_glow_pending then
 		self._state.modifier_glow_pending = nil
@@ -466,8 +436,7 @@ function CSRGameManager:consume_modifier_glow()
 	return false
 end
 
--- Retire the blue-tint floor after the panel's 5s fade-out so the highlight never returns. Leaves
--- modifier_hl_count intact, so the next unlock (count grows past it) re-arms the floor + glow.
+-- Clear the floor after the panel's 5s fade; leaves hl_count intact so the next unlock re-arms it.
 function CSRGameManager:clear_modifier_highlight()
 	if self._state.modifier_hl_floor ~= nil then
 		self._state.modifier_hl_floor = nil
@@ -479,11 +448,9 @@ end
 local ENEMY_HEALTH_PCT_PER_RANK = 5
 local ENEMY_DAMAGE_PCT_PER_RANK = 5
 
--- Restore pristine enemy HEALTH_INIT so ModifierEnemyHealth (which multiplies it in place and never
--- reverts) can't compound on re-fire. Runs on host AND client: each machine must inflate its OWN
--- tweak_data, because client-dealt bullet damage is synced as a FRACTION of the LOCAL _HEALTH_INIT
--- (copdamage damage_bullet -> sync_damage_bullet) -- without it, enemies are tanky only vs the host's
--- weapons. Returns (restored_count, snapshotted) for logging.
+-- Restore pristine HEALTH_INIT before each apply (ModifierEnemyHealth multiplies in place, never reverts).
+-- Runs on host AND client; each machine must inflate its own tweak_data to prevent tanky-vs-host-only.
+-- See pd2_enemy_hp_must_scale_on_client_too.md.
 function CSRGameManager:_restore_enemy_health_baseline()
 	local ctd = tweak_data and tweak_data.character
 	if not (ctd and ctd.enemy_list) then
@@ -514,30 +481,15 @@ function CSRGameManager:apply_modifiers()
 	if not managers or not managers.modifiers then
 		return
 	end
-	-- Clear our category first for idempotency (managers.modifiers is rebuilt per heist, but the hook may re-fire).
+	-- Clear CSR category first for idempotency (hook may re-fire within a heist).
 	if managers.modifiers._modifiers then
 		managers.modifiers._modifiers.csr = nil
 	end
 
-	-- Client: apply enemy HP + DAMAGE scaling locally (the host-only spawn/pager/group_ai mutations below
-	-- stay host-authoritative). Both are LOCAL changes, no networking:
-	--   * Enemy DAMAGE: ModifierEnemyDamage scales "PlayerDamage:TakeDamageBullet", computed on the victim
-	--     -- the client must run it so enemy->local-player damage is inflated.
-	--   * Enemy HP: ModifierEnemyHealth inflates the client's OWN tweak_data HEALTH_INIT. Client-dealt
-	--     bullet damage is synced as a FRACTION of the local _HEALTH_INIT (copdamage damage_bullet ->
-	--     sync_damage_bullet); without inflating it here, enemies are tanky only vs the host's weapons.
-	-- Re-applied when host_rank arrives mid-load (see HANDSHAKE_OK in mp_session.lua).
+	-- Client: apply HP + damage scaling locally (spawn/pager/group_ai mutations are host-only).
+	-- Re-applied when host_rank arrives mid-load (HANDSHAKE_OK in mp_session.lua).
 	if not Network:is_server() then
 		local rank = self:host_rank() or 0
-		-- TEMP MP-sync test: compare rank/percent against the host log. STRIP. [CSR][mptest]
-		csr_log(
-			string.format(
-				"[CSR][mptest][heist] enemy_scaling role=client rank=%d -> +%d%% HP, +%d%% DMG",
-				rank,
-				rank * ENEMY_HEALTH_PCT_PER_RANK,
-				rank * ENEMY_DAMAGE_PCT_PER_RANK
-			)
-		)
 		if rank > 0 then
 			if _G.ModifierEnemyHealth then
 				self:_restore_enemy_health_baseline()
@@ -564,9 +516,7 @@ function CSRGameManager:apply_modifiers()
 		return
 	end
 
-	-- ModifierLessPagers / ModifierCSRPagerResponse mutate alarm_pager in place and never revert
-	-- (BaseModifier:destroy is a no-op). Snapshot pristine arrays once; restore before every apply
-	-- to prevent compounding. call_duration is the pager ring window shrunk by Keen Dispatch.
+	-- Pager modifiers mutate alarm_pager in place (BaseModifier:destroy is a no-op); snapshot + restore to prevent compounding.
 	local ap = tweak_data and tweak_data.player and tweak_data.player.alarm_pager
 	if ap and type(ap.bluff_success_chance) == "table" then
 		_G.CSR_PagerBaseline = _G.CSR_PagerBaseline
@@ -584,8 +534,7 @@ function CSRGameManager:apply_modifiers()
 		end
 	end
 
-	-- ModifierEnemyHealth multiplies HEALTH_INIT in place and never reverts; restore pristine first.
-	-- (ModifierEnemyDamage uses modify_value, no mutation needed.)
+	-- Restore pristine HEALTH_INIT before applying (ModifierEnemyDamage uses modify_value, no snapshot needed).
 	local restored, snapshotted = self:_restore_enemy_health_baseline()
 	self:debug_log(
 		string.format(
@@ -595,9 +544,7 @@ function CSRGameManager:apply_modifiers()
 		)
 	)
 
-	-- Same trap for modifiers that mutate tweak_data.group_ai in place and never revert:
-	-- special_unit_spawn_limits (more medics/dozers), FBI_tank.unit_types (dozer-type appends),
-	-- marshal_squad.amount (marshal reinforcements). Snapshot once, restore before every apply.
+	-- group_ai fields (spawn limits, FBI_tank unit types, marshal amounts) also mutate in place; snapshot + restore.
 	local gai = tweak_data and tweak_data.group_ai
 	if gai then
 		local ssl = gai.special_unit_spawn_limits
@@ -612,7 +559,7 @@ function CSRGameManager:apply_modifiers()
 		local unit_types = fbi_tank and fbi_tank.unit_types
 		if type(unit_types) == "table" then
 			_G.CSR_FBITankUnitTypesBaseline = _G.CSR_FBITankUnitTypesBaseline or clone(unit_types)
-			-- Fresh clone per region so a later table.insert can't grow the baseline itself.
+			-- Fresh clone per region so table.insert can't grow the baseline.
 			for region, list in pairs(_G.CSR_FBITankUnitTypesBaseline) do
 				unit_types[region] = clone(list)
 			end
@@ -626,8 +573,7 @@ function CSRGameManager:apply_modifiers()
 			end
 		end
 
-		-- ModifierShieldPhalanx overwrites these shield categories with a Phalanx clone and never
-		-- restores; snapshot the pristine ones so a later spree WITHOUT phalanx gets normal shields.
+		-- ModifierShieldPhalanx overwrites shield categories and never restores; snapshot for sprees without phalanx.
 		local uc = gai.unit_categories
 		if uc and uc.CS_shield and uc.FBI_shield then
 			_G.CSR_ShieldCategoryBaseline = _G.CSR_ShieldCategoryBaseline
@@ -637,7 +583,7 @@ function CSRGameManager:apply_modifiers()
 		end
 	end
 
-	-- Aggregate active loud + stealth modifiers by engine class for vanilla stacking.
+	-- Aggregate active modifiers by engine class; same class from multiple slots gets merged.
 	local to_activate = {}
 	for _, category in ipairs({ "loud", "stealth" }) do
 		for _, entry in ipairs(self:active_modifiers(category)) do
@@ -663,18 +609,8 @@ function CSRGameManager:apply_modifiers()
 		end
 	end
 
-	-- Per-rank HP/damage scaling is continuous so it's injected directly, not passport-registered.
+	-- Per-rank HP/damage scaling injected directly (not passport-registered).
 	local rank = self:host_rank() or 0
-	-- TEMP MP-sync test: host applies enemy HP + DMG for the whole crew (HP mutates tweak_data, synced
-	-- to clients via the spawned units). Compare rank against each client log. STRIP. [CSR][mptest]
-	csr_log(
-		string.format(
-			"[CSR][mptest][heist] enemy_scaling role=host rank=%d -> +%d%% HP, +%d%% DMG",
-			rank,
-			rank * ENEMY_HEALTH_PCT_PER_RANK,
-			rank * ENEMY_DAMAGE_PCT_PER_RANK
-		)
-	)
 	if rank > 0 then
 		to_activate["ModifierEnemyHealth"] = { health = rank * ENEMY_HEALTH_PCT_PER_RANK }
 		to_activate["ModifierEnemyDamage"] = { damage = rank * ENEMY_DAMAGE_PCT_PER_RANK }
@@ -701,7 +637,7 @@ function CSRGameManager:apply_modifiers()
 	log_csr("apply_modifiers: applied " .. applied .. " modifier(s)")
 end
 
--- Enemy HP% and DMG% scaling for the Modifiers panel header (single source of truth with apply_modifiers).
+-- HP%/DMG% for the Modifiers panel header; mirrors apply_modifiers' constants.
 function CSRGameManager:enemy_scaling()
 	local rank = self:host_rank() or 0
 	return rank * ENEMY_HEALTH_PCT_PER_RANK, rank * ENEMY_DAMAGE_PCT_PER_RANK

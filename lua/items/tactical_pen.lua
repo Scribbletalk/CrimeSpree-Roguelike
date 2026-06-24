@@ -1,9 +1,6 @@
--- Tactical Pen (common) — +damage to enemies within 5m of you.
--- Looks like an office pen, hits like a weapon up close. Target-side scaling on CopDamage
--- (one PreHook per damage variant), gated by attacker = local player + victim within RADIUS
--- of the player. A flat translucent ring on the ground shows the radius.
--- No networking: damage routes through vanilla (see csr_damage_amplification_pattern.md);
--- the ring is a personal, owner-local indicator drawn each frame.
+-- Tactical Pen (common): +damage to enemies near you, shown by a ground ring.
+-- Target-side scaling on CopDamage, gated by local-player attacker + victim in RADIUS.
+-- No networking - damage routes through vanilla. See csr_damage_amplification_pattern.md.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -12,13 +9,12 @@ end
 local RADIUS = 500 -- 5m (PD2 units: 1m = 100)
 local BONUS = 0.13 -- +13% damage per stack (additive / linear)
 
--- Ring visual: white, semi-transparent. A flat circle outline on the ground at the player's feet,
--- built from line segments (Draw:pen ignores alpha -> opaque; only a brush with opacity_add blends).
-local RING_ALPHA = 0.1 -- opacity_add blend; 
-local RING_COLOR = { 1, 1, 1 } -- r, g, b (white)
+-- Ring visual: flat white circle on the ground, built from line segments (Draw:pen ignores alpha).
+local RING_ALPHA = 0.1 -- opacity_add blend
+local RING_COLOR = { 1, 1, 1 } -- white
 local RING_SEGMENTS = 64 -- circle smoothness
 local RING_WIDTH = 2 -- line thickness
-local RING_Z = 4 -- lift slightly off the floor to avoid z-fighting
+local RING_Z = 4 -- lift off the floor to avoid z-fighting
 
 local function csr_mgr()
 	local mgr = managers and managers.csr
@@ -64,9 +60,7 @@ local function apply_tactical_pen(self, attack_data)
 	attack_data.damage = attack_data.damage * (1 + BONUS * stacks)
 end
 
--- Owner-local radius ring: flat translucent circle at the player's feet, while owned + in heist.
--- Built from straight segments (math.cos/sin take DEGREES in Diesel) so a brush with opacity_add
--- can blend it; Draw:pen would render opaque (it has no blend mode / ignores alpha).
+-- Owner-local radius ring at the player's feet (math.cos/sin take DEGREES in Diesel).
 local function draw_ring()
 	local mgr = csr_mgr()
 	if not mgr or (mgr:owned("tactical_pen") or 0) <= 0 then

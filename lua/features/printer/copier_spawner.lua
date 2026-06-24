@@ -455,10 +455,9 @@ local function broadcast_copier_spawn(unit, pos, rot, offer_type)
 	_G.CSR_MP.broadcast_prop(_G.CSR_MP.MSG.COPIER_SPAWN, payload)
 end
 
--- Shared spawn core; triple-disables collision so it doesn't push players.
--- spawn_key: the cross-peer printer identity (host's unit:key()). Host callers pass nil
--- and we derive it from the new unit; clients pass the key received in the spawn broadcast
--- so every peer's copy of the same printer shares one key (used by COPIER_USE replication).
+-- Shared spawn core; triple-disables collision so the copier doesn't push players.
+-- spawn_key: host passes nil (derived from new unit); clients pass the key from the broadcast
+-- so every peer's copy of the same printer shares one identity (used by COPIER_USE relay).
 local function _spawn_copier(pos, rot, offer_def, spawn_key)
 	local ok, unit = pcall(World.spawn_unit, World, UNIT_NAME, pos, rot)
 	if not ok or not alive(unit) then
@@ -1282,8 +1281,6 @@ local function on_copier_spawn(payload)
 		end
 		-- Pass the host's key so this client copy shares the printer identity (COPIER_USE).
 		_spawn_copier(pos, rot, offer_def, key)
-		-- TEMP MP-sync test: confirm the client actually mirrored the host's printer. STRIP. [CSR][mptest]
-		csr_log("[CSR][mptest][heist] copier mirrored on client key=" .. tostring(key))
 	end
 
 	if is_ready() then
@@ -1297,11 +1294,9 @@ local function on_copier_spawn(payload)
 	end
 end
 
--- Register the prop-spawn handler LAZILY. At file-load time _G.CSR_MP may not exist:
--- this file hooks lib/setups/setup, which can run BEFORE mp_sync.lua's lib/entry hook
--- creates CSR_MP, so a file-scope register_handler silently no-ops and the client never
--- mirrors host prop spawns. Defer to BaseNetworkSessionOnLoadComplete (fires in the
--- game/network state after CSR_MP is up, before the host broadcasts).
+-- Register handler lazily: this file hooks lib/setups/setup which runs before mp_sync.lua
+-- creates CSR_MP, so a file-scope register_handler silently no-ops. Defer to
+-- BaseNetworkSessionOnLoadComplete (CSR_MP is up by then, before the host broadcasts).
 local _copier_handler_registered = false
 local function register_copier_handler()
 	if _copier_handler_registered then
@@ -1313,8 +1308,7 @@ local function register_copier_handler()
 	_G.CSR_MP.register_handler(_G.CSR_MP.MSG.COPIER_SPAWN, function(sender, data)
 		on_copier_spawn(data)
 	end)
-	-- Printer-use replication: play the lid anim + sfx on this peer's copy, then (host
-	-- only) relay to the other clients so a client-originated use reaches everyone.
+	-- COPIER_USE: play lid anim + sfx locally; host relays to other peers.
 	if _G.CSR_MP.MSG.COPIER_USE then
 		_G.CSR_MP.register_handler(_G.CSR_MP.MSG.COPIER_USE, function(sender, data, sender_num)
 			local c = find_copier_by_spawn_key(tostring(data))

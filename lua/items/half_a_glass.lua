@@ -1,8 +1,6 @@
--- Half-a-Glass (common) — Gage package pickup refills ammo and raises max ammo.
--- Per pickup, for primary + secondary (+ underbarrel): raise max ammo by
--- first% + (stacks-1)*extra% of the CAPTURED base max, multiplied by pickup count
--- (repeats stack), then refill refill% of the new max.
--- MP: host carries SP and host's own pickup via sync_pickup; clients apply via _pickup.
+-- Half-a-Glass (common) - Gage package pickup refills ammo and raises max ammo cap.
+-- Each pickup grows max by (first% + extra%*(stacks-1)) * pickup_count, then refills refill% of new max.
+-- MP: host applies via sync_pickup (own pickup only); clients apply via _pickup hook.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -125,9 +123,7 @@ _G.CSR.register_item({
 			_G._CSR_HALF_A_GLASS_HOOKED = true
 
 			Hooks:PostHook(GageAssignmentBase, "sync_pickup", "CSR_HalfAGlass_SyncPickup", function(self, peer)
-				-- Host's OWN pickup only. On a client, sync_pickup fires (peer=nil) for every
-				-- peer's pickup via sync_net_event; on the host a non-nil peer is a remote
-				-- client's relayed pickup. Clients apply their own pickup via the _pickup hook.
+				-- Host's own pickup only; non-nil peer = remote client relay, clients use _pickup below.
 				if Network:is_client() or peer ~= nil then
 					return
 				end

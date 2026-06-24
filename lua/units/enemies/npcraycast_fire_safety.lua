@@ -1,20 +1,8 @@
--- Crime Spree Roguelike - guard vanilla NPC fire against a freed aim-target (LIES MWS / FSS compat).
--- Aggressive enemy-AI mods (LIES MWS, Full Speed Swarm) drive cops to fire so fast that the aim
--- target gets freed WITHIN a single _fire_raycast call: on_collision (vanilla line 376) can apply
--- area/explosion damage that destroys target_unit while col_ray.unit is a different unit, so the
--- build_suppression branch (vanilla line 379-380: target_unit:character_damage()) then dereferences
--- dead userdata -> native access violation. pcall/crashfixes cannot catch it (they wrap copactionshoot
--- ABOVE this frame). Vanilla guards target_unit with alive() in _check_smoke_shot (line 412) but the
--- build_suppression branch uses only a bare nil-check, which dead userdata passes.
---
--- An arg-sanitizing PreHook is INSUFFICIENT: it can only see target_unit at function ENTRY, before
--- on_collision frees it. The unsafe derefs are intra-function, so the only fix is to own the body and
--- re-validate at each deref site. This is a VERBATIM mirror of vanilla NPCRaycastWeaponBase:_fire_raycast
--- (npcraycastweaponbase.lua:345-408, game 1.152.269) with TWO added liveness guards (both search "CSR GUARD"):
---   1. on_collision call (vanilla line 375-376): gated on alive(col_ray.unit) - World:raycast can return
---      a unit freed this frame, and InstantBulletBase:on_collision derefs col_ray.unit:damage() unguarded.
---   2. build_suppression branch (vanilla line 379): alive(target_unit) instead of a bare `target_unit and`.
--- Re-diff against vanilla if the game ever updates this function. NOT a CSR bug (no CSR frame in the stack).
+-- Verbatim mirror of NPCRaycastWeaponBase:_fire_raycast (npcraycastweaponbase.lua:345-408,
+-- game 1.152.269) with two added alive() guards marked "CSR GUARD". LIES MWS / FSS can free
+-- target_unit mid-call (on_collision fires area damage) -> dead userdata AV on build_suppression.
+-- PreHook can't fix this (target freed after entry); must own the body. NOT a CSR bug.
+-- Re-diff against vanilla if the game updates this function. See pd2_mia_npcraycast_fire_native_av.md.
 
 if not RequiredScript or not NPCRaycastWeaponBase then
 	return
@@ -68,16 +56,17 @@ function NPCRaycastWeaponBase:_fire_raycast(
 
 	local char_hit = nil
 
-	-- CSR GUARD: alive(col_ray.unit) added vs vanilla. World:raycast can return a unit set_slot(0)'d
-	-- this frame (AI mod churn); InstantBulletBase:on_collision derefs `col_ray.unit:damage()`
-	-- (raycastweaponbase.lua:2693) with no liveness check -> AV on dead userdata. Skip the hit if gone.
-	if not player_hit and col_ray and alive(col_ray.unit) then
+	-- CSR GUARD: alive() added vs vanilla. on_collision derefs col_ray.unit:damage(),
+	-- col_ray.body:extension() (2694, unguarded - vanilla guards same at vehicledrivingext:1865),
+	-- and this frame derefs self._unit:base(); any can be freed mid-frame (ragdoll body-swap /
+	-- cop disposed mid-action) -> native AV. Skip applies no damage to a dying entity (harmless).
+	if not player_hit and col_ray and alive(col_ray.unit) and alive(col_ray.body) and alive(self._unit) then
 		char_hit =
 			self._unit:base():bullet_class():on_collision(col_ray, self._unit, user_unit, damage, self._fires_blanks)
 	end
 
-	-- CSR GUARD: alive(target_unit) replaces vanilla's bare `target_unit and` - on_collision above
-	-- may have freed target_unit this frame, and dead userdata would AV on :character_damage().
+	-- CSR GUARD: alive(target_unit) replaces vanilla's bare `target_unit and` - on_collision
+	-- above may free target_unit; dead userdata AVs on :character_damage().
 	if
 		not shoot_player
 		and (not col_ray or col_ray.unit ~= target_unit)

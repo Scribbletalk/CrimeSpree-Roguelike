@@ -1,17 +1,6 @@
--- Rebuilds the in-game ESC (pause) right panel for Crime Spree Roguelike.
--- CSR runs heists in the STANDARD gamemode (it never enables the CS gamemode),
--- so managers.crime_spree:is_active() is false and the pause panel is the
--- regular IngameContractGui -- NOT the CrimeSpree variant. Vanilla fills it from
--- the temporary "crime_spree" job, whose briefing_id is "heist_crime_spree_brief"
--- (no such loc key -> "ERROR: ..." text). We detect a CSR heist by that temp job
--- id and rebuild from CSR-valid data.
---
--- Layout:
---   <MISSION NAME>              (big, where vanilla's "CONTRACT" header sat)
---   CRIME SPREE RANK: N [CS]    (label white, number yellow, then CS icon)
---   DIFFICULTY: [skulls] NAME    (risk skulls + difficulty name, like the lobby screen)
---   ITEMS:                     (section header)
---   <peer name> [icons...]     (every player's inventory, grouped per peer)
+-- Rebuilds the ESC pause right panel for CSR heists.
+-- CSR uses STANDARD gamemode so IngameContractGui renders; vanilla fills it from the temp
+-- "crime_spree" job whose loc key is missing ("ERROR: ..."). We detect and rebuild from CSR data.
 
 if not RequiredScript then
 	return
@@ -48,10 +37,8 @@ local function csr_heist_active()
 	return managers.job and managers.job:current_job_id() == "crime_spree"
 end
 
--- Square cell (<=max, >=min) and column count for `count` items in avail_w x avail_h. The cell is sized
--- so a FULL row of `per_row` cells plus fixed `gap`s spans avail_w exactly -- items resize to fill the
--- row, the gap never changes. Fewest columns (largest cells, capped at max) whose rows fit avail_h;
--- partial last row packs left. Ported from lobby_sidebar_items.lua.
+-- Adaptive grid: fewest columns (largest cells, capped at max) whose rows fit avail_h.
+-- Ported from lobby_sidebar_items.lua.
 local function csr_adaptive_grid(count, avail_w, avail_h, max_size, min_size, gap)
 	if count <= 0 then
 		return max_size, 1
@@ -134,10 +121,8 @@ local function csr_collect_peers(mgr)
 	return out
 end
 
--- Status header, identical to the lobby's row above the mission cards (_create_status_bar):
--- MISSIONS COMPLETED (left) | RANK: N <glyph> (center) | DIFFICULTY: NAME (right), one row.
--- White label + yellow value via set_range_color; reuses the lobby loc keys + getters so the
--- wording and values read 1:1 with the lobby (guest sees the host's figures). Returns bottom y.
+-- Status header row: MISSIONS COMPLETED | RANK | DIFFICULTY. Mirrors lobby _create_status_bar.
+-- Reuses lobby loc keys and getters; guest sees host figures. Returns bottom y.
 local function csr_render_status_header(parent, top, w)
 	local mgr = managers.csr
 	local highlight = Color(1, 1, 1, 0)
@@ -206,9 +191,8 @@ local function csr_render_status_header(parent, top, w)
 	return top + row_h
 end
 
--- One peer-name header + an adaptive icon grid of that peer's owned items.
--- ctx bundles the shared render state: { parent, by_type, avail_w, frame_tex, frame_rect, mgr, targets }.
--- Each drawn cell appends a hover hit-target to ctx.targets for the tooltip hook.
+-- Peer-name header + adaptive icon grid. ctx = shared render state table.
+-- Each drawn cell appends a hit-target to ctx.targets for the tooltip hook.
 local function csr_render_peer_items(ctx, peer, section_top, section_h)
 	local parent, by_type, avail_w = ctx.parent, ctx.by_type, ctx.avail_w
 	local frame_tex, frame_rect, mgr, targets = ctx.frame_tex, ctx.frame_rect, ctx.mgr, ctx.targets
@@ -299,9 +283,8 @@ local function csr_render_peer_items(ctx, peer, section_top, section_h)
 			layer = 4,
 		})
 
-		-- Stack badge: white "xN" with black multi-draw outline, top-right of the cell. Y math mirrors
-		-- the lobby sidebar (badge bottom = iy + inset + drop) so the number sits at the same height there;
-		-- a plain `vertical=top` at iy rendered it a font-height too low versus the lobby grid.
+		-- Stack badge: white "xN" with black multi-draw outline, top-right of the cell.
+		-- Y math mirrors lobby sidebar; plain vertical=top placed it a font-height too low.
 		if entry.count > 1 then
 			local badge_drop = math.floor(tweak_data.menu.pd2_small_font_size * 0.2)
 			local badge_inset = math.min(glyph_inset, BADGE_TOP_INSET)
@@ -510,10 +493,8 @@ local function csr_show_item_tooltip(self, target)
 	tip:set_position(tx, ty)
 end
 
--- Methods borrowed from CSRMissionsMenuComponent so the pause panel drives the SAME Modifiers /
--- Preferences feature-panel rendering as the lobby & briefing (single source of truth). Items keeps
--- its own per-peer team grid (csr_render_items), so its populate method is NOT borrowed.
--- _clear_items_tooltip is pulled in because _populate_modifiers_panel calls it. Lazy: at first build.
+-- Borrow Modifiers/Preferences renderers from CSRMissionsMenuComponent (single source of truth).
+-- Items uses its own per-peer grid; _clear_items_tooltip is also borrowed (called by modifiers).
 local PAUSE_METHODS_TO_BORROW = {
 	"_clear_items_tooltip",
 	"_populate_modifiers_panel",
@@ -548,9 +529,8 @@ local PAUSE_TABS = {
 	{ key = "preferences", text = "csr_sidebar_preferences", icon = "sidebar_filters" },
 }
 
--- Remembers the last-selected pause tab across pause opens. Each ESC build is a fresh
--- IngameContractGui instance, so the selection can't live on `self`; this session-scoped
--- upvalue persists while the file stays loaded (one game session).
+-- Persists the last-selected tab across pause opens: IngameContractGui is rebuilt each ESC,
+-- so the selection can't live on `self`; this file-scope upvalue survives the session.
 local last_pause_tab = "items"
 
 -- Switch the active pause tab: flip content visibility, move the selected-row marker, drop the
@@ -595,9 +575,7 @@ Hooks:PostHook(IngameContractGui, "init", "CSR_IngameContract_Relayout", functio
 		return
 	end
 
-	-- Resolve the real heist. CSR stores it in Global.game_settings.level_id
-	-- (game_manager.select_mission). managers.job:current_level_id() would return
-	-- the "crime_spree" wrapper level, so don't use it.
+	-- Use Global.game_settings.level_id, not current_level_id() which returns the wrapper.
 	local level_id = Global.game_settings and Global.game_settings.level_id
 	if not level_id or level_id == "crime_spree" or not tweak_data.levels[level_id] then
 		local mission = managers.csr and managers.csr:get_mission()
@@ -613,10 +591,8 @@ Hooks:PostHook(IngameContractGui, "init", "CSR_IngameContract_Relayout", functio
 	self._panel:set_visible(true)
 	self._panel:clear()
 
-	-- Shrink to roughly the lobby CSR sidebar's height while keeping vanilla's top anchor.
-	-- Vanilla sized this panel full-height; the lobby sidebar runs from one title-height + 16
-	-- below the top to 1.5 large-fonts above the bottom (CSRSidebar:init / missions_menu _setup),
-	-- so its height is that span. Apply only the height here; self._panel keeps vanilla's top y.
+	-- Shrink to lobby sidebar height (title+16 from top to 1.5*large_font from bottom).
+	-- Keep vanilla's top anchor; only the height changes.
 	local large_font = tweak_data.menu.pd2_large_font_size
 	local sidebar_top = large_font + 16
 	local sidebar_bottom = ws:panel():h() - large_font * 1.5
@@ -650,11 +626,8 @@ Hooks:PostHook(IngameContractGui, "init", "CSR_IngameContract_Relayout", functio
 	-- above the mission cards. Anchored at the panel top (the briefing block is gone).
 	local header_bottom = csr_render_status_header(text_panel, 0, text_panel:w())
 
-	-- Mini sidebar (left) + tabbed content (right). Tabs: Items (per-peer team grid), Modifiers,
-	-- Preferences. Modifiers/Preferences render via methods borrowed from CSRMissionsMenuComponent
-	-- (single source of truth with the lobby/briefing); Items keeps its own grid. Reuses
-	-- CSRSidebarItem so the tabs read 1:1 with the lobby/briefing sidebar. Only drawn when there's
-	-- vertical room for the sidebar + one peer section.
+	-- Mini sidebar (left) + tabbed content (right). Items has its own per-peer grid; Modifiers/Preferences
+	-- borrow CSRMissionsMenuComponent renderers. Only drawn when there's room for at least one peer section.
 	self._csr_sidebar_items = nil
 	self._csr_active_tab = nil
 	self._feature_panels = nil
@@ -706,9 +679,7 @@ Hooks:PostHook(IngameContractGui, "init", "CSR_IngameContract_Relayout", functio
 			end
 			BoxGuiObject:new(sb_panel, { sides = { 1, 1, 1, 1 } })
 
-			-- Items: bordered panel to the right of the sidebar, same height. Mirrors the sidebar's
-			-- bg + blur + BoxGui so the two read as a pair; content sits in a nested panel inset by
-			-- `padding` so the item frames (which overflow their cells) clear the border.
+			-- Items: bordered panel right of the sidebar; content inset by padding so overflowing frames clear the border.
 			local items_x = PAUSE_SIDEBAR_W + padding
 			local items_panel = text_panel:panel({
 				x = items_x,
@@ -734,7 +705,6 @@ Hooks:PostHook(IngameContractGui, "init", "CSR_IngameContract_Relayout", functio
 			local content_w = items_panel:w() - padding * 2
 			local content_h = items_panel:h() - padding * 2
 
-			-- Items tab content: existing per-peer team grid.
 			self._csr_items_content = items_panel:panel({ x = content_x, y = content_y, w = content_w, h = content_h })
 			self._csr_item_targets = csr_render_items(self._csr_items_content, 0, content_w, content_h, mgr)
 
@@ -777,9 +747,8 @@ Hooks:PostHook(IngameContractGui, "init", "CSR_IngameContract_Relayout", functio
 	self:_rec_round_object(self._panel)
 end)
 
--- Item hover tooltips. PostHook (vanilla mouse_moved drives the potential-rewards hover and is
--- called across the whole component). Edge-triggered: only rebuild the tip when the target changes.
--- Guarded by self._csr_item_targets, which is only set on a CSR heist, so non-CSR panels no-op.
+-- Item hover tooltips on the Items tab. Edge-triggered: only rebuild when the target changes.
+-- self._csr_item_targets only exists on CSR heists, so non-CSR panels no-op.
 Hooks:PostHook(IngameContractGui, "mouse_moved", "CSR_IngameContract_ItemTooltip", function(self, o, x, y)
 	if not self._csr_item_targets or self._csr_active_tab ~= "items" then
 		return
@@ -800,9 +769,8 @@ Hooks:PostHook(IngameContractGui, "mouse_moved", "CSR_IngameContract_ItemTooltip
 	end
 end)
 
--- Sidebar tab-row hover highlights + in-panel hover (Modifiers scroll bar / sub-tabs, Preferences
--- toggle/slider). The panel handlers self-gate on their own panel:visible(), so calling both is
--- safe regardless of the active tab; all no-op on non-CSR panels and after close.
+-- Sidebar hover highlights + in-panel hover. Handlers self-gate on panel:visible(), so calling
+-- both is safe regardless of active tab; no-ops on non-CSR panels.
 Hooks:PostHook(IngameContractGui, "mouse_moved", "CSR_IngameContract_SidebarHover", function(self, o, x, y)
 	if self._csr_sidebar_items then
 		for _, item in pairs(self._csr_sidebar_items) do
@@ -819,9 +787,8 @@ Hooks:PostHook(IngameContractGui, "mouse_moved", "CSR_IngameContract_SidebarHove
 	end
 end)
 
--- Sidebar tab clicks + in-panel clicks (Modifiers sub-tabs, Preferences toggle/slider grab). Left
--- button only; the wheel arrives via mouse_wheel_up/down, not here. In-panel handlers run first
--- (each self-gates on visibility) so a click on panel content isn't also read as a tab switch.
+-- Sidebar tab clicks + in-panel clicks (left button only; wheel handled separately).
+-- In-panel handlers run first and self-gate on visibility to avoid double-dispatch.
 Hooks:PostHook(IngameContractGui, "mouse_pressed", "CSR_IngameContract_SidebarClick", function(self, button, x, y)
 	if button ~= Idstring("0") then
 		return
@@ -851,10 +818,8 @@ Hooks:PostHook(IngameContractGui, "mouse_pressed", "CSR_IngameContract_SidebarCl
 	end
 end)
 
--- IngameContractGui has no vanilla mouse_released / mouse_wheel_* methods; MenuComponentManager
--- routes both to live components via run_return_on_all_live_components, which only calls a method
--- the component actually defines and stops on the first NON-nil return. So we define them and
--- return nil (never false) when we don't consume, leaving the event for other live components.
+-- IngameContractGui has no vanilla mouse_released/wheel; define them here so MenuComponentManager
+-- routes events. Return nil (not false) when not consumed to pass through to other components.
 
 -- Preferences slider-drag release + Modifiers scroll-bar release.
 local orig_contract_mouse_released = IngameContractGui.mouse_released

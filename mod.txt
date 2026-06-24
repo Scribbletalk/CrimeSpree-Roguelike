@@ -82,6 +82,10 @@
 			"script_path": "lua/network/connectionnetworkhandler.lua"
 		},
 		{
+			"hook_id": "lib/network/base/basenetworksession",
+			"script_path": "lua/network/csr_isolation.lua"
+		},
+		{
 			"hook_id": "lib/setups/setup",
 			"script_path": "lua/core/sound.lua"
 		},
@@ -188,6 +192,10 @@
 		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",
 			"script_path": "lua/menu/lobby/lobby_button.lua"
+		},
+		{
+			"hook_id": "lib/managers/menu/menucomponentmanager",
+			"script_path": "lua/intercepts/crimenet_join_guard.lua"
 		},
 		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",
@@ -428,6 +436,10 @@
 		{
 			"hook_id": "lib/managers/menumanager",
 			"script_path": "lua/menu/options_menu.lua"
+		},
+		{
+			"hook_id": "lib/managers/menumanager",
+			"script_path": "lua/debug/debug_menu.lua"
 		},
 		{
 			"hook_id": "lib/entry",

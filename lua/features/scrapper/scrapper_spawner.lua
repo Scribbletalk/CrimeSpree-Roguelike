@@ -341,8 +341,6 @@ local function on_scrapper_spawn(payload)
 		return
 	end
 	spawn_at(pos, rot, def)
-	-- TEMP MP-sync test: confirm the client actually mirrored the host's scrapper. STRIP. [CSR][mptest]
-	csr_log("[CSR][mptest][heist] scrapper mirrored on client key=" .. tostring(key))
 end
 
 -- Register LAZILY: at file-load _G.CSR_MP may not exist yet (this file hooks

@@ -23,12 +23,8 @@ local function snd_err(msg)
 	log("[CSR][snd] " .. tostring(msg))
 end
 
--- SuperBLT's native XAudio must be set up before any buffer loads. SuperBLT normally
--- auto-calls blt.xaudio.setup() at init, but on some installs/states it never runs
--- (every loadbuffer then fails: "XAudio Warning: blt.xaudio.setup() has not been
--- called!" + alErr) -- this is what silenced ALL CSR audio on a client. Force it
--- ourselves; idempotent via issetup(). pcall: setup() is native and may throw if the
--- audio device truly can't open.
+-- Force XAudio init before any buffer load. SuperBLT sometimes skips auto-setup,
+-- silencing all CSR audio (alErr 40964). See pd2_superblt_xaudio_setup_not_called.md.
 local function ensure_xaudio_setup()
 	if not (blt and blt.xaudio) then
 		return false
@@ -45,10 +41,10 @@ local function ensure_xaudio_setup()
 	return false
 end
 
--- Snapshot ModPath at load — other mods can overwrite the global later.
+-- Snapshot ModPath at load; other mods can overwrite the global later.
 local SAVED_MOD_PATH = ModPath
 
--- name -> single buffer, or { buf1, buf2, ... } for numbered variants.
+-- name -> single buffer, or {buf1, buf2, ...} for numbered variants.
 local loaded_buffers = {}
 
 local function master_volume()
@@ -60,8 +56,7 @@ local function master_volume()
 	return v
 end
 
--- base_dir (optional) = an add-on folder; sounds bundled with an add-on resolve
--- relative to it. Built-in CSR sounds pass nil and resolve against the mod folder.
+-- base_dir = addon folder for addon sounds; nil resolves against the mod folder.
 local function resolve_path(rel, base_dir)
 	local base_path = (Application and Application:base_path()) or ""
 	if base_path ~= "" and base_path:sub(-1) ~= "/" and base_path:sub(-1) ~= "\\" then
@@ -105,7 +100,7 @@ local function load_buffer_raw(rel_path, sound_id, base_dir)
 		return nil
 	end
 
-	-- BeardLib manages the XAudio.Buffer lifecycle; returned buffer is drop-in compatible.
+	-- BeardLib buffer is drop-in compatible with raw XAudio.Buffer.
 	if BeardLib and BeardLib.Managers and BeardLib.Managers.Sound and BeardLib.Managers.Sound.AddBuffer then
 		local ok, beard_buf = pcall(function()
 			return BeardLib.Managers.Sound:AddBuffer({
@@ -130,13 +125,12 @@ local function load_buffer_raw(rel_path, sound_id, base_dir)
 	return buf
 end
 
--- Public: lets a late register_sound (addon loaded after retry loop) load immediately.
+-- Public: late register_sound (e.g. addon loaded after retry loop) can call this directly.
 function _G.CSR._load_sound(name, def)
 	if not def then
 		return
 	end
-	-- Guarantee SuperBLT's native XAudio is initialized before loadbuffer; without this
-	-- every buffer fails on installs where blt.xaudio.setup() was never auto-called.
+	-- Ensure XAudio is initialized before loading (may have been skipped on some installs).
 	ensure_xaudio_setup()
 	local base_dir = def._addon_dir -- set for add-on sounds; nil for built-in CSR sounds
 	if def.path then
@@ -169,7 +163,7 @@ local function load_all_registered()
 	end
 end
 
--- A registered sound counts as loaded if it has a single buffer or >=1 variant.
+-- Loaded = single buffer, or at least one variant loaded.
 local function is_loaded(name)
 	local e = loaded_buffers[name]
 	if type(e) == "table" then
@@ -187,10 +181,8 @@ local function any_missing()
 	return false
 end
 
--- Buffer creation can fail at the initial-load window (e.g. XAudio not yet set up) but
--- succeed once ensure_xaudio_setup() has run / the audio device is ready. Re-attempt
--- only the still-missing sounds on a bounded schedule so the client recovers its audio
--- mid-session instead of staying silent forever.
+-- Retry missing buffers on a bounded schedule so a client with late XAudio init
+-- recovers its audio mid-session rather than staying silent.
 local reload_sweeps = 0
 local MAX_RELOAD_SWEEPS = 12
 local function reload_missing_sweep()
@@ -211,7 +203,7 @@ local function reload_missing_sweep()
 	end
 end
 
--- Item/active sounds must not fire on the post-heist endscreen (victory/gameover).
+-- Don't play sounds on the post-heist victory/gameover screen.
 local function in_endscreen()
 	if not game_state_machine then
 		return false
@@ -220,7 +212,7 @@ local function in_endscreen()
 	return s == "victoryscreen" or s == "gameoverscreen"
 end
 
--- opts: unit=UnitSource(3D), position=static-3D, neither=2D; volume scaled by sfx_volume setting.
+-- opts: unit=3D UnitSource, position=static 3D, neither=2D flat. Volume scaled by sfx_volume.
 function _G.CSR._play_sound(name, opts)
 	opts = opts or {}
 	if in_endscreen() then
@@ -228,8 +220,7 @@ function _G.CSR._play_sound(name, opts)
 	end
 	local entry = loaded_buffers[name]
 	if not entry then
-		-- Lazy retry: buffer creation may have failed at the early load window but the
-		-- audio device can be valid now (e.g. mid-heist on a 2nd same-PC instance).
+		-- Lazy retry: buffer may have failed at early load; device could be ready now.
 		local def = _G.CSR._sound_registrations[name]
 		if def then
 			_G.CSR._load_sound(name, def)
@@ -270,7 +261,7 @@ function _G.CSR._play_sound(name, opts)
 		if opts.max_distance and src.set_max_distance then
 			src:set_max_distance(opts.max_distance)
 		end
-		-- Must set gain before first XAudio update or clip starts at wrong volume.
+		-- Set gain before first XAudio update or clip starts at wrong volume.
 		src:set_volume(vol)
 	end)
 
@@ -282,7 +273,7 @@ function _G.CSR._play_sound(name, opts)
 	return src
 end
 
--- Inter-mod load order is non-deterministic; poll for XAudio wrappers, then load.
+-- Inter-mod load order is non-deterministic; poll until XAudio wrappers exist, then load.
 local retry_count = 0
 local function try_load()
 	if _G.CSR._sound_loader_ready then
@@ -303,8 +294,7 @@ local function try_load()
 	_G.CSR._sound_loader_ready = true
 	snd_dbg("loader complete (" .. retry_count .. " retries)")
 
-	-- If any buffers failed (e.g. audio device not ready on a 2nd same-PC instance),
-	-- keep re-attempting on a bounded schedule so the client recovers its audio.
+	-- Retry any buffers that failed (e.g. audio device not ready yet).
 	if any_missing() then
 		DelayedCalls:Add("CSR_SoundReloadSweep_start", 4.0, reload_missing_sweep)
 	end
@@ -312,7 +302,7 @@ end
 
 DelayedCalls:Add("LoadSounds_Initial", 0.5, try_load)
 
--- Built-in CSR sound registry. Paths are mod-relative under assets/sounds.
+-- Built-in sounds; paths are mod-relative under assets/sounds.
 _G.CSR.register_sound("bonnie_chip", { pattern = "assets/sounds/chip/chip_activate_$.ogg", n = 17 })
 _G.CSR.register_sound("the_edge_activate", { path = "assets/sounds/the_edge_activate.ogg" })
 _G.CSR.register_sound("aloe_leaf_activate", { path = "assets/sounds/aloe_leaf_activate.ogg" })
@@ -320,7 +310,7 @@ _G.CSR.register_sound("plush_shark_activate", { pattern = "assets/sounds/shark/p
 _G.CSR.register_sound("printer_starting", { path = "assets/sounds/printer/printer_starting.ogg" })
 _G.CSR.register_sound("printer_working", { path = "assets/sounds/printer/printer_working.ogg" })
 
--- Wildcard actives. Familiar Friend (gup) + Turron.
+-- Wildcard active sounds: Familiar Friend (gup) + Turron.
 _G.CSR.register_sound("gup_attack", { pattern = "assets/sounds/gup/gup_activate_$.ogg", n = 5 })
 _G.CSR.register_sound("gup_charge", { path = "assets/sounds/gup/gup_charge.ogg" })
 _G.CSR.register_sound("gup_cooldown", { pattern = "assets/sounds/gup/gup_cooldown_$.ogg", n = 9 })

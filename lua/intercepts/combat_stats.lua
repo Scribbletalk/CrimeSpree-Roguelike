@@ -1,8 +1,5 @@
--- Career combat tally: counts the LOCAL player's kills, damage dealt, and damage taken during
--- CSR heists. Each hit only bumps a runtime tally in managers.csr; mission_lifecycle.lua flushes
--- it into _meta.stats once per heist (no per-bullet disk writes). Loaded on 3 engine scripts
--- (see mod.txt) so this file runs 3 times; _G flags make each install run exactly once. Every
--- hook gates on in_csr_heist() so nothing leaks into vanilla heists.
+-- Career combat tally: local player kills/damage. Flushed to _meta.stats by mission_lifecycle once
+-- per heist (not per bullet). File runs 3x (3 RequiredScript hooks); _G flags guard each install.
 
 if not RequiredScript then
 	return
@@ -27,9 +24,7 @@ local function tally_max(key, amount)
 	end
 end
 
--- Damage dealt: on_damage_dealt fires only when the local player is the attacker (copdamage.lua
--- and civiliandamage.lua gate the call on attacker_unit == player_unit). damage_info.damage is
--- the amount applied this hit.
+-- Damage dealt: on_damage_dealt is local-player-only by vanilla's own gate in copdamage/civiliandamage.
 if PlayerManager and not _G._CSR_CombatStat_Dealt then
 	_G._CSR_CombatStat_Dealt = true
 	Hooks:PostHook(PlayerManager, "on_damage_dealt", "CSR_CombatStat_Dealt", function(_, unit, damage_info)
@@ -40,8 +35,8 @@ if PlayerManager and not _G._CSR_CombatStat_Dealt then
 	end)
 end
 
--- Damage taken: armor absorbed + health lost are disjoint, summing to the real damage taken.
--- Both _calc functions return health_subtracted; raw-wrap to read the return (PostHook can't).
+-- Damage taken: armor absorbed + health lost are disjoint; raw-wrap both to read the return value
+-- (PostHook can't intercept return values).
 if PlayerDamage and not _G._CSR_CombatStat_Taken then
 	_G._CSR_CombatStat_Taken = true
 
@@ -64,15 +59,13 @@ if PlayerDamage and not _G._CSR_CombatStat_Taken then
 	end
 end
 
--- A "special" is any enemy with a priority_shout (the special-callout voice line): taser, cloaker,
--- bulldozer/medic/sniper/shield/phalanx. Regular cops/heavies carry only silent_priority_shout.
+-- Specials: enemies with priority_shout (taser/cloaker/bulldozer etc.); heavies have only silent_priority_shout.
 local function is_special_char(name)
 	local cdata = name and tweak_data and tweak_data.character and tweak_data.character[name]
 	return (cdata and cdata.priority_shout ~= nil) or false
 end
 
--- Kills: StatisticsManager:killed is the local player's per-kill recorder (drives the end-screen
--- kill count); one call == one kill by this player. data.name is the character tweak_table key.
+-- StatisticsManager:killed fires once per local-player kill (drives the vanilla end-screen count).
 if StatisticsManager and not _G._CSR_CombatStat_Kills then
 	_G._CSR_CombatStat_Kills = true
 	Hooks:PostHook(StatisticsManager, "killed", "CSR_CombatStat_Kills", function(_, data)

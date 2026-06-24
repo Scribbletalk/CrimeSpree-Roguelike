@@ -1,13 +1,9 @@
--- CSR native-RPC transport (csr_net_sc / csr_net_cs, registered by csr_network_tweak.xml).
--- RESERVED FOR IN-HEIST sync (phase 2). Native session RPCs do NOT deliver in the pre-heist
--- lobby: send returns ok=true for ANY message name — even an unregistered one — yet nothing is
--- received (confirmed via probe + zero RECV on both unit and connection receivers). So all
--- lobby-phase sync (host-state / handshake / mission-set) rides the SuperBLT chat tunnel instead
--- (see mp_sync.lua / mp_session.lua). Restoration likewise never sends a native message in the
--- lobby — every native send there gates on any_ingame. See csr_native_network_messages_restoration.md.
+-- CSR native-RPC transport (csr_net_sc / csr_net_cs). Reserved for in-heist sync (phase 2).
+-- Native RPCs silently drop in the pre-heist lobby; all lobby sync uses the chat tunnel instead.
+-- See mp_sync.lua / mp_session.lua, and csr_native_network_messages_restoration.md.
 
--- Unique literal token: RequiredScript is the shared hook path ("lib/entry"), so a key built
--- from it collides with every other lib/entry hook (mp_sync ran first, starving this file).
+-- Load-once guard. Literal token (not RequiredScript) to avoid key collision across lib/entry hooks.
+-- See pd2_requiredscript_shared_hookid_dedup_collision.md.
 local key = ModPath .. "\tcsr_net"
 if _G[key] then
 	return
@@ -33,23 +29,24 @@ local function log_mp(msg)
 	end
 end
 
--- Host owns the server->client message; everyone else owns client->server. The check= guard on
--- each message means the engine only accepts _sc from the host and _cs from a client.
+-- Host sends _sc; client sends _cs. check= on each message enforces direction at engine level.
 local function dir_msg()
 	return (CSR_MP.is_host and CSR_MP.is_host()) and CSR_MP.NET_SC or CSR_MP.NET_CS
 end
 
--- Broadcast to every connected peer (host -> all clients, or client -> host).
+-- Broadcast to all connected peers (host -> all clients, or client -> host).
 function CSR_MP.send_to_peers(msg_id, payload)
 	local session = net_session()
 	if not session then
 		return
 	end
-	csr_log("[CSR][mptest][native] send_to_peers id=" .. tostring(msg_id))
-	pcall(session.send_to_peers, session, dir_msg(), tostring(msg_id), tostring(payload or ""))
+	local ok, err = pcall(session.send_to_peers, session, dir_msg(), tostring(msg_id), tostring(payload or ""))
+	if not ok then
+		log("[CSR] send_to_peers failed (id=" .. tostring(msg_id) .. "): " .. tostring(err))
+	end
 end
 
--- Send to one peer by id (host -> a client, or client -> host, whose id is 1).
+-- Send to one peer by id.
 function CSR_MP.send_to_peer(pid, msg_id, payload)
 	local session = net_session()
 	if not session or not session.peer then
@@ -59,12 +56,14 @@ function CSR_MP.send_to_peer(pid, msg_id, payload)
 	if not peer then
 		return
 	end
-	csr_log("[CSR][mptest][native] send_to_peer pid=" .. tostring(pid) .. " id=" .. tostring(msg_id))
-	pcall(session.send_to_peer, session, peer, dir_msg(), tostring(msg_id), tostring(payload or ""))
+	local ok, err = pcall(session.send_to_peer, session, peer, dir_msg(), tostring(msg_id), tostring(payload or ""))
+	if not ok then
+		log("[CSR] send_to_peer failed (pid=" .. tostring(pid) .. " id=" .. tostring(msg_id) .. "): " .. tostring(err))
+	end
 end
 
--- Single dispatch point for both native handlers. Mirrors the chat router's
--- (sender, data, sender_num, is_from_host) handler contract so handlers are transport-agnostic.
+-- Single dispatch for both native handlers. Same (sender, data, sender_num, is_from_host) contract
+-- as the chat router so handlers are transport-agnostic.
 function CSR_MP.dispatch_native(msg_id, payload, sender_num, is_from_host)
 	if type(msg_id) ~= "string" then
 		return
@@ -79,6 +78,9 @@ function CSR_MP.dispatch_native(msg_id, payload, sender_num, is_from_host)
 	)
 	local handler = CSR_MP._handlers[msg_id]
 	if handler then
-		handler(sender_num, payload, sender_num, is_from_host)
+		local ok, err = pcall(handler, sender_num, payload, sender_num, is_from_host)
+		if not ok then
+			log("[CSR] native handler error (id=" .. tostring(msg_id) .. "): " .. tostring(err))
+		end
 	end
 end

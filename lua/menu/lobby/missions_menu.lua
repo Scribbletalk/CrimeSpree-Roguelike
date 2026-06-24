@@ -197,7 +197,6 @@ function CSRMissionsMenuComponent:_setup()
 	self._start_button:panel():set_right(self._buttons_panel:right())
 	self._start_button:panel():set_bottom(parent:bottom() - padding)
 
-	-- Reroll button, same widget as Start but slightly smaller, sitting left of it.
 	self._reroll_button =
 		CSRStartButton:new(self._panel, tweak_data.menu.pd2_large_font, tweak_data.menu.pd2_large_font_size * 0.8)
 
@@ -211,7 +210,6 @@ function CSRMissionsMenuComponent:_setup()
 	self._reroll_button:panel():set_right(self._start_button:panel():left() - large_padding)
 	self._reroll_button:panel():set_bottom(self._start_button:panel():bottom())
 
-	-- Context button (End Spree / Return to Lobby), left of Reroll.
 	self._action_button =
 		CSRStartButton:new(self._panel, tweak_data.menu.pd2_large_font, tweak_data.menu.pd2_large_font_size * 0.8)
 
@@ -351,10 +349,8 @@ function CSRMissionsMenuComponent:_create_title()
 	self:_reposition_lobby_code()
 end
 
--- Park the MP lobby-code widget so it clears CSR chrome; vanilla never moves it for CSR, so without
--- this it sits at (0,80) top-left. Lobby: right of the header (vertically centered in the title band).
--- End-screen: top-right corner -- the title is hidden there, so the right-of-header anchor would land
--- in empty top-left space and overlap the mission name.
+-- Vanilla never repositions this widget for CSR; without this it sits at (0,80) top-left.
+-- Lobby: right of the header. End-screen: top-right corner (title is hidden there).
 function CSRMissionsMenuComponent:_reposition_lobby_code()
 	local mcm = managers and managers.menu_component
 	local code_gui = mcm and mcm._lobby_code_gui
@@ -725,10 +721,8 @@ function CSRMissionsMenuComponent:_reroll_pressed()
 	MenuCallbackHandler:csr_reroll()
 end
 
--- A failed run locks mission select / Start on BOTH the lobby AND the end-screen surface
--- until the player resolves it via the paid Continue or End Spree. has_failed() is a persisted
--- managers.csr flag set by csr_mission_lifecycle on a lost heist; the same live component renders
--- on both surfaces, so the Continue dialog's refresh unlocks whichever one is showing.
+-- has_failed() is a persisted flag set on heist loss; locks both the lobby and end-screen
+-- until Continue or End Spree is chosen.
 function CSRMissionsMenuComponent:_is_locked()
 	return managers.csr and managers.csr:has_failed() == true
 end
@@ -749,11 +743,7 @@ end
 -- Called at build and from refresh() so the failed state always re-applies.
 function CSRMissionsMenuComponent:_refresh_action_buttons()
 	local locked = self:_is_locked()
-	-- A connected CLIENT (guest) drives none of the bottom-row actions: the host
-	-- owns mission selection (Start / Reroll), and End Spree / Return to Lobby are
-	-- hidden for guests by request. They are inert for a client anyway
-	-- (confirm_pressed / mouse_moved both early-return on not _is_host), so this is a
-	-- pure visibility hide. Host/SP keep the full set.
+	-- Guest sees no bottom-row actions; pure visibility hide (confirm_pressed already guards on _is_host).
 	local client = not self:_is_host()
 
 	if self._start_button then

@@ -33,8 +33,8 @@ end
 
 -- Square cell size + column count for `count` items filling grid_w x avail_h. Cells are sized so a FULL
 -- row of `per_row` cells plus fixed gaps spans grid_w exactly (icons shrink to fill the row, gap fixed);
--- fewest columns (largest cells, capped at OWNED_CELL) whose rows still fit avail_h. Dense inventories
--- fall back to OWNED_MIN_CELL packed by width. Mirrors the lobby Items panel's csr_adaptive_grid.
+-- fewest columns (largest cells, capped at OWNED_CELL) whose rows still fit avail_h. Mirrors the lobby
+-- Items panel's csr_adaptive_grid.
 local function csr_adaptive_grid(count, grid_w, avail_h)
 	if count <= 0 then
 		return OWNED_CELL, 1
@@ -46,8 +46,13 @@ local function csr_adaptive_grid(count, grid_w, avail_h)
 			return cell, per_row
 		end
 	end
-	local per_row = math.max(1, math.floor((grid_w + OWNED_GAP) / (OWNED_MIN_CELL + OWNED_GAP)))
-	return OWNED_MIN_CELL, math.min(count, per_row)
+	-- No column count keeps cells >= the readability floor within avail_h (dense inventory in a short
+	-- strip): clamp rows to what avail_h actually fits, then shrink cells below the floor so every item
+	-- stays inside the panel. Prevents a 2nd row spilling below a fixed-height bar (the BM owned strip).
+	local max_rows = math.max(1, math.floor((avail_h + OWNED_GAP) / (OWNED_MIN_CELL + OWNED_GAP)))
+	local per_row = math.ceil(count / max_rows)
+	local cell = math.min(OWNED_CELL, math.floor((grid_w - (per_row - 1) * OWNED_GAP) / per_row))
+	return math.max(1, cell), per_row
 end
 
 function CSROwnedItemsStrip:init(opts)

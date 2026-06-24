@@ -1,8 +1,6 @@
--- TEMP testing aid: silence SuperBLT's per-packet "[NetworkHelper] <name>: GNAP/CSR_.../..." INFO
--- spam. mods/base req/core/Networking.lua logs EVERY SendToPeers/SendToPeer at LogLevel.INFO; the
--- aloe_leaf AURA_PULSE heartbeat fans one such line per heal tick, flooding the log during MP tests.
--- Wraps BLT:Log to drop ONLY lines prefixed "[NetworkHelper]"; every other log passes through.
--- DELETE this file and its two mod.txt entries when MP testing is done.
+-- TEMP: silence SuperBLT's per-packet "[NetworkHelper]" INFO spam during MP testing.
+-- Wraps BLT:Log to drop only those lines; everything else passes through.
+-- DELETE this file and its mod.txt entries when MP testing is done.
 
 if _G._CSR_SILENCE_NETHELPER then
 	return

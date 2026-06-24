@@ -10,18 +10,15 @@ Hooks:PostHook(
 	"create_crime_spree_missions_gui",
 	"CSR_SwapMissionsGuiCreate",
 	function(self, node)
-		-- Gate on node identity, not managers.csr:is_active(): the flag persists across sessions
-		-- and would leak our panel into normal post-heist lobbies. Also allow guests (they have
-		-- no active own run but still need the CSR lobby UI via CSR_MP reroute).
+		-- Gate on node identity, not is_active(): that flag leaks into post-heist lobbies.
+		-- Allow guests: they have no own run but need CSR lobby UI via CSR_MP reroute.
 		local is_guest = _G.CSR_MP and _G.CSR_MP.is_client and _G.CSR_MP.is_client()
 		if not node or not managers.csr or not (managers.csr:is_active() or is_guest) then
 			return
 		end
 
 		local params = node.parameters and node:parameters()
-		-- Two valid build surfaces: crime_spree_lobby node (lobby), and "main" node
-		-- when the active job is "crime_spree" (end screen — job id is the safe boundary
-		-- because "main" is also the normal crew-lobby node).
+		-- "main" node doubles as normal crew-lobby; job id is the safe boundary for end-screen.
 		local in_lobby = params and params.name == "crime_spree_lobby"
 		local in_endscreen = params
 			and params.name == "main"
@@ -35,10 +32,8 @@ Hooks:PostHook(
 			return
 		end
 
-		-- Tear down the leftover end-screen HUD backdrop (the faded mission-name ghost) before the
-		-- lobby header draws. Vanilla relies on a full main-menu rebuild to clear it; CSR's
-		-- return-to-lobby reuses the "menu" workspace, so the backdrop bleeds through under the
-		-- "CRIME SPREE ROGUELIKE" header. Lobby surface only; the end-screen still needs its ghost.
+		-- Close the leftover end-screen HUD backdrop before the lobby header draws.
+		-- Vanilla clears it via full main-menu rebuild; CSR reuses the "menu" workspace so it bleeds through.
 		if in_lobby and managers.hud and managers.hud._hud_stage_endscreen then
 			local es = managers.hud._hud_stage_endscreen
 			if CSRHUDStageEndScreen and getmetatable(es) == CSRHUDStageEndScreen and es.close then
@@ -48,7 +43,7 @@ Hooks:PostHook(
 			end
 		end
 
-		-- Ensure mission set exists (old saves may load with an empty set).
+		-- Old saves may load with an empty mission set.
 		if managers.csr.ensure_mission_set then
 			managers.csr:ensure_mission_set()
 		end
@@ -66,17 +61,15 @@ Hooks:PostHook(
 		self:register_component("crime_spree_missions", self._crime_spree_missions)
 		csr_log("[CSR] wiring: vanilla CS missions panel swapped for CSRMissionsMenuComponent")
 
-		-- Force a contract-box rebuild now that _crime_spree_missions is set, so contract_wiring's
-		-- _contract_gui_class hook returns CrimeSpreeContractBoxGui (no vanilla "PLANNING PHASE"
-		-- crewpage ghost overlapping the header). Needed in SP too: after a heist->lobby reinit the
-		-- "contract" box is rebuilt with vanilla ContractBoxGui before this swap runs, leaking the ghost.
+		-- Force contract-box rebuild so contract_wiring returns CrimeSpreeContractBoxGui.
+		-- Without this, heist->lobby reinit rebuilds the box with vanilla ContractBoxGui before this swap runs.
 		if in_lobby and self.create_contract_gui then
 			self:create_contract_gui()
 			csr_log("[CSR] wiring: forced contract-box rebuild for CSR lobby")
 		end
 
-		-- Sync inventories and pull host-state on both lobby and end screen builds.
-		-- Guest needs fresh host rank/items/mission-set at both surfaces.
+		-- Sync inventories and pull host-state on both surfaces.
+		-- Guest needs fresh rank/items/mission-set; pull host-state here (reliable is_client-ready point).
 		if (in_lobby or in_endscreen) and _G.CSR_MP and _G.CSR_MP.is_multiplayer and _G.CSR_MP.is_multiplayer() then
 			_G.CSR_MP.broadcast_own_items()
 			if _G.CSR_MP.is_client and _G.CSR_MP.is_client() then
@@ -84,8 +77,6 @@ Hooks:PostHook(
 					managers.csr:clear_remote_peers()
 				end
 				_G.CSR_MP.request_all_items()
-				-- Pull host-state here (reliable is_client-ready point) to avoid
-				-- the race in on_enter_lobby where is_client() can still be false.
 				if _G.CSR_MP.request_host_state then
 					_G.CSR_MP.request_host_state()
 				end
@@ -94,8 +85,8 @@ Hooks:PostHook(
 	end
 )
 
--- Reposition the MP lobby-code widget when it is created after our missions component.
--- (The other order is handled by _create_title calling _reposition_lobby_code directly.)
+-- Reposition the MP lobby-code widget when created after our missions component.
+-- (Opposite order: _create_title calls _reposition_lobby_code directly.)
 Hooks:PostHook(MenuComponentManager, "create_lobby_code_gui", "CSR_RepositionLobbyCode", function(self, node)
 	local comp = self._crime_spree_missions
 	if comp and CSRMissionsMenuComponent ~= nil and getmetatable(comp) == CSRMissionsMenuComponent then
@@ -105,19 +96,14 @@ Hooks:PostHook(MenuComponentManager, "create_lobby_code_gui", "CSR_RepositionLob
 	end
 end)
 
--- Hide ONLY the mission-cards cluster (cards + their status bar + Start/Reroll/action buttons +
--- the reminders) when a sub-screen (Options / Edit Game Settings / Player List) is open on top of
--- the lobby; the sidebar and the "Crime Spree Roguelike" header are siblings and stay visible.
---
--- Why a per-frame poll, not an open_node / show_node / set_active_components hook: in-game testing
--- proved NONE of those fire for these lobby buttons -- they open a separate menu/dialog OVER the
--- lobby without changing the lobby menu's selected node, so the component stays live underneath.
--- update() ticks on every live component (MenuComponentManager:run_on_all_live_components), so the
--- poll runs even while the overlay is up and self-heals against the lobby's ~1Hz rebuild loop.
+-- Per-frame poll to hide the mission-cards cluster when a sub-screen (Options / Player List / etc.)
+-- overlays the lobby. open_node/show_node/set_active_components do NOT fire for these buttons --
+-- they open a dialog over the lobby without changing the selected node. update() self-heals against
+-- the lobby's ~1Hz rebuild loop.
 if CSRMissionsMenuComponent and not _G._CSR_LOBBY_OVERLAY_HIDE_HOOKED then
 	_G._CSR_LOBBY_OVERLAY_HIDE_HOOKED = true
 
-	-- Always part of the cluster: force-toggled both ways.
+	-- Panels always force-toggled both ways.
 	function CSRMissionsMenuComponent:_csr_always_cluster()
 		local list = {}
 		local function add(p)
@@ -140,8 +126,7 @@ if CSRMissionsMenuComponent and not _G._CSR_LOBBY_OVERLAY_HIDE_HOOKED then
 		return list
 	end
 
-	-- Conditionally-visible members: hidden with the cluster, but on reveal restored to whatever
-	-- their own logic had set (captured at hide time) -- never force-shown.
+	-- Panels hidden with the cluster but restored to their pre-hide visibility -- never force-shown.
 	function CSRMissionsMenuComponent:_csr_cond_cluster()
 		local list = {}
 		local function add(p)
@@ -162,9 +147,8 @@ if CSRMissionsMenuComponent and not _G._CSR_LOBBY_OVERLAY_HIDE_HOOKED then
 		end
 
 		if self._csr_overlay_active == hidden then
-			-- Re-assert each frame while hidden so the lobby's ~1Hz rebuild can't reveal the cluster.
-			-- Use cached lists to avoid allocating tables every frame; rebuild the cache if the first
-			-- panel died (lobby rebuild replaces all panels atomically).
+			-- Re-assert every frame while hidden; lobby's ~1Hz rebuild can revive panels.
+			-- Cache panel lists; rebuild if the first entry died (rebuild replaced all panels).
 			if hidden then
 				local always = self._csr_always_cache
 				local cond = self._csr_cond_cache
@@ -223,13 +207,12 @@ if CSRMissionsMenuComponent and not _G._CSR_LOBBY_OVERLAY_HIDE_HOOKED then
 	end
 
 	Hooks:PostHook(CSRMissionsMenuComponent, "update", "CSR_HideUnderSubscreen", function(self)
-		-- Lobby surface only: the end-screen surface reuses this component under node "main".
+		-- End-screen reuses this component under node "main"; skip it.
 		if not self._is_lobby or not alive(self._panel) then
 			return
 		end
 
-		-- Read the top menu's current node. nil-safe: on any read failure default to NOT covered,
-		-- so a glitch can never leave the lobby permanently hidden.
+		-- Default to NOT covered on any read failure so a glitch never permanently hides the lobby.
 		local node_name
 		local am = managers.menu and managers.menu:active_menu()
 		if am and am.logic and am.logic.selected_node and am.logic:selected_node() then

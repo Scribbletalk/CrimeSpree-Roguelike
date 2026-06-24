@@ -1,10 +1,6 @@
--- Per-hit removal of DAMAGE_CLAMP_BULLET/EXPLOSION/SHOCK and _lower_health_percentage_limit
--- so high-damage builds can one-shot tanky enemies. Clamps are saved+restored each hit
--- because _char_tweak is a shared table -- mutating it would leak to every enemy of that type.
---
--- PERF: Pre/Post fire on the same CopDamage instance atomically, so temp values are
--- stashed in self.__csr_* fields (NOT a module table keyed by tostring(unit:key())).
--- That removes 2 string allocs + 1 table alloc per bullet hit -> zero per-hit garbage.
+-- Per-hit removal of DAMAGE_CLAMP_* and _lower_health_percentage_limit so high-damage
+-- builds can one-shot tanky enemies. Clamp saved+restored each hit because _char_tweak is
+-- shared per unit-type. Temp values in self.__csr_* fields (avoids per-hit table alloc).
 
 if not RequiredScript then
 	return
@@ -25,7 +21,7 @@ local function csr_heist_active()
 end
 
 if CopDamage then
-	-- Captain uses LOWER_HEALTH_PERCENTAGE_LIMIT as his shield/phase-transition; never neutralize it.
+	-- Captain uses LOWER_HEALTH_PERCENTAGE_LIMIT as his phase-transition shield; never strip it.
 	local function is_protected(self)
 		local tweak = self._char_tweak
 		if not tweak then
@@ -70,7 +66,7 @@ if CopDamage then
 			return -- converts keep vanilla caps
 		end
 
-		-- Inflate _HEALTH_INIT 20% to lift bullet's HP-granularity quantize ceiling and avoid off-by-1 kills.
+		-- Inflate _HEALTH_INIT 20% to lift the HP-granularity quantize ceiling and avoid off-by-1 kills.
 		self.__csr_saved_hinit = self._HEALTH_INIT
 		self._HEALTH_INIT = self._HEALTH_INIT * 1.2
 		self._HEALTH_INIT_PRECENT = self._HEALTH_INIT / self._HEALTH_GRANULARITY
@@ -106,7 +102,7 @@ if CopDamage then
 	end)
 
 	-- EXPLOSION -----------------------------------------------------------------
-	-- explosion_damage_mul applies after the clamp, so scale the cap by 1/mul.
+	-- explosion_damage_mul applies after the clamp; divide the cap to compensate.
 	Hooks:PreHook(CopDamage, "damage_explosion", "CSR_RemoveDamageCap_Explosion", function(self, attack_data)
 		if not csr_heist_active() then
 			return
@@ -134,7 +130,7 @@ if CopDamage then
 	end)
 
 	-- MELEE ---------------------------------------------------------------------
-	-- No flat melee clamp; only lower-health limit needs neutralizing.
+	-- No flat melee clamp; only strip lower-health limit.
 	Hooks:PreHook(CopDamage, "damage_melee", "CSR_RemoveDamageCap_Melee", function(self, attack_data)
 		if not csr_heist_active() then
 			return
@@ -153,7 +149,7 @@ if CopDamage then
 	end)
 
 	-- FIRE ----------------------------------------------------------------------
-	-- No flat fire clamp; only lower-health limit needs neutralizing.
+	-- No flat fire clamp; only strip lower-health limit.
 	Hooks:PreHook(CopDamage, "damage_fire", "CSR_RemoveDamageCap_Fire", function(self, attack_data)
 		if not csr_heist_active() then
 			return
@@ -172,8 +168,8 @@ if CopDamage then
 	end)
 
 	-- SHOCK / SIMPLE ------------------------------------------------------------
-	-- damage_simple (shock/electrocution + sniper-graze) has DAMAGE_CLAMP_SHOCK and
-	-- the same _HEALTH_INIT quantize as bullet; mirror bullet hook, no headshot handling.
+	-- damage_simple (shock/electrocution + sniper-graze) has DAMAGE_CLAMP_SHOCK and the
+	-- same _HEALTH_INIT quantize as bullet; mirrors bullet hook, no headshot handling.
 	Hooks:PreHook(CopDamage, "damage_simple", "CSR_RemoveDamageCap_Shock", function(self, attack_data)
 		if not csr_heist_active() or not attack_data then
 			return

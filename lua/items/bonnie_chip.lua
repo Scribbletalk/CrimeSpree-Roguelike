@@ -11,6 +11,23 @@ local CHANCE = 0.10
 local COOLDOWN = 1.5
 local BONNIE_CHIP_RPC = "CSR_ChipKill"
 
+-- Full-boss enemies are immune to the instakill (fought normally instead).
+-- biker_boss=The Biker Heist d2, deep_boss=Crude Awakening, triad_boss=Mountain Master;
+-- hector/chavez/mobster/drug_lord = their respective heist bosses; captain=Captain Winters (any heist).
+local BOSS_TWEAKS = {
+	biker_boss = true,
+	deep_boss = true,
+	triad_boss = true,
+	triad_boss_no_armor = true,
+	hector_boss = true,
+	hector_boss_no_armor = true,
+	chavez_boss = true,
+	mobster_boss = true,
+	drug_lord_boss = true,
+	drug_lord_boss_stealth = true,
+	captain = true,
+}
+
 local last_roll = nil
 
 local function bonnie_try_proc(cop, attack_data)
@@ -25,11 +42,11 @@ local function bonnie_try_proc(cop, attack_data)
 	if not cop._unit or not alive(cop._unit) or cop._dead or cop._converted then
 		return false
 	end
-	-- Civilians and npc_* are excluded.
+	-- Civilians, npc_*, and full-boss enemies are excluded.
 	local base = cop._unit:base()
 	local tweak_table = (base and base._tweak_table) or ""
 	local is_npc = type(tweak_table) == "string" and tweak_table:sub(1, 4) == "npc_"
-	if CopDamage.is_civilian(tweak_table) or is_npc then
+	if CopDamage.is_civilian(tweak_table) or is_npc or BOSS_TWEAKS[tweak_table] then
 		return false
 	end
 	local stacks = mgr:owned("bonnie_chip")

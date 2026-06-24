@@ -1,4 +1,5 @@
--- Host-state push: broadcasts rank/difficulty/seed/tokens to peers; loaded in both Lua states so broadcast_host_state exists for lobby-join and at_enter.
+-- Host-state push: broadcasts rank/difficulty/seed/tokens/addons to all peers.
+-- Loaded in both Lua states so broadcast_host_state is available at lobby-join and at_enter.
 
 if not RequiredScript then
 	return
@@ -19,10 +20,8 @@ local function csr_heist_active()
 	return true
 end
 
--- RoR2-style join gate: if the host declared addons this guest lacks, eject to the main menu.
--- Direction is guest superset of host (guest may hold extra addons). Returns true when it
--- triggered a kick so the caller stops applying host state. Once per join via a Global flag
--- (survives the menu<->game Lua reinit); cleared on eject so a fresh join re-checks.
+-- Join gate: if the host has addons this guest lacks, show a dialog and eject to the main menu.
+-- Guest may hold extra addons; only missing host addons block. Once per join via Global flag.
 local function csr_addon_join_gate(host_addons_csv)
 	if not (CSR_MP and CSR_MP.is_client and CSR_MP.is_client()) then
 		return false
@@ -44,13 +43,12 @@ local function csr_addon_join_gate(host_addons_csv)
 		end
 	end
 	if #missing == 0 then
-		-- Clear any stale flag left by a previously dismissed dialog (e.g. host disconnected
-		-- before the guest clicked OK) so a clean rejoin to a different host works correctly.
+		-- Clear stale flag so a rejoin to a different host re-checks.
 		Global.CSR_addon_gate_fired = nil
 		return false
 	end
 
-	-- Gate already fired for this join session (dialog already shown); don't re-show.
+	-- Gate already fired this join session; don't re-show.
 	if Global.CSR_addon_gate_fired then
 		return true
 	end
@@ -71,7 +69,7 @@ local function csr_addon_join_gate(host_addons_csv)
 			{
 				text = (L and L:text("dialog_ok")) or "OK",
 				callback_func = function()
-					-- Vanilla client-leave sequence (networkmatchmakingsteam WRONG_VERSION path).
+					-- Vanilla client-leave sequence.
 					if managers.network and managers.network.matchmake then
 						managers.network.matchmake:leave_game()
 					end
@@ -118,8 +116,7 @@ local function broadcast_host_state()
 		-- Addon signature for the MP join-gate (guest missing any of these is blocked).
 		host_addons = table.concat((mgr.addon_signature and mgr:addon_signature()) or {}, ","),
 	})
-	-- Lobby transport = SuperBLT chat tunnel (native session RPC does not deliver pre-heist). The
-	-- json can exceed the 255-char chat wire cap, so chunk it; the receiver reassembles via _hs_buf.
+	-- Chat tunnel only (native RPC drops pre-heist). JSON can exceed 255-char wire cap, so chunk it.
 	for _, chunk in ipairs(CSR_MP.build_raw_chunks("", payload, 180)) do
 		LuaNetworking:SendToPeers(CSR_MP.MSG.HANDSHAKE_OK, chunk)
 	end
@@ -142,8 +139,8 @@ if CSR_MP and CSR_MP.register_handler then
 		if not (CSR_MP.is_client and CSR_MP.is_client() and is_from_host) then
 			return
 		end
-		-- Not gated on csr_heist_active() — it's false in lobby; is_from_host blocks forgery.
-		-- Reassemble the chunked json (chat tunnel splits host-state across "idx/total~" chunks).
+		-- Not gated on csr_heist_active() (false in lobby); is_from_host blocks forgery.
+		-- Reassemble chunked json ("idx/total~" header).
 		CSR_MP._hs_buf = CSR_MP._hs_buf or { chunks = {}, total = 0 }
 		local idx, total, body = string.match(tostring(data), "^(%d+)/(%d+)~(.*)$")
 		idx, total = tonumber(idx), tonumber(total)
@@ -168,7 +165,7 @@ if CSR_MP and CSR_MP.register_handler then
 		if not ok or type(payload) ~= "table" then
 			return
 		end
-		-- Block joining a host whose addons we lack before adopting any of its state.
+		-- Addon gate before adopting any host state.
 		if csr_addon_join_gate(payload.host_addons) then
 			return
 		end
@@ -180,7 +177,7 @@ if CSR_MP and CSR_MP.register_handler then
 				tonumber(payload.run_seed),
 				tonumber(payload.host_missions_completed)
 			)
-			-- Adopt host's level/mission so the guest loads the same heist.
+			-- Adopt host's level/mission so the guest loads the same heist map.
 			if Global and Global.game_settings then
 				if type(payload.host_level_id) == "string" then
 					Global.game_settings.level_id = payload.host_level_id
@@ -192,27 +189,26 @@ if CSR_MP and CSR_MP.register_handler then
 					Global.game_settings.difficulty = payload.host_difficulty
 				end
 			end
-			-- Adopt the host's selected CSR card so the guest's lobby highlight tracks it.
+			-- Sync host's selected mission card for the guest's lobby highlight.
 			if mgr.set_mp_host_current_mission then
 				local hcm = payload.host_current_mission
 				mgr:set_mp_host_current_mission((hcm ~= false and hcm) or nil)
 			end
-			-- Repaint lobby rank + item quota if currently open.
+			-- Repaint lobby panel if open.
 			local comp = managers.menu_component and managers.menu_component._crime_spree_missions
 			if comp and comp.refresh_for_rank_change then
 				comp:refresh_for_rank_change()
 			end
-			-- Reflect the host's pick on the guest's mission cards (display only; never mutates/broadcasts).
+			-- Mirror host's card pick on guest's mission cards (display only).
 			if comp and comp._csr_apply_host_selection then
 				comp:_csr_apply_host_selection(mgr.current_mission and mgr:current_mission())
 			end
-			-- C/D hardening: if host-state arrives AFTER the briefing built (race), build the
-			-- CSR sidebar now that is_guesting() is finally true. Idempotent (has_sidebar guard).
+			-- Race guard: if host-state arrives after briefing built, build the CSR sidebar now.
 			local brief = managers.menu_component and managers.menu_component._mission_briefing_gui
 			if brief and brief._csr_build_sidebar then
 				brief:_csr_build_sidebar()
 			end
-			-- Re-apply modifiers with fresh host_rank; guest at_enter often fires before state arrives.
+			-- Re-apply modifiers: guest at_enter may fire before host_rank arrives.
 			if mgr.apply_modifiers then
 				mgr:apply_modifiers()
 			end
@@ -226,19 +222,9 @@ if CSR_MP and CSR_MP.register_handler then
 			end
 		end
 
-		-- Catch-up auto-grant for MISSED missions only: the first join, or host missions completed while
-		-- the guest was OFF the server. Missions the guest PLAYS are accounted in mission_lifecycle and
-		-- surface as a normal pick it chooses -- never auto-granted (the present guest also earns its own
-		-- tokens). `accounted` (guest_grant_missions) = host missions already covered on this client
-		-- (played-present + previously caught-up). Guest-only; host/SP never reach here.
-		--
-		-- Gate on `not in_csr_heist()`: the host is authoritative, so it finishes its MissionEndState and
-		-- pushes the incremented host-state WHILE the guest is still IN-GAME (job loaded), BEFORE the guest's
-		-- own mission_lifecycle:at_enter runs note_guest_present_mission() to bump `accounted`. A state-name
-		-- check ("victoryscreen") missed that pre-endscreen in-game window and the catch-up stole the present
-		-- pick. in_csr_heist() (crime_spree job loaded) covers the whole heist + endscreen window and clears
-		-- only when the job unloads back in the lobby -- by then accounting has caught up. So the catch-up
-		-- runs ONLY from the lobby, where a genuine absence is the only reason hmissions > accounted.
+		-- Catch-up auto-grant for missions the guest missed while offline.
+		-- Gated on not in_csr_heist(): host pushes incremented state while guest is still in-game,
+		-- before mission_lifecycle bumps accounted. Lobby-only guard prevents stealing the present pick.
 		if
 			_G.CSR_Shop
 			and mgr
@@ -254,8 +240,7 @@ if CSR_MP and CSR_MP.register_handler then
 			if hmissions > accounted then
 				local prev_gross = mgr:guest_grant_gross()
 				local leftover = _G.CSR_Shop.auto_grant_late_join(pid, hrank, gross, hmissions, prev_gross)
-				-- Add (don't overwrite) the leftover: the guest may already hold a balance. set_tokens
-				-- leaves gross untouched so this never re-triggers the grant.
+				-- Add to existing balance (set_tokens leaves gross untouched, no re-trigger).
 				_G.CSR_Shop.set_tokens(pid, _G.CSR_Shop.tokens(pid) + leftover)
 				mgr:mark_guest_grant(hmissions, gross)
 				if _G.CSR_MP.broadcast_own_items then
@@ -269,9 +254,8 @@ if CSR_MP and CSR_MP.register_handler then
 					CSR_MP.log("catch-up grant rank=" .. tostring(hrank) .. " missions=" .. tostring(hmissions))
 				end
 			else
-				-- Present or fully caught-up: no auto-grant. Keep the gross baseline current so a LATER
-				-- absence converts only host tokens earned while away, not present-period tokens (which
-				-- the guest already earned itself). Leaves accounted untouched.
+				-- Present or fully caught-up: update gross baseline so future absences convert only
+				-- tokens earned while away, not tokens the guest already earned in present missions.
 				mgr:mark_guest_grant(accounted, gross)
 			end
 		end
@@ -282,6 +266,10 @@ if CSR_MP and CSR_MP.register_handler then
 		if not (CSR_MP.is_host and CSR_MP.is_host()) then
 			return
 		end
+		-- A HANDSHAKE proves the peer runs CSR; mark it so isolation Task 1 never kicks it.
+		if CSR_MP.mark_peer_verified then
+			CSR_MP.mark_peer_verified(sender_num or tonumber(sender))
+		end
 		broadcast_host_state()
 	end)
 end
@@ -289,12 +277,9 @@ end
 if IngameWaitingForPlayersState and not _G._CSR_MP_SESSION_HOOKED then
 	_G._CSR_MP_SESSION_HOOKED = true
 
-	-- Activate the guest's crime_spree temp job BEFORE vanilla at_enter builds the briefing HUD:
-	-- HUDMissionBriefing:reload bails on `not has_active_job()` and never loads the contact
-	-- assets_gui (the briefing bg video). Runs earlier than the MissionBriefingGui:init fallback so
-	-- the whole briefing builds with a valid current_level_data. Guest-gated + idempotent in helper.
+	-- Activate guest's crime_spree temp job before briefing HUD builds (HUDMissionBriefing:reload
+	-- bails if no active job). See csr_guest_temp_job_briefing_gap.md.
 	Hooks:PreHook(IngameWaitingForPlayersState, "at_enter", "CSR_MP_GuestTempJob", function()
-		csr_log("[CSR][mptest][session] at_enter PreHook (guest temp-job)") -- [CSR][mptest]
 		if managers and managers.csr and managers.csr.ensure_guest_temp_job then
 			managers.csr:ensure_guest_temp_job()
 		end
@@ -304,15 +289,12 @@ if IngameWaitingForPlayersState and not _G._CSR_MP_SESSION_HOOKED then
 		if not CSR_MP then
 			return
 		end
-		-- Guest: clear stale state then pull fresh — request-reply is more reliable than waiting on a push.
+		-- Guest: clear stale state then pull fresh (pull is more reliable than waiting for a push).
 		if CSR_MP.is_client and CSR_MP.is_client() then
-			csr_log("[CSR][mptest][session] at_enter: client -> clear+request host state") -- [CSR][mptest]
 			if managers.csr and managers.csr.clear_mp_host_state then
 				managers.csr:clear_mp_host_state()
 			end
-			-- Retry the pull until host_seed actually lands; a one-shot leaves host_seed nil if the reply
-			-- is lost/truncated, which makes the guest count as non-guesting at mission end and the
-			-- catch-up auto-grants (steals) its present pick. ensure_host_state polls until is_guesting().
+			-- Retry until host_seed lands; a lost reply leaves the guest non-guesting -> catch-up steals its pick.
 			if CSR_MP.ensure_host_state then
 				CSR_MP.ensure_host_state()
 			elseif CSR_MP.request_host_state then
@@ -320,9 +302,8 @@ if IngameWaitingForPlayersState and not _G._CSR_MP_SESSION_HOOKED then
 			end
 			return
 		end
-		-- Host: delayed push so state arrives after guests have cleared stale data.
+		-- Host: delayed push so state arrives after guests clear stale data.
 		if CSR_MP.is_host and CSR_MP.is_host() and CSR_MP.is_multiplayer() and csr_heist_active() then
-			csr_log("[CSR][mptest][session] at_enter: host -> delayed host-state push") -- [CSR][mptest]
 			DelayedCalls:Add("CSR_MP_HostStatePush", 0.75, broadcast_host_state)
 		end
 	end)

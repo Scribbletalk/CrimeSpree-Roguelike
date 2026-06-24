@@ -103,5 +103,9 @@ ignore = {
     "211",  -- unused function (common in PD2 hook stubs)
     "212",  -- unused argument (PD2 callbacks always receive self/t/dt)
     "213",  -- unused loop variable
+    "311",  -- value overwritten before use (verbatim vanilla forks reassign locals)
+    "411",  -- variable shadows previous local (vanilla forks reuse w/h/text/color)
+    "412",  -- argument shadowed by local (vanilla forks reuse t)
+    "421",  -- shadowing outer-scope definition (vanilla forks reuse w/h in nested panels)
     "611", "612", "613", "614",  -- whitespace (StyLua handles this)
 }

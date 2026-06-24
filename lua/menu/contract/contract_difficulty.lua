@@ -86,7 +86,7 @@ local function add_csr_contract_items(node)
 	end
 
 	if accept_index then
-		-- Insert order: diff → continue → start_new, then hide vanilla accept.
+		-- Insert: diff, continue, start_new; hide vanilla accept.
 		node:insert_item(diff_item, accept_index)
 		node:insert_item(continue_item, accept_index + 1)
 		node:insert_item(start_item, accept_index + 2)
@@ -97,8 +97,8 @@ local function add_csr_contract_items(node)
 		node:add_item(continue_item)
 	end
 
-	-- One-shot per session: offer to claim rewards from a leftover pre-install vanilla Crime Spree
-	-- (captured in end_spree_rewards.lua). Deferred so the dialog opens after the node finishes building.
+	-- One-shot: offer to claim rewards from a leftover vanilla Crime Spree run (see end_spree_rewards.lua).
+	-- Deferred so the dialog opens after the node finishes building.
 	if
 		not _G._CSR_VANILLA_REWARDS_PROMPTED
 		and managers.csr

@@ -41,11 +41,8 @@ if MissionManager and MissionManager.load and not _G._CSR_MISSION_STATE_GUARD th
 	csr_log("[CSR] mission_element_safety: MissionManager state guard installed")
 end
 
--- MissionScript:load iterates the host's saved state and calls self._elements[id]:load(...).
--- A guest joining certain heists (notably CSR extra heists, e.g. Diamond Store) gets a saved
--- state referencing element ids its own mission script never registered -> self._elements[id]
--- is nil -> "attempt to call method 'load' (a nil value)" crash (coremissionmanager.lua:703).
--- Strip orphan ids before the body runs; the client can't restore an element it doesn't have.
+-- MissionScript:load crashes when the host's saved state references element ids the client
+-- never registered (nil -> "attempt to call method 'load'"). Strip orphan ids before the body runs.
 if MissionScript and MissionScript.load and not _G._CSR_MISSIONSCRIPT_ELEM_GUARD then
 	_G._CSR_MISSIONSCRIPT_ELEM_GUARD = true
 
@@ -54,7 +51,7 @@ if MissionScript and MissionScript.load and not _G._CSR_MISSIONSCRIPT_ELEM_GUARD
 		if type(state) ~= "table" or type(self._elements) ~= "table" then
 			return
 		end
-		-- Setting an existing key to nil during pairs() traversal is well-defined in Lua.
+		-- Nil-during-pairs is well-defined in Lua for keys that already exist.
 		local dropped
 		for id in pairs(state) do
 			if self._elements[id] == nil then
@@ -65,8 +62,7 @@ if MissionScript and MissionScript.load and not _G._CSR_MISSIONSCRIPT_ELEM_GUARD
 				end
 			end
 		end
-		-- Surface what was dropped so we can tell cosmetic divergence from a missing
-		-- gameplay-critical element (the latter means the guest's mission under-loaded).
+		-- Log drops so we can distinguish cosmetic divergence from missing gameplay elements.
 		if _G.CSR_DEBUG and dropped then
 			csr_log(
 				string.format(

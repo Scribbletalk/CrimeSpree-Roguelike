@@ -1,15 +1,12 @@
--- Loss penalty: a CSR heist's outcome commits on START. Arms an in-flight flag on heist start
--- (host/SP), and after a grace period an interruption (crash / alt-F4 / quit-to-menu / restart)
--- counts as a loss. Crash/alt-F4 enforcement lives in CSRGameManager:_check_interrupted_heist
--- (runs every init); this file owns the in-session pieces: arm-on-start, the quit warning dialog,
--- and the restart gate. See design_docs/2026-06-03-loss-penalty.md.
+-- Loss penalty: arms an in-flight flag on heist start (host/SP); after a grace period any
+-- interruption (crash/alt-F4/quit/restart) counts as a loss. Crash path lives in
+-- CSRGameManager:_check_interrupted_heist. See design_docs/2026-06-03-loss-penalty.md.
 
 if not RequiredScript then
 	return
 end
 
--- True only while the warning/penalty should apply: a committed CSR heist (host/SP — the flag is
--- never set for guests) whose grace has elapsed. Reads the flag directly, so it's MP-safe.
+-- True after grace has elapsed on a committed host/SP heist (flag never set for guests).
 local function past_grace_heist()
 	local mgr = managers and managers.csr
 	return mgr ~= nil and mgr.in_heist and mgr:in_heist() and mgr.heist_grace_over and mgr:heist_grace_over()
@@ -18,9 +15,8 @@ end
 -- ============================================================
 -- Arm the flag + grace timer on heist start (host/SP only)
 -- ============================================================
--- Hook sync_start, NOT at_enter: at_enter fires when the briefing (READY screen) opens, so backing
--- out before readying would (past grace) wrongly count as a loss. sync_start fires only once the
--- briefing is actually started (all ready / skip) and the blackscreen begins — the real commit point.
+-- Hook sync_start, not at_enter: at_enter opens at the READY screen; backing out before readying
+-- would wrongly count as a loss. sync_start is the real commit point (blackscreen begins).
 if RequiredScript == "lib/states/ingamewaitingforplayers" then
 	if IngameWaitingForPlayersState and not _G._CSR_QuitPenalty_HeistStart then
 		_G._CSR_QuitPenalty_HeistStart = true
@@ -30,15 +26,14 @@ if RequiredScript == "lib/states/ingamewaitingforplayers" then
 			if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 				return
 			end
-			-- Guests are never penalized; host forgiveness for them stays in mission_lifecycle.
+			-- Guests are never penalized (mission_lifecycle handles their forgiveness).
 			if mgr.is_guesting and mgr:is_guesting() then
 				return
 			end
 
 			local token = mgr:begin_heist()
 			local grace = mgr:heist_grace_seconds()
-			-- Unique id per attempt; the token guard inside mark_heist_grace_over is the real
-			-- protection against a stale timer (restart / fast finish).
+			-- Unique token per attempt; mark_heist_grace_over checks it to reject stale timers.
 			DelayedCalls:Add("CSR_HeistGrace_" .. tostring(token), grace, function()
 				if managers and managers.csr then
 					managers.csr:mark_heist_grace_over(token)
@@ -56,18 +51,15 @@ if RequiredScript == "lib/states/ingamewaitingforplayers" then
 end
 
 -- ============================================================
--- Quit warning + restart gate (raw overrides — PostHook can't
--- block a callback or change a visibility predicate's return)
+-- Quit warning + restart gate
+-- (raw overrides: PostHook can't block callbacks or change return values)
 -- ============================================================
 if RequiredScript == "lib/managers/menumanager" then
 	if MenuCallbackHandler and not _G._CSR_QuitPenalty_Menu then
 		_G._CSR_QuitPenalty_Menu = true
 
-		-- Replace the quit-to-main-menu confirm with a loss warning once past grace. Yes commits the
-		-- loss and runs the REAL quit action directly (vanilla's own Yes-handler), so there's no
-		-- second confirm and we only mark failed on a quit that actually executes. No cancels.
-		-- end_game is the in-heist "quit to main menu" callback (standard gamemode; CSR doesn't fork
-		-- it). Quit-to-desktop / alt-F4 / crash are caught by the init-path instead (no dialog there).
+		-- Replace the quit-to-menu confirm with a loss warning after grace. Yes marks failed then
+		-- calls vanilla's _dialog_end_game_yes (no double-confirm). Alt-F4/crash hit CSRGameManager.
 		local orig_end_game = MenuCallbackHandler.end_game
 		if orig_end_game then
 			function MenuCallbackHandler:end_game()
@@ -99,8 +91,7 @@ if RequiredScript == "lib/managers/menumanager" then
 			end
 		end
 
-		-- Restart after grace = a free retry that dodges the loss; block it. Within grace it's a
-		-- legitimate redo (re-entering the heist re-arms a fresh grace window).
+		-- Block restart after grace (would dodge the loss); within grace it's fine.
 		local function wrap_restart(method_name)
 			local orig = MenuCallbackHandler[method_name]
 			if not orig then
@@ -121,8 +112,7 @@ if RequiredScript == "lib/managers/menumanager" then
 		wrap_restart("restart_game") -- SP restart action
 		wrap_restart("restart_level") -- MP restart-vote action
 
-		-- Hide the SP restart item once past grace (visibility predicate; raw override because
-		-- PostHook can't change a return value). Untouched outside a committed CSR heist.
+		-- Hide SP restart item past grace (raw override: PostHook can't change a return value).
 		local orig_sp_restart_visible = MenuCallbackHandler.singleplayer_restart
 		if orig_sp_restart_visible then
 			function MenuCallbackHandler:singleplayer_restart()

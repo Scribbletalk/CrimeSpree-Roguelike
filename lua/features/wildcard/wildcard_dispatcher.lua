@@ -1,13 +1,6 @@
--- Wildcard Active Dispatcher (U1)
--- Shared keybind handler for active-use wildcard items. Each active wildcard
--- registers an `activate(player_unit)` callback keyed by its item type.
--- The BLT keybind script (lua/features/wildcard/activate_wildcard.lua) calls
--- _G.CSR_TriggerWildcard() on key press, which scans owned items and routes
--- to the first owned active wildcard.
---
--- U1 notes: gameplay gate is managers.csr:in_csr_heist() (NOT the legacy
--- crime_spree:is_active(), which is always false under CSR's standard gamemode).
--- Ownership is managers.csr:owned("<type>") on the bare item type.
+-- Wildcard Active Dispatcher: shared keybind handler for active-use wildcard items.
+-- activate_wildcard.lua calls CSR_TriggerWildcard() on keypress; routes to the first
+-- owned active. Gate: managers.csr:in_csr_heist() (NOT crime_spree:is_active()).
 
 if not RequiredScript then
 	return
@@ -20,9 +13,7 @@ _G.CSR_WILDCARD_DISPATCHER_LOADED = true
 
 _G.CSR_WildcardActives = _G.CSR_WildcardActives or {}
 
--- Active wildcards publish their cooldown here so the HUD slot can draw the radial
--- recharge. cooldown_end lives as a file-local in each item file (unreadable from the
--- HUD), so each active reports it via CSR_SetWildcardCooldown on activate AND on reset.
+-- Active wildcards publish cooldowns here (file-local ends times can't be read from HUD).
 --   { [item_type] = { ends = game_time, duration = seconds } }
 _G.CSR_WildcardCooldowns = _G.CSR_WildcardCooldowns or {}
 
@@ -40,9 +31,8 @@ local function dbg(msg)
 	end
 end
 
--- CSR_RegisterWildcardActive is defined in lua/core/extension_api.lua (it must
--- exist before this lib/entry POST-hook loads, since items register their active
--- from a playermanager hook that fires earlier — see the comment there).
+-- CSR_RegisterWildcardActive is defined in extension_api.lua (must exist before
+-- this lib/entry hook; items register from playermanager which fires earlier).
 
 local function get_local_player()
 	if not managers or not managers.player then
@@ -110,13 +100,8 @@ function _G.CSR_TriggerWildcard()
 	dbg("no owned wildcard actives — no-op")
 end
 
--- Workaround for "Full Speed Swarm" mod, which replaces BLTKeybindsManager:update
--- with a cached-list version. FSS captures `state = Global.load_level and StateGame
--- or StateMenu` at file-scope when its lib/managers/menumanager hook fires (at main
--- menu → state=StateMenu) and excludes any keybind whose CanExecuteInState(state)
--- returns false. Our csr_activate_wildcard is run_in_game only, so FSS permanently
--- filters it out — until a Lua reload mid-heist re-runs FSS with state=StateGame.
--- Symptom: rebinding the wildcard key mid-heist does nothing until heist restart.
+-- FSS ("Full Speed Swarm") compat: FSS snapshots state=StateMenu at boot, permanently
+-- drops our run_in_game keybind. Re-inject into fs_filtered_keybinds on every heist entry.
 local function ensure_wildcard_in_fss_list()
 	if not _G.BLT or not BLT.Keybinds or not BLT.Keybinds.fs_filtered_keybinds then
 		return
@@ -125,9 +110,7 @@ local function ensure_wildcard_in_fss_list()
 	if not bind then
 		return
 	end
-	-- FSS's _SetKey override populates _key.idstring and _key.input. If our key
-	-- was restored from save before FSS bootstrap and FSS skipped us in its
-	-- initial sweep, idstring stays nil. Re-call SetKey so the override runs.
+	-- If FSS skipped us on boot, _key.idstring stays nil; re-call SetKey so FSS's override runs.
 	local key_str = bind._key and bind._key.pc
 	if key_str and key_str ~= "" and not bind._key.idstring and bind.SetKey then
 		bind:SetKey(key_str)
@@ -142,22 +125,17 @@ local function ensure_wildcard_in_fss_list()
 end
 
 if Hooks then
-	-- Re-attach when the user binds the key from the menu (covers mid-heist rebind).
+	-- Re-inject when the user rebinds the key from the menu.
 	Hooks:Add("CustomizeControllerOnKeySet", "CSR_FSSFix_WildcardOnKeySet", function(connection_name, _)
 		if connection_name == "csr_activate_wildcard" then
 			ensure_wildcard_in_fss_list()
 		end
 	end)
 
-	-- FSS re-runs blt_keybinds_manager.lua on EVERY menu<->heist transition and rebuilds
-	-- fs_filtered_keybinds from a file-scope `state` snapshot, REPLACING the table. If that
-	-- snapshot lands on StateMenu (Global.load_level still false at the instant FSS re-runs),
-	-- our run_in_game bind is dropped for the whole heist -> key is silently dead. The boot
-	-- hooks above can't cover this: they fire once, the rebuild happens again every heist.
-	-- Re-assert exactly once per heist entry, from GameSetupUpdate (fires only in-heist,
-	-- strictly after FSS's transition rebuild); MenuUpdate re-arms it for the next heist.
-	-- These per-frame hooks exist solely to patch FSS, so only register them when FSS is
-	-- actually present -- players without FSS add zero per-frame work.
+	-- FSS rebuilds fs_filtered_keybinds on every menu<->heist transition. If the snapshot
+	-- catches StateMenu our bind is silently dropped for the whole heist. Re-assert once on
+	-- GameSetupUpdate (after FSS's rebuild); MenuUpdate rearms it for the next heist.
+	-- Only installs these per-frame hooks when FSS is actually present.
 	local _fss_rearm_hooks_added = false
 	local function add_fss_rearm_hooks()
 		if _fss_rearm_hooks_added then
@@ -179,10 +157,8 @@ if Hooks then
 		end)
 	end
 
-	-- Cover the case where the key was already bound from a previous session:
-	-- FSS's bootstrap (which runs after lib/entry but before LocalizationManagerPostInit)
-	-- skipped our bind because state==StateMenu at main menu. Re-attach here, and -- now that
-	-- FSS's bootstrap has run -- register the per-heist re-assert hooks iff FSS is loaded.
+	-- Key bound from a previous session: FSS bootstrap skipped it at menu, re-inject now.
+	-- FSS's bootstrap has already run by LocalizationManagerPostInit, so add_fss_rearm_hooks works.
 	Hooks:Add("LocalizationManagerPostInit", "CSR_FSSFix_WildcardOnLocPost", function()
 		ensure_wildcard_in_fss_list()
 		add_fss_rearm_hooks()

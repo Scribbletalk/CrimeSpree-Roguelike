@@ -1,35 +1,16 @@
--- Crime Spree Roguelike - Item Crash Handler
--- Wraps every item/modifier hook callback in pcall so an item bug shows up as a
--- chat message instead of a game crash, and disables the offending item after a
--- few errors. Registry-integrated: no hardcoded item table.
---
--- HOW IT WORKS (U1, registry-driven):
---   extension_api.lua:_install_hook runs an item/modifier installer fn and sets
---   _G.CSR._installing_owner (= def.type / def.id) for the duration. Inside that
---   fn the item calls Hooks:PostHook/PreHook with a CSR_ id. We patch Hooks here
---   so any callback registered while _installing_owner is set gets wrapped and
---   tagged with that owner. Hooks installed OUTSIDE an installer fn (core systems
---   in intercepts/ features/) have no owner -> left untouched (never auto-disabled).
---
--- NOT covered (parity with the pre-refactor handler):
---   - raw function overrides (function Class:method() ... end) -> use CSR_SafeOverride
---   - MP RPC handlers via _G.CSR_MP.register_handler
---   - ModifierX stat modifiers (applied through vanilla modifiersmanager; no CSR_ hook)
---
--- Loaded FIRST on lib/entry (before extension_api) so the Hooks patch is in place
--- before the earliest installer fn runs; re-loaded on lib/setups/setup to reset
--- error counts + re-enable items at the start of each heist.
+-- Item crash handler: pcall-wraps every item/modifier hook so a bug shows as
+-- a chat message + disable instead of a session crash. See csr_extension_api_deep_dive.md.
+-- Loaded before extension_api (lib/entry); re-runs on lib/setups/setup to reset per-heist.
 
 if not Hooks then
 	return
 end
 
--- Reset each heist (this file re-runs on lib/setups/setup). Read by global name in
--- the wrappers below, so reassigning the table here takes effect immediately.
+-- Reassigning these tables here clears them each heist (wrappers read by global name).
 _G.CSR_ItemErrors = {}
 _G.CSR_DisabledItems = {}
 
--- Patch Hooks + define helpers only once.
+-- Patch Hooks only once; helpers also defined here.
 if _G.CSR_ItemCrashHandlerInstalled then
 	return
 end
@@ -39,8 +20,7 @@ local MAX_ERRORS = 3
 local CHAT_COOLDOWN = 5 -- seconds between chat messages per item
 local _last_chat = {}
 
--- owner (def.type / def.id) -> display name. Resolved lazily from the registry the
--- first time an error fires (registrations exist by then). Falls back to the owner id.
+-- Lazily resolved from registry on first error; falls back to owner id.
 local _name_cache = {}
 
 local function find_def(owner)
@@ -72,7 +52,7 @@ local function resolve_name(owner)
 		local ok, txt = pcall(function()
 			return managers.localization:text(key)
 		end)
-		-- :text() returns an "ERROR: ..." placeholder for unknown keys.
+		-- :text() returns "ERROR:..." for unknown keys - skip those.
 		if ok and type(txt) == "string" and txt ~= "" and txt:sub(1, 5) ~= "ERROR" then
 			name = txt
 		end
@@ -81,7 +61,7 @@ local function resolve_name(owner)
 	return name
 end
 
--- Report an item/modifier error: log + chat (rate-limited) + disable past threshold.
+-- Log + rate-limited chat + disable after MAX_ERRORS.
 local function report_error(owner, where, err)
 	local err_str = tostring(err)
 	local item_name = resolve_name(owner)
@@ -102,7 +82,7 @@ local function report_error(owner, where, err)
 	end
 	_last_chat[owner] = now
 
-	-- Delay slightly so the chat manager is available when this fires.
+	-- Delay so the chat manager is ready.
 	DelayedCalls:Add("CSR_ItemErr_" .. tostring(owner) .. "_" .. count, 0.1, function()
 		if managers and managers.chat then
 			local msg = item_name .. ": " .. err_str
@@ -117,7 +97,7 @@ end
 
 _G.CSR_ReportItemError = report_error
 
--- Owner set by extension_api:_install_hook during the synchronous installer fn.
+-- Set by extension_api:_install_hook for the duration of an installer fn.
 local function current_owner()
 	return _G.CSR and _G.CSR._installing_owner or nil
 end
@@ -143,8 +123,7 @@ function Hooks:PostHook(class, func_name, hook_id, callback)
 	return _orig_PostHook(self, class, func_name, hook_id, callback)
 end
 
--- PreHook preserves the return value so blocking hooks (e.g. The Edge / Plush Shark
--- returning false to cancel vanilla) still work.
+-- PreHook preserves the return value so blocking hooks (e.g. returning false to cancel vanilla) still work.
 local _orig_PreHook = Hooks.PreHook
 function Hooks:PreHook(class, func_name, hook_id, callback)
 	local owner = current_owner()
@@ -165,7 +144,7 @@ function Hooks:PreHook(class, func_name, hook_id, callback)
 	return _orig_PreHook(self, class, func_name, hook_id, callback)
 end
 
--- Event hooks (callback signature is (...), not (self, ...)).
+-- Event hooks: callback is (...) not (self, ...).
 local _orig_Add = Hooks.Add
 function Hooks:Add(key, hook_id, callback)
 	local owner = current_owner()
@@ -185,10 +164,8 @@ function Hooks:Add(key, hook_id, callback)
 end
 
 -- =========================================================
--- CSR_SafeOverride: opt-in protection for raw function overrides
--- (where Hooks:PostHook can't be used). Falls back to the original on error.
---   local orig = Class.method
---   CSR_SafeOverride(Class, "method", "my_item", orig, function(self, ...) ... end)
+-- CSR_SafeOverride: opt-in guard for raw overrides where Hooks:PostHook can't be used.
+-- Falls back to original on error.
 -- =========================================================
 function _G.CSR_SafeOverride(class, method, owner, original_fn, new_fn)
 	class[method] = function(self, ...)

@@ -1,13 +1,6 @@
--- Crime Spree Roguelike - Promote ElementCarry "remove" to full secure on Highland Mortuary.
--- Highland Mortuary (Reservoir Dogs Day 1, level_id "rvd1") delivers bags via ElementCarry
--- operation="remove": the unit is set_slot(0)'d and vanishes, never going through
--- LootManager:secure. _global.secured stays empty -> HUD counter never updates, cash stinger
--- never plays, tab shows "0 bags secured". In CSR the player only plays one day, so we treat
--- remove == secure on this heist by calling managers.loot:secure() in a PreHook before vanilla
--- deletes the unit (routes through sync_secure_loot: HUD, stinger, _global.secured, achievements).
---
--- MUST stay scoped to rvd1 only: most heists use operation="remove" as part of their normal
--- secure flow, so promoting it globally double-counts every secured bag (gamebreaking exploit).
+-- Highland Mortuary (rvd1) delivers bags via ElementCarry operation="remove", bypassing LootManager:secure.
+-- Result: HUD counter stays 0, cash stinger never plays. Fix: call loot:secure() in a PreHook before
+-- vanilla deletes the unit. SCOPED TO rvd1 ONLY - globally promoting "remove" double-counts all bags.
 
 if not RequiredScript or not ElementCarry then
 	return
@@ -17,13 +10,11 @@ Hooks:PreHook(ElementCarry, "on_executed", "CSR_PromoteRemoveToSecure", function
 	if not self._values or self._values.operation ~= "remove" then
 		return
 	end
-	-- Mission elements fire on host and clients, but LootManager:secure on a client just RPCs the
-	-- host. Let only the host trigger; its secure broadcasts via sync_secure_loot to everyone.
+	-- Host-only: loot:secure() on a client just RPCs the host anyway; avoid double-counting.
 	if not Network or not Network:is_server() then
 		return
 	end
-	-- CSR runs the STANDARD gamemode, so crime_spree:is_active() is always false here; gate on the
-	-- CSR job/heist detector instead. level_id lives in Global.game_settings (current_job is temp).
+	-- CSR runs STANDARD gamemode so crime_spree:is_active() is always false; use in_csr_heist().
 	local mgr = managers and managers.csr
 	if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 		return

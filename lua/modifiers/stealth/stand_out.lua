@@ -1,17 +1,11 @@
--- Stand Out (stealth family) — enemies identify you faster while in stealth.
--- Reworked from the vanilla ModifierLessConcealment detection-risk wrapper into a
--- pure notice-SPEED knob: multiplies each attention setting's notice_delay_mul so
--- guards fill the detection meter faster, WITHOUT seeing you from further away
--- (range_mul is left untouched). Four tiers scale the notice rate up to 2x.
--- Host-authoritative: AI detection runs host-side, so hooking both the local
--- player and husk (guest) attention settings lets one host cover every player.
--- See csr_modifier_file_pattern.md / csr_modifier_mechanic_via_hooks.md.
+-- Stand Out (stealth family) - enemies detect you faster (fills meter sooner, not from farther).
+-- Multiplies notice_delay_mul on attention settings; range_mul untouched. Four tiers up to 2x speed.
+-- Hooks both PlayerMovement + HuskPlayerMovement so one host covers every player. See csr_modifier_file_pattern.md.
 if not (_G.CSR and _G.CSR.register_modifier) then
 	return
 end
 
--- Notice-rate multiplier per tier; delay_mul = 1/SPEED (lower delay = faster
--- notice). Display "$n% faster" = (SPEED-1)*100 -> 25 / 50 / 75 / 100.
+-- delay_mul = 1/SPEED (lower = faster fill). Display "$n% faster" = (SPEED-1)*100.
 local SPEED = { 1.25, 1.5, 1.75, 2.0 }
 
 local function tier(i)
@@ -22,8 +16,7 @@ local function tier(i)
 	}
 end
 
--- Strongest active tier's delay_mul (the smallest), or nil if Stand Out is not
--- active. delay_mul is our private field, so no other stealth modifier matches.
+-- Smallest (strongest) active delay_mul, or nil if inactive. Private field - no collisions.
 local function strongest_delay_mul()
 	local mgr = managers and managers.csr
 	if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist() and mgr.active_modifiers) then
@@ -38,8 +31,7 @@ local function strongest_delay_mul()
 	return best
 end
 
--- Multiply notice_delay_mul on a freshly-cloned attention setting. Idempotent:
--- the setting is a clone() per registration, so re-running never compounds.
+-- Setting is a fresh clone() per registration, so applying never compounds.
 local function apply_notice_speed(setting)
 	local m = strongest_delay_mul()
 	if m then

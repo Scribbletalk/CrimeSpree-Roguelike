@@ -6,13 +6,8 @@ end
 
 CrimeSpreeBlackMarketMenuComponent = CrimeSpreeBlackMarketMenuComponent or class()
 
--- Hide the briefing's heist-NAME title while Gage's Services is open so it doesn't bleed through
--- behind the top-left BLACK MARKET header. Two separate elements carry the name:
---   (1) MissionBriefingGui._panel  -- small description-tab title.
---   (2) HUDMissionBriefing layers  -- the prominent "CONTACT: JOBNAME" title (solid on
---       _foreground_layer_one + faded ghost on _background_layer_three), both named "job_text".
--- Vanilla MissionBriefingGui:hide() only dims to alpha 0.5, and the HUD title isn't touched at
--- all -- so the name stays readable. No-op when no briefing is present.
+-- Hide the briefing heist-name title while open; vanilla hide() only dims to 0.5 and misses
+-- the HUD job_text elements entirely, so they bleed behind the BLACK MARKET header.
 function CrimeSpreeBlackMarketMenuComponent:_suppress_briefing()
 	local mbg = managers.menu_component and managers.menu_component._mission_briefing_gui
 	if mbg and mbg._panel and alive(mbg._panel) then
@@ -231,9 +226,8 @@ function CrimeSpreeBlackMarketMenuComponent:close()
 	end
 	pcall(function()
 		if managers and managers.music and managers.music.post_event then
-			-- After a heist the captured pre-shop event is "music_uno_fade_reset": on_mission_end
-			-- overwrites Global.current_event with a fade-reset that names no track, so it can't be
-			-- replayed. Fall back to the result track recorded at mission end, then to menu music.
+			-- on_mission_end overwrites current_event with "music_uno_fade_reset" (unplayable); fall
+			-- back to the result track stashed in CSR_post_mission_music, then to menu music.
 			local prev = self._prev_music_event
 			if prev == "music_uno_fade_reset" and _G.CSR_post_mission_music then
 				prev = _G.CSR_post_mission_music

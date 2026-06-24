@@ -1,36 +1,27 @@
--- Aloe Leaf (common) — stand still ~1s to bloom a 5m heal zone at your feet that restores a
--- %-of-max-HP per second to you and nearby allies. The zone grows to full radius once, then holds
--- frozen while you stay put; it vanishes the instant you move. RoR2 "Bustling Fungus" analogue.
--- Stacking: +1% heal/sec per extra copy (linear), capped at 100% (a full heal per second).
--- Authority: each peer detects its OWN standstill (zero-latency, crisp vanish-on-move). The owner
--- self-heals locally + draws the zone; the HOST heals every other ally in radius. PD2 health is
--- owner-authoritative, so remote humans self-heal on a host ping (AURA_HEAL) while bots/jokers/
--- turrets the host heals directly. A client owner asks the host to run the aura around its husk
--- position (AURA_REQ). The zone visual is mirrored to every peer via an AURA_PULSE heartbeat (so
--- allies see it at the owner's feet too). See csr_aloe_leaf_item_plan.md.
+-- Aloe Leaf (common): stand still to bloom a heal zone at your feet, healing you + nearby allies.
+-- Each peer detects its own standstill; owner self-heals, host heals everyone else (PD2 health is
+-- owner-authoritative). See csr_aloe_leaf_item_plan.md for the full authority/network design.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
 end
 
--- Balance (single source: feeds both the heal math and the $-macros in the localized effect text).
-local STILL_THRESHOLD = 1.0 -- seconds standing still before the zone blooms
-local AURA_RADIUS = 300 -- 3m (PD2 units: 1m = 100)
-local HEAL_BASE = 0.02 -- 2% max HP/sec at 1 stack
-local HEAL_PER_STACK = 0.01 -- +1% max HP/sec per extra copy (linear)
-local HEAL_CAP = 1.00 -- 100% max HP/sec ceiling — the player's own max, so extra stacks past it do nothing
-local HEAL_TICK = 1.0 -- seconds between heal pulses while armed
+-- Balance constants (also feed the $-macros in the localized effect text).
+local STILL_THRESHOLD = 1.0 -- seconds still before the zone blooms
+local AURA_RADIUS = 300 -- PD2 units (1m = 100)
+local HEAL_BASE = 0.02 -- max HP/sec at 1 stack
+local HEAL_PER_STACK = 0.01 -- +per extra copy (linear)
+local HEAL_CAP = 1.00 -- max HP/sec ceiling
+local HEAL_TICK = 1.0 -- seconds between heal pulses
 
 -- Standstill / visual tuning.
-local STILL_EPS = 0 -- ZERO tolerance: ANY m_pos delta > 0 disarms. "stand still" = literally not moving.
-local GROW_TIME = 0.5 -- seconds the zone takes to expand 0 -> AURA_RADIUS once armed, then it holds
-local AURA_ALPHA = 0.06 -- held zone opacity (opacity_add blend; vanilla glows sit 0.07-0.15)
-local HEARTBEAT_TIMEOUT = HEAL_TICK * 1.6 -- remote zone expires this long after the last AURA_PULSE
-local ALLY_VOLUME = 0.25 -- allies hear the bloom cue, but much quieter than the owner (full vol)
+local STILL_EPS = 0 -- zero tolerance: any movement disarms
+local GROW_TIME = 0.5 -- seconds to grow 0 -> AURA_RADIUS, then hold
+local AURA_ALPHA = 0.06 -- held zone opacity (opacity_add blend)
+local HEARTBEAT_TIMEOUT = HEAL_TICK * 1.6 -- remote zone expires this long after last AURA_PULSE
+local ALLY_VOLUME = 0.25 -- bloom cue is quieter for allies than the owner
 
--- File-locals (the item file is dofile'd once, so every hook closure below shares these).
--- still_t/last_pos drive the owner-local standstill detector. aura_active/aura_start_t drive the
--- owner's own zone; remote_auras drives every other owner's zone (heartbeat-fed).
+-- File-locals shared by every hook closure (file is dofile'd once).
 local still_t = 0
 local last_pos = nil
 local next_heal_t = 0
@@ -63,13 +54,13 @@ local function is_host()
 	return _G.CSR_MP and CSR_MP.is_host and CSR_MP.is_host() or false
 end
 
--- Stack count -> heal fraction of max HP per tick: +1%/stack linear, capped at 100%.
+-- Stack count -> heal fraction of max HP per tick.
 local function heal_pct_for(count)
 	local pct = HEAL_BASE + (math.max(1, count) - 1) * HEAL_PER_STACK
 	return math.min(HEAL_CAP, pct)
 end
 
--- Heal the LOCAL player (authoritative for own health). Skips the heal-block pref + downed/custody.
+-- Heal the local player (authoritative for own health); skips if heal-blocked or downed/custody.
 local function heal_local_player(pct)
 	if managers.csr and managers.csr:item_heal_blocked() then
 		return
@@ -83,12 +74,12 @@ local function heal_local_player(pct)
 		return
 	end
 	if (cdmg.is_downed and cdmg:is_downed()) or (cdmg.arrested and cdmg:arrested()) then
-		return -- no aura-revive: bleedout / incapacitated / custody
+		return -- no aura-revive while downed/arrested
 	end
 	pcall(cdmg.restore_health, cdmg, pct, false)
 end
 
--- Heal one NPC ally CopDamage/TeamAIDamage/SentryGunDamage (shared _HEALTH_INIT/_health shape).
+-- Heal one NPC ally (CopDamage/TeamAIDamage/SentryGunDamage share the _HEALTH_INIT/_health shape).
 local function heal_npc(cd, pct)
 	if not cd or cd._dead or cd._fatal then
 		return
@@ -118,22 +109,22 @@ local function peer_player_unit(pid)
 	return peer and peer.unit and peer:unit() or nil
 end
 
--- Mark/refresh a remote owner's zone heartbeat. A fresh start (or one past the timeout) restarts the
--- grow animation; otherwise just bump last_seen so it keeps holding.
+-- Mark/refresh a remote owner's zone heartbeat. A new owner (or one past the timeout) restarts the
+-- grow animation; otherwise just bump last_seen to keep it holding.
 local function mark_remote_aura(pid)
 	local t = gtime()
 	local a = remote_auras[pid]
 	if not a or (t - (a.last_seen or 0)) > HEARTBEAT_TIMEOUT then
 		remote_auras[pid] = { start_t = t, last_seen = t } -- fresh bloom on this machine
 		if _G.CSR and _G.CSR.play_sound then
-			_G.CSR.play_sound("aloe_leaf_activate", { volume = ALLY_VOLUME }) -- ally: much quieter
+			_G.CSR.play_sound("aloe_leaf_activate", { volume = ALLY_VOLUME })
 		end
 	else
 		a.last_seen = t
 	end
 end
 
--- Draw the heal zone: a translucent disc that grows 0 -> AURA_RADIUS over GROW_TIME, then holds.
+-- Draw the heal zone: a translucent disc growing 0 -> AURA_RADIUS over GROW_TIME, then holding.
 local function draw_aura(pos, elapsed)
 	local progress = math.min(1, (elapsed or 0) / GROW_TIME)
 	local radius = AURA_RADIUS * progress
@@ -152,17 +143,16 @@ local function send_aura_heal(peer_id, pct)
 	end)
 end
 
--- HOST authority: heal every ally in radius EXCEPT the aura owner (who self-heals locally), and fan
--- the zone heartbeat (AURA_PULSE) to every peer so allies see it at the owner's position.
--- Remote humans self-heal on a ping; bots/jokers/turrets the host heals directly.
+-- Host authority: heal every ally in radius except the owner (self-heals locally), and fan the zone
+-- heartbeat (AURA_PULSE) to all peers. Remote humans self-heal on a ping; bots/jokers/turrets the
+-- host heals directly.
 local function host_heal_others(center, pct, owner_pid)
 	if not is_host() then
 		return
 	end
 	local session = managers.network and managers.network:session()
 
-	-- Zone heartbeat: tell all peers the owner's zone is live; mark the host's own remote view of it
-	-- (a host-owner draws its own zone locally, so skip self there).
+	-- Heartbeat: tell all peers the owner's zone is live (a host-owner draws its own zone, so skip self).
 	if session and LuaNetworking and _G.CSR_MP and CSR_MP.ITEM_MSG and CSR_MP.ITEM_MSG.AURA_PULSE then
 		pcall(function()
 			LuaNetworking:SendToPeers(CSR_MP.ITEM_MSG.AURA_PULSE, tostring(owner_pid))
@@ -312,8 +302,7 @@ local function reset_state()
 	remote_auras = {}
 end
 
--- Owner-local standstill detector + armed heal-tick scheduler. ANY per-frame movement (delta above
--- STILL_EPS) resets the timer and disarms — "stand still" means not moving at all.
+-- Owner-local standstill detector + heal-tick scheduler. Any movement resets the timer and disarms.
 local function tick(t, dt)
 	ensure_mp_handler()
 	local mgr = csr_mgr()
@@ -367,9 +356,7 @@ local function install_global_hooks()
 		pcall(tick, t, dt)
 	end)
 
-	-- Zone draw: the owner's own zone at its live feet (crisp), plus every remote owner's zone at
-	-- their husk pos (heartbeat-fed). Grows to full radius then holds; opacity_add blend so alpha
-	-- actually scales the additive contribution.
+	-- Zone draw: owner's zone at its live feet, plus every remote owner's at their husk pos (heartbeat-fed).
 	Hooks:Add("GameSetupUpdate", "CSR_AloeLeaf_AuraDraw", function(t, dt)
 		local now = gtime()
 		if aura_active then
@@ -421,8 +408,7 @@ _G.CSR.register_item({
 
 	hooks = {
 		["lib/managers/playermanager"] = function()
-			-- PlayerManager always loads; the closures only reference file-locals + always-present
-			-- globals, so installing the per-frame tick / zone draw / reset from here is safe.
+			-- PlayerManager always loads, so installing the global hooks from here is safe.
 			install_global_hooks()
 		end,
 	},

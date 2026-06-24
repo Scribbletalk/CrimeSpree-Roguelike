@@ -1,10 +1,6 @@
--- Defense-in-depth nil-guard for CopLogicSniper.enter (vanilla coplogicsniper.lua:72):
---   my_data.weapon_range = data.char_tweak.weapon[<equipped weapon usage>].range
--- Vanilla indexes this unguarded. The 'sniper' behavior preset defines only is_rifle
--- (charactertweakdata _init_sniper), so a sniper-tagged unit holding a non-is_rifle weapon
--- (weapon mods can change NPC usage) -> char_tweak.weapon[usage] nil -> crash. A not-yet-
--- equipped weapon -> equipped_unit() nil -> crash. Inert when the weapon chain is valid.
--- Not CSR-gated: pure guard, same philosophy as mission_element_safety.lua.
+-- Guard for CopLogicSniper.enter crash (coplogicsniper.lua:72): sniper preset only declares
+-- is_rifle, so a non-is_rifle weapon -> char_tweak.weapon[usage] nil -> crash.
+-- Aliases missing usage to is_rifle, pcall-wraps the remainder. See pd2_coplogicsniper_enter_weapon_usage_crash.md.
 
 if not RequiredScript then
 	return
@@ -29,9 +25,7 @@ if CopLogicSniper and CopLogicSniper.enter and not _G._CSR_SNIPER_ENTER_GUARD th
 		local wtd = base and base.weapon_tweak_data and base:weapon_tweak_data()
 		local usage = wtd and wtd.usage
 
-		-- Root heal (common case): equipped weapon's usage isn't a key in the sniper preset.
-		-- Alias it to is_rifle (the preset's only entry) so the vanilla lookup resolves.
-		-- Additive + non-destructive; only fills a genuinely missing key.
+		-- Alias missing usage key to is_rifle (the preset's only entry).
 		if weap and usage and weap[usage] == nil and weap.is_rifle then
 			weap[usage] = weap.is_rifle
 			dbg(
@@ -48,8 +42,7 @@ if CopLogicSniper and CopLogicSniper.enter and not _G._CSR_SNIPER_ENTER_GUARD th
 			return
 		end
 
-		-- Net for the rarer cases (no equipped weapon yet, dead unit, moved crash point).
-		-- Without this the C++ exception kills the session. Log everything to pin the trigger.
+		-- pcall catches rarer failures (no weapon yet, dead unit). Log to pin the trigger.
 		local keys = {}
 		if weap then
 			for k in pairs(weap) do
@@ -69,8 +62,7 @@ if CopLogicSniper and CopLogicSniper.enter and not _G._CSR_SNIPER_ENTER_GUARD th
 				.. tostring(err)
 		)
 
-		-- Mirror vanilla's intended post-state so downstream sniper code does not nil out:
-		-- weapon_range is read by the firing logic, and update must be re-enabled.
+		-- Restore expected post-enter state: weapon_range (used by firing logic) + re-enable update.
 		local my_data = data.internal_data
 		if my_data then
 			if my_data.weapon_range == nil then

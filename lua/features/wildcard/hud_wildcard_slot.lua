@@ -1,30 +1,16 @@
--- HUD Wildcard Slot (U1) — shows the local player's owned wildcard to the LEFT
--- of the health circle. Two render modes, switched live via the hud_wildcard_use_bar
--- preference: icon (counterclockwise radial recharge reveal, default) or a vertical
--- magenta bar that fills bottom-to-top as the cooldown depletes.
---
--- Direction trick: Diesel's VertexColorTexturedRadial sweeps clockwise only, and
--- the texture_rect negative-width UV flip that reverses the sweep ALSO mirrors
--- the icon. We point each icon at a PRE-MIRRORED DDS (csr_<type>_mirror) and apply
--- texture_rect={w,0,-w,h} at draw time — the two mirrors cancel visually while the
--- UV flip still reverses the sweep. Addon wildcards with no mirror DDS fall back to
--- their own icon (sweep stays clockwise; still functional).
---
--- Cooldown source: active wildcards publish to _G.CSR_WildcardCooldowns via the
--- dispatcher's CSR_SetWildcardCooldown (cooldown_end is a file-local in each item,
--- so it can't be read directly). Passive wildcards (Side Satchel) never publish, so
--- progress reads 0 → icon drawn at full alpha.
---
--- Hidden when no wildcard is owned. Layout: player_panel/teammates_panel both clip
--- children and the local player's teammate_panel uses halign="right", which breaks
--- naive :x() arithmetic. We parent the slot to the top-level hud_panel (no clipping)
--- and position via world_x/world_y relative to the radial's actual screen position.
+-- HUD Wildcard Slot: shows the owned wildcard to the left of the health radial.
+-- Two modes (hud_wildcard_use_bar pref): CCW radial reveal (default) or vertical bar.
+-- CCW trick: VertexColorTexturedRadial only sweeps CW; negative-width texture_rect
+-- flips the sweep but also mirrors the icon, so we pre-mirror the DDS and apply both.
+-- Cooldowns are published by each active via CSR_SetWildcardCooldown (file-locals are
+-- unreadable from here). Passives never publish -> progress=0 -> icon always full.
+-- Parented to hud_panel (not teammate_panel) to avoid clipping and halign="right" math.
 
 if not RequiredScript then
 	return
 end
 
--- Owned wildcard = managers.csr:held_wildcard(local_peer_id) (bare type, or nil).
+-- Returns the bare item type string of the local player's wildcard, or nil.
 local function find_owned_wildcard()
 	local mgr = managers and managers.csr
 	if not (mgr and mgr.held_wildcard and mgr.local_peer_id) then
@@ -51,9 +37,7 @@ local function cooldown_progress(item_type)
 	return remaining / cd.duration
 end
 
--- Resolve the icon for a wildcard type. Prefer the pre-mirrored DDS (CCW sweep);
--- fall back to the item's own icon (CW sweep) for addon wildcards without a mirror.
--- Returns texture (path) and texture_rect.
+-- Prefer csr_<type>_mirror DDS for CCW sweep; fall back to item icon (CW) if missing.
 local function resolve_icon(item_type)
 	local hud_icons = tweak_data and tweak_data.hud_icons
 	if not hud_icons then
@@ -89,7 +73,7 @@ local function apply_icon_texture(slot_panel, item_type)
 	end
 end
 
--- Bar mode is opt-in via the hud_wildcard_use_bar preference (nil/unset = icon mode).
+-- hud_wildcard_use_bar preference: nil/false = icon mode (default).
 local function use_bar_mode()
 	return managers and managers.csr and managers.csr:setting("hud_wildcard_use_bar") == true
 end
@@ -101,8 +85,7 @@ local function set_layer_visible(slot_panel, name, visible)
 	end
 end
 
--- State held in this Lua table (Diesel panels are userdata and silently drop
--- arbitrary field assignments). Each panel gets its own state closure at hook time.
+-- Diesel panels are userdata; can't store state on them directly.
 local function update_widget(slot_panel, state, dt)
 	if not alive(slot_panel) then
 		return
@@ -150,8 +133,7 @@ local function update_widget(slot_panel, state, dt)
 	local progress = state.displayed_progress
 	local bar_mode = use_bar_mode()
 
-	-- Both layer sets are pre-built, so switching is a pure visibility flip — the
-	-- Preferences toggle takes effect live, no HUD rebuild on change.
+	-- Both layer sets are pre-built; switching modes is a pure visibility flip.
 	set_layer_visible(slot_panel, "wildcard_icon_dim", not bar_mode)
 	set_layer_visible(slot_panel, "wildcard_icon", not bar_mode)
 	set_layer_visible(slot_panel, "wildcard_bar_frame", bar_mode)
@@ -159,8 +141,8 @@ local function update_widget(slot_panel, state, dt)
 	set_layer_visible(slot_panel, "wildcard_bar_fill", bar_mode)
 
 	if bar_mode then
-		-- progress=1 fresh-press (bar empty) -> 0 ready (bar full). Diesel Y is top-down,
-		-- so growing from the bottom shrinks h and raises y together.
+		-- progress=1 = empty (fresh press), 0 = full (ready). Diesel Y is top-down:
+		-- growing from the bottom shrinks h and raises y together.
 		local fill = slot_panel:child("wildcard_bar_fill")
 		local bg = slot_panel:child("wildcard_bar_bg")
 		if fill and bg then
@@ -170,8 +152,7 @@ local function update_widget(slot_panel, state, dt)
 			fill:set_y(bg:y() + h_total - fill_h)
 		end
 	else
-		-- progress = 1 fresh-press (icon empty) -> 0 ready (icon fully drawn). Color.r
-		-- drives how much of the icon renders CCW via VertexColorTexturedRadial.
+		-- Color.r drives the CCW radial reveal via VertexColorTexturedRadial.
 		icon:set_color(Color(1, 1 - progress, 1, 1))
 	end
 end
@@ -195,7 +176,7 @@ if HUDTeammate and not _G._CSR_WILDCARD_SLOT_HOOKED then
 			hud_panel:remove(existing)
 		end
 
-		-- Slot matches the radial size (incl. its 4px padding) for visual symmetry.
+		-- Match the radial size (incl. its 4px padding) for visual symmetry.
 		local size = radial_health_panel:w()
 		local gap = 6
 
@@ -207,8 +188,7 @@ if HUDTeammate and not _G._CSR_WILDCARD_SLOT_HOOKED then
 			h = size,
 		})
 
-		-- Dim background layer: always-visible faded icon so the slot stays legible
-		-- during cooldown. Placeholder texture replaced per wildcard by apply_icon_texture.
+		-- Faded background icon; always visible so the slot stays legible during cooldown.
 		slot_panel:bitmap({
 			name = "wildcard_icon_dim",
 			texture = "guis/textures/pd2/crime_spree/csr_familiar_friend_mirror",
@@ -232,9 +212,8 @@ if HUDTeammate and not _G._CSR_WILDCARD_SLOT_HOOKED then
 			h = size,
 		})
 
-		-- Bar-mode layers (hidden by default; update_widget reveals them when the
-		-- hud_wildcard_use_bar preference is on). Frame/bg/fill sandwich; the magenta
-		-- fill uses blend_mode="add" so it glows like the radial's additive health fill.
+		-- Bar-mode layers (hidden by default). Frame/bg/fill sandwich; fill uses
+		-- blend_mode="add" to glow like the radial's additive health fill.
 		local bar_w = 10
 		local bar_x = size - bar_w
 		local magenta = Color(1, 0.9, 0.27, 0.72)
@@ -280,9 +259,7 @@ if HUDTeammate and not _G._CSR_WILDCARD_SLOT_HOOKED then
 		slot_panel:animate(function(o)
 			local dt = 0
 			while alive(o) do
-				-- Re-anchor to the radial's current world position each frame. Must run
-				-- inside animate (not at hook time): HUDManager calls set_x on the
-				-- teammate_panel AFTER HUDTeammate:new returns, so world_x reads zero at hook time.
+				-- Re-anchor each frame: world_x is zero at hook time (HUDManager sets it after new).
 				if alive(radial_ref) then
 					o:set_world_x(radial_ref:world_x() - size - gap)
 					o:set_world_y(radial_ref:world_y())

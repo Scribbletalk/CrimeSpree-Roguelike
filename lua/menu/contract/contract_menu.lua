@@ -4,11 +4,8 @@
 
 CSRContractMenuComponent = CSRContractMenuComponent or class(MenuGuiComponentGeneric)
 
--- Combined difficulty name + reward line: one localization key per difficulty. Keyed by
--- index (2..8) to dodge the display-name <-> internal-id trap (Critical Rule #9: internal
--- "overkill" is the display "Very Hard", "overkill_145" is "Overkill", etc.). The text
--- wraps automatically; CSR-owned in english.json so it is editable without touching the
--- vanilla difficulty_name_ids.
+-- One loc key per difficulty (index 2..8). Keyed by index, not internal name, to avoid the
+-- display-name/internal-id mismatch (Rule #9: "overkill" displays as "Very Hard", etc.).
 local DIFFICULTY_LINE_KEYS = {
 	[2] = "csr_diff_name_reward_normal",
 	[3] = "csr_diff_name_reward_hard",
@@ -165,9 +162,8 @@ function CSRContractMenuComponent:_setup()
 	CrimeNetGui.make_color_text(self, self._desc_text, tweak_data.screen_colors.important_1)
 
 	if not self:_is_host() then
-		-- Joining another player's CSR lobby from Crime.Net: always show the client join-preview.
-		-- We can't gate on managers.crime_spree:in_progress() like vanilla did -- CSR keeps the
-		-- joining client on the STANDARD gamemode, so that vanilla flag stays false here.
+		-- Joining client: always show the join-preview; can't gate on crime_spree:in_progress()
+		-- because CSR keeps clients on STANDARD gamemode (flag stays false).
 		self:_setup_continue_client(text_w, text_h)
 	elseif managers.crime_spree:in_progress() then
 		self:_setup_continue_crime_spree(text_w, text_h)
@@ -230,10 +226,8 @@ function CSRContractMenuComponent:_setup_new_crime_spree(text_w, text_h)
 		end
 	end
 
-	-- Difficulty name + reward flavor to the right of the skull row: name on the first
-	-- line, reward on a second line (small font). Refreshed by set_difficulty_id on cycle.
-	-- Same color as the (lit) skulls: screen_colors.risk is gold here, not red --
-	-- Color(255,255,204,0)/255.
+	-- Difficulty name + reward flavor to the right of the skull row; refreshed by set_difficulty_id.
+	-- screen_colors.risk is gold (Color(255,255,204,0)/255) here, not red.
 	self._difficulty_name = self._difficulty_panel:text({
 		layer = 1,
 		vertical = "center",
@@ -260,7 +254,7 @@ function CSRContractMenuComponent:_setup_new_crime_spree(text_w, text_h)
 	-- Ranges (0-based, end-exclusive) to paint gold: the values only, not their labels.
 	local gold_ranges = {}
 	if spree_active then
-		-- Header keeps the "active" status word; completed count and rank follow on their own lines.
+		-- Three lines: status header, missions completed, rank+glyph.
 		local active = managers.localization:text("csr_current_spree_active")
 		local header = managers.localization:to_upper_text("csr_current_spree", { status = active })
 		local count_num = tostring(managers.csr:missions_completed())
@@ -273,14 +267,14 @@ function CSRContractMenuComponent:_setup_new_crime_spree(text_w, text_h)
 		-- Blank line between the header and the data lines.
 		spree_text = header .. "\n\n" .. completed .. "\n" .. rank_line
 
-		-- $status / $count / $rank sit at the tail of their segment, so value start = seg_len - value_len.
+		-- Each value sits at the tail of its segment; compute start = seg_len - value_len.
 		local h_len = utf8.len(header)
 		gold_ranges[#gold_ranges + 1] = { h_len - utf8.len(active), h_len }
 		local c_base = h_len + 2 -- skip the "\n\n" (header + blank line)
 		local c_len = utf8.len(completed)
 		gold_ranges[#gold_ranges + 1] = { c_base + c_len - utf8.len(count_num), c_base + c_len }
 		local r_base = c_base + c_len + 1 -- skip the "\n"
-		-- Gold spans the rank number through the trailing CS glyph (end = full rank line length).
+		-- Gold spans rank number through the trailing CS glyph.
 		local rank_start = r_base + utf8.len(rank_label) - utf8.len(rank_num)
 		gold_ranges[#gold_ranges + 1] = { rank_start, r_base + utf8.len(rank_line) }
 	else
@@ -303,8 +297,7 @@ function CSRContractMenuComponent:_setup_new_crime_spree(text_w, text_h)
 	spree_line:set_left(padding)
 	spree_line:set_top(self._difficulty_panel:bottom() + padding)
 
-	-- Paint each value range: gold (crime_spree_risk) when active, dim white when idle.
-	-- (set_range_color is start-inclusive / end-exclusive.)
+	-- Paint value ranges gold when active; set_range_color is start-inclusive/end-exclusive.
 	local status_color = spree_active and tweak_data.screen_colors.crime_spree_risk or Color.white:with_alpha(0.6)
 	for _, r in ipairs(gold_ranges) do
 		spree_line:set_range_color(r[1], r[2], status_color)
@@ -431,8 +424,7 @@ function CSRContractMenuComponent:_setup_continue_client(text_w, text_h)
 	title:set_bottom(self._info_panel:top())
 	title:set_left(self._info_panel:left())
 
-	-- Vanilla level-mismatch warnings dropped (they compared the vanilla CS spree level, meaningless
-	-- under CSR). A joining guest just needs to know how MP rewards bank to their own run.
+	-- Vanilla level-mismatch warnings dropped (compared vanilla CS level, irrelevant under CSR).
 	local desc = self._info_panel:text({
 		vertical = "top",
 		wrap = true,

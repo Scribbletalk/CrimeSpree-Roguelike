@@ -1,11 +1,7 @@
--- Hippocratic Oath (wildcard, passive) — on loud, spawns a Medic offscreen, converts it
--- to a joker on a tight follow leash, and pulses a 5m heal aura (5% max HP / 5s). On medic
--- death a 6-min respawn timer ticks, then a fresh one spawns. No cap. Stealth-blocked.
--- Authority: HOST spawns/tracks every owner's medic, runs aura + respawn + medic DR;
--- owner heals locally (host self-heals, remote owners get an OATH_HEAL ping). Joker-cap
--- bump via upgrade_value PostHooks — PlayerManager (host-self) + HuskPlayerBase (clients);
--- PlayerBase isn't read in this flow (groupaistatebase.lua:5244-5248). HUD: respawn timer
--- via CSR_SetWildcardCooldown (wildcard-slot CCW radial).
+-- Hippocratic Oath (wildcard): on loud, spawns a Medic offscreen, converts it to a leashed joker,
+-- and pulses a heal aura. On medic death a respawn timer ticks, then a fresh one spawns. Stealth-blocked.
+-- Host spawns/tracks every owner's medic and runs the aura/respawn/DR; owners heal locally (remote
+-- owners via an OATH_HEAL ping). HUD respawn timer via CSR_SetWildcardCooldown.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -20,19 +16,19 @@ local SPAWN_MIN_DIST = 1500 -- spawn 15-40m from the owner (offscreen, but reach
 local SPAWN_MAX_DIST = 4000
 local SPAWN_CHECK_INTERVAL = 2.0
 local MEDIC_DR = 0.80 -- 80% incoming damage reduction on the medic
-local RELOCATE_DISTANCE = 250 -- idle follow leash: host forces a re-path past 2.5m (half the 5m aura) so the medic stays in heal range, via _check_should_relocate override
-local LEASH_DISTANCE = AURA_RADIUS -- host yanks the medic out of any fight the instant it leaves heal range (follow-first)
-local LEASH_CHECK_INTERVAL = 0.5 -- leash check cadence: frequent yank keeps the medic glued instead of brawling
+local RELOCATE_DISTANCE = 250 -- idle follow leash: re-path the medic past this to stay in heal range
+local LEASH_DISTANCE = AURA_RADIUS -- yank the medic out of any fight once it leaves heal range
+local LEASH_CHECK_INTERVAL = 0.5 -- leash check cadence
 local PULSE_DURATION = 0.5 -- expanding-ring visual lifetime per heal pulse
-local PULSE_ALPHA = 0.06 -- peak ring opacity (opacity_add blend; vanilla glows sit 0.07-0.15)
+local PULSE_ALPHA = 0.06 -- peak ring opacity (opacity_add blend)
 local VOICE_EVENT = "f47" -- medic heal shout (vanilla priority_shout)
 local VOICE_THROTTLE = 30 -- min seconds between heal voicelines per machine
 
 -- ene_medic_r870 is base-game (no DLC) — always mountable.
 local MEDIC_UNIT_PATH = "units/payday2/characters/ene_medic_r870/ene_medic_r870"
 
--- File-locals: the item file is dofile'd once, so every hook closure below shares these.
--- state is host-authoritative; pulse/last_voice_t are per-machine (drive the local visual).
+-- File-locals shared by every hook closure (file is dofile'd once). state is host-authoritative;
+-- pulse/last_voice_t are per-machine (drive the local visual).
 local state = {} -- [peer_id] = { medic_unit, medic_unit_key, respawn_at }
 local pulse = { active = false, start_t = 0, medic_unit = nil }
 local last_voice_t = 0
@@ -40,8 +36,7 @@ local next_aura_t = 0
 local next_spawn_t = 0
 local next_leash_t = 0
 
--- Follow-debug tracing, gated by the mod-options debug toggle (_G.CSR_DEBUG), same as
--- perk_deck_scaling.lua. Turn CSR_DEBUG on in options to capture the medic-follow trace.
+-- Follow-debug tracing, gated by the mod-wide _G.CSR_DEBUG toggle.
 local function dbg(fmt, ...)
 	if _G.CSR_DEBUG and csr_log then
 		csr_log("[HO] " .. string.format(fmt, ...))
@@ -224,9 +219,7 @@ end
 -- Host-authoritative medic lifecycle
 -- =====================================================
 
--- Re-path the medic to its owner on a tight leash. A fresh "follow" objective runs through
--- on_new_objective and exits to "travel" (coplogicidle.lua:504), yanking it out of any fight.
--- `distance` is the idle relocate threshold (coplogicidle.lua:1087).
+-- Re-path the medic to its owner. A fresh "follow" objective exits any fight back to "travel".
 local function set_follow_objective(medic_unit, owner_unit)
 	if not (alive(medic_unit) and medic_unit:brain() and alive(owner_unit)) then
 		dbg("set_follow_objective SKIP medic=%s owner=%s", tostring(alive(medic_unit)), tostring(alive(owner_unit)))
@@ -238,7 +231,7 @@ local function set_follow_objective(medic_unit, owner_unit)
 			follow_unit = owner_unit,
 			scan = true,
 			is_default = true,
-			haste = "run", -- converted jokers default to "walk" in cool stance (coplogictravel.lua:1587); force run so the medic can keep pace with a sprinting owner
+			haste = "run", -- jokers default to "walk" in cool stance; force run to keep pace with the owner
 		})
 	end)
 	dbg("set_follow_objective DONE ok=%s logic_now=%s", tostring(ok), tostring(medic_unit:brain()._current_logic_name))
@@ -280,8 +273,7 @@ local function spawn_medic_for(peer_id)
 	end
 
 	-- Raw World:spawn_unit leaves data.team nil → CopLogicTravel crash before convert.
-	-- Mirror ElementSpawnEnemyDummy: idle spawn AI + combatant team, synchronously.
-	-- See pd2_spawn_unit_needs_set_char_team.md.
+	-- Set idle spawn AI + combatant team synchronously. See pd2_spawn_unit_needs_set_char_team.md.
 	pcall(function()
 		spawned:brain():set_spawn_ai({ init_state = "idle" })
 		managers.groupai:state():set_char_team(spawned, tweak_data.levels:get_default_team_ID("combatant"))
@@ -383,9 +375,8 @@ local function host_aura_tick()
 	end
 end
 
--- Tight-leash tick: a medic past LEASH_DISTANCE and not already travelling gets re-issued
--- a follow (forces on_new_objective → travel, pulling it home). The "travel" guard avoids
--- re-pathing every tick while it's already running home (would stutter).
+-- Leash tick: a medic past LEASH_DISTANCE and not already travelling gets re-issued a follow.
+-- The "travel" guard avoids re-pathing every tick while it's already running home.
 local function host_leash_tick()
 	if not Network:is_server() or not is_playing() then
 		return
@@ -552,8 +543,7 @@ local function install_global_hooks()
 		end
 	end)
 
-	-- Expanding heal ring at the medic (all peers, one-shot fade). opacity_add blend so
-	-- the alpha actually scales the additive contribution (plain `add` ignores alpha).
+	-- Expanding heal ring at the medic (all peers, one-shot fade); opacity_add blend so alpha scales.
 	Hooks:Add("GameSetupUpdate", "CSR_HippocraticOath_PulseDraw", function(t, dt)
 		if not pulse.active then
 			return
@@ -602,8 +592,7 @@ _G.CSR.register_item({
 
 	hooks = {
 		["lib/managers/playermanager"] = function()
-			-- Install the per-frame tick + pulse + reset + MP handler from here (PlayerManager
-			-- always loads; the closures only reference file-locals + always-present globals).
+			-- PlayerManager always loads, so install the tick + pulse + reset + MP handler from here.
 			install_global_hooks()
 
 			-- Joker-cap bump for the host's own conversion (convert_hostage_to_criminal reads
@@ -690,10 +679,8 @@ _G.CSR.register_item({
 		end,
 
 		["lib/units/player_team/logics/teamailogicidle"] = function()
-			-- Tight follow leash for Oath medics: converted jokers route their relocate check
-			-- through this fn (coplogicidle.lua:1040), but vanilla only trips it past ~5m in a
-			-- different nav-seg → the medic loiters. Force a relocate for OUR medic past
-			-- RELOCATE_DISTANCE; scoped by unit-key, so every other unit hits vanilla untouched.
+			-- Idle follow leash: force a relocate for our medic past RELOCATE_DISTANCE (vanilla only
+			-- trips much further out, so the medic loiters). Scoped by unit-key; other units untouched.
 			if _G._CSR_HIPPOCRATIC_RELOCATE_HOOKED then
 				return
 			end
@@ -722,13 +709,10 @@ _G.CSR.register_item({
 		end,
 
 		["lib/units/enemies/cop/logics/coplogicidle"] = function()
-			-- Combat leash: our medic only acquires/keeps attack targets within LEASH_DISTANCE of
-			-- its owner. _get_priority_attention is the single target-acquisition chokepoint for
-			-- BOTH idle (coplogicidle.lua:225) and attack (coplogicattack.lua:871); returning nil
-			-- past the leash means idle never enters attack and attack exits via
-			-- _chk_exit_attack_logic -> back to follow/travel home. Within range it fights vanilla.
-			-- Scoped by unit-key, so every other cop hits vanilla untouched. This is what makes the
-			-- leash actually win: re-issuing follow alone loses the tug-of-war with attack movement.
+			-- Combat leash: our medic only acquires targets within LEASH_DISTANCE of its owner.
+			-- _get_priority_attention is the shared chokepoint for idle + attack, so returning nil past
+			-- the leash keeps it from fighting (re-issuing follow alone loses to attack movement).
+			-- Scoped by unit-key; other cops untouched. See pd2_converted_joker_combat_leash.md.
 			if _G._CSR_HIPPOCRATIC_ATTN_HOOKED then
 				return
 			end
@@ -747,12 +731,9 @@ _G.CSR.register_item({
 		end,
 
 		["lib/units/enemies/cop/logics/coplogictravel"] = function()
-			-- "Follow more directly" (ported from Useful Bots, scoped to OUR medic): vanilla
-			-- _begin_coarse_pathing fires an ASYNC search_for_coarse_path, so the medic stalls for
-			-- several ticks waiting on the pathfinder, then walks a meandering multi-seg path to a
-			-- now-stale owner position. Replace it with a SYNCHRONOUS direct two-node path straight
-			-- to the owner's current nav segment -> no stall, heads at the live position. Every
-			-- non-medic unit keeps the vanilla async search.
+			-- "Follow more directly" (from Useful Bots, scoped to our medic): vanilla coarse pathing is
+			-- async and stalls, then meanders to a stale owner pos. Replace with a synchronous direct
+			-- two-node path to the owner's current nav segment. Non-medic units keep vanilla async.
 			if _G._CSR_HIPPOCRATIC_COARSE_HOOKED then
 				return
 			end

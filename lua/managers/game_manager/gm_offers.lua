@@ -37,8 +37,7 @@ local function csr_weighted_pick(weights)
 	return last
 end
 
--- Roll count distinct items from the weighted pool. No duplicates within a window.
--- Shallow-copies buckets so the registry is never mutated.
+-- Roll count distinct items from the weighted pool; shallow-copies buckets so registry is never mutated.
 function CSRGameManager:roll_item_pool(peer_id, count)
 	count = math.max(1, tonumber(count) or 3)
 
@@ -85,11 +84,10 @@ end
 
 -- =====================================================
 -- Pending offers (per-peer locked picks)
--- Each rank materialises a stored offer (frozen 3-card list) before the window opens.
--- Re-opening shows the same cards; only a confirmed pick pops it.
+-- A frozen 3-card list per rank; re-opening shows the same cards until a pick pops it.
 -- =====================================================
 
--- Ensure the peer has at least n pre-rolled stored offers. Idempotent (no-op if already >= n).
+-- Ensure the peer has at least n stored offers; idempotent.
 function CSRGameManager:ensure_offers(peer_id, n)
 	n = math.max(0, tonumber(n) or 0)
 	local entry = self:_own_entry(peer_id, true)
@@ -102,7 +100,7 @@ function CSRGameManager:ensure_offers(peer_id, n)
 	for _ = 1, needed do
 		local rolled = self:roll_item_pool(peer_id, CARDS_PER_OFFER)
 		if #rolled == 0 then
-			break -- registry too thin; UI shows "NO ITEMS" via peek_offer returning nil
+			break -- registry too thin; peek_offer returns nil, UI shows "NO ITEMS"
 		end
 		local types = {}
 		for _, def in ipairs(rolled) do
@@ -114,9 +112,6 @@ function CSRGameManager:ensure_offers(peer_id, n)
 	if dirty then
 		self:save()
 	end
-	csr_log(
-		"[CSR][mptest][offers] ensure_offers pid=" .. tostring(peer_id) .. " now=" .. tostring(#entry.pending_offers)
-	)
 end
 
 function CSRGameManager:pending_offer_count(peer_id)
@@ -124,7 +119,7 @@ function CSRGameManager:pending_offer_count(peer_id)
 	return (entry and entry.pending_offers and #entry.pending_offers) or 0
 end
 
--- Read the first stored offer (resolved to live defs; filtered if addon vanished). Does NOT pop.
+-- Read the first stored offer (resolved to live defs; drops any whose addon vanished). Does NOT pop.
 function CSRGameManager:peek_offer(peer_id)
 	local entry = self:_own_entry(peer_id, false)
 	local offers = entry and entry.pending_offers
@@ -139,11 +134,10 @@ function CSRGameManager:peek_offer(peer_id)
 			defs[#defs + 1] = def
 		end
 	end
-	csr_log("[CSR][mptest][offers] peek_offer pid=" .. tostring(peer_id) .. " cards=" .. tostring(#defs))
 	return defs
 end
 
--- Pop the first stored offer (called after add_item; discards all unchosen cards with it).
+-- Pop the first stored offer; called after add_item (discards unchosen cards).
 function CSRGameManager:pop_offer(peer_id)
 	local entry = self:_own_entry(peer_id, false)
 	local offers = entry and entry.pending_offers

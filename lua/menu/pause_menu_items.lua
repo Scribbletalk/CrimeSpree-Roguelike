@@ -1,13 +1,11 @@
--- Inserts "Return to Lobby" into the in-game pause menu (ESC overlay).
--- Visibility-gated by return_to_csr_lobby_visible (contract_callbacks.lua) so it
--- only shows on briefing + endscreen, never in the active heist or post-heist lobby.
--- Click action + lobby reroute live in contract_callbacks.lua / lobby_routing.lua.
+-- Inserts "Return to Lobby" into the ESC pause menu.
+-- Visibility gated by return_to_csr_lobby_visible (contract_callbacks.lua); click + routing in lobby_routing.lua.
 
 if not RequiredScript then
 	return
 end
 
--- Vanilla "back to main menu" callbacks across pause-menu states; we render just above this row.
+-- Vanilla quit callbacks across pause-menu states; our button lands just above this row.
 local QUIT_TO_MAIN_CALLBACKS = {
 	quit_game = true,
 	leave_lobby = true,
@@ -30,7 +28,7 @@ local function find_quit_index(items)
 	return nil
 end
 
--- Fallback: land BEFORE any trailing back/last_item sentinel.
+-- Fallback: land before any trailing back/last_item sentinel.
 local function find_trailing_back_index(items)
 	for i = #items, 1, -1 do
 		local item = items[i]
@@ -42,7 +40,7 @@ local function find_trailing_back_index(items)
 	return #items + 1
 end
 
--- Pause-menu root node is keyed "pause" (NOT "pause_menu") — see CSR critical rule.
+-- Node is keyed "pause" not "pause_menu".
 Hooks:Add("MenuManagerBuildCustomMenus", "CSR_PauseMenuReturnToLobby", function(menu_manager, nodes)
 	if not nodes or not nodes.pause then
 		return
@@ -50,40 +48,9 @@ Hooks:Add("MenuManagerBuildCustomMenus", "CSR_PauseMenuReturnToLobby", function(
 
 	local node = nodes.pause
 
-	-- TEMP B4 diag: dump every pause-node item (id + text_id + localized text) so we can identify the
-	-- exact standard-mode quit button the user sees as "Terminate Contract". STRIP after B4. [CSR][mptest]
-	-- Gated on CSR_DEBUG via csr_log (debug-only; B4 is fixed -- kept behind the toggle, not unconditional).
-	csr_log(
-		"[CSR][mptest][pausemenu] build hook fired; node="
-			.. tostring(node)
-			.. " items="
-			.. tostring(node and node._items)
-	)
-	if node and node._items then
-		for _, it in ipairs(node._items) do
-			local p = it.parameters and it:parameters()
-			if p then
-				local tid = p.text_id
-				local txt = (tid and managers and managers.localization and managers.localization:text(tid)) or "?"
-				csr_log(
-					"[CSR][mptest][pausemenu] name="
-						.. tostring(p.name)
-						.. " text_id="
-						.. tostring(tid)
-						.. " text="
-						.. tostring(txt)
-				)
-			end
-		end
-	end
-
-	-- Hide the vanilla "Terminate contract" quit (item "abort_mission") inside CSR runs only.
-	-- CSR owns the quit flow via its own "Return to Lobby"; this standard-mode quit leaks in CSR
-	-- heists because they run the STANDARD gamemode (job_id "crime_spree"), so abort_mission's
-	-- crime_spree_not_is_active callback passes. We append a CSR-gated visible_callback: Item:visible()
-	-- AND-s every callback (coremenuitem.lua), so returning false here forces the item hidden whenever
-	-- in_csr_heist() is true. in_csr_heist() is job_id-based -> covers host AND guest, and stays false
-	-- in vanilla heists and real Crime Spree, so those keep their normal quit. Idempotent via a flag.
+	-- Hide vanilla "abort_mission" in CSR heists; CSR owns quit via Return to Lobby.
+	-- STANDARD gamemode lets abort_mission's crime_spree_not_is_active callback pass, so we must suppress it.
+	-- Item:visible() AND-s all callbacks (coremenuitem.lua), so injecting false hides it only in CSR.
 	if node._items then
 		for _, item in ipairs(node._items) do
 			local p = item.parameters and item:parameters()
@@ -97,7 +64,7 @@ Hooks:Add("MenuManagerBuildCustomMenus", "CSR_PauseMenuReturnToLobby", function(
 		end
 	end
 
-	-- Idempotency: hook can fire on manager re-init / VR toggle.
+	-- Idempotency guard: hook can re-fire on manager re-init or VR toggle.
 	if node._items then
 		for _, item in ipairs(node._items) do
 			if item.parameters and item:parameters().name == "csr_return_to_lobby" then

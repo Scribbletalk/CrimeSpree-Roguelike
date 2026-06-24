@@ -1,4 +1,4 @@
--- Crime Spree Roguelike - Logbook Menu Component
+-- Logbook menu: catalogue grid, item details, statistics, achievements tabs.
 
 if not RequiredScript then
 	return
@@ -139,13 +139,8 @@ function CrimeSpreeLogbookMenuComponent:_restore_endscreen()
 	self._cme_fs_panel_was_visible = nil
 end
 
--- Hide the briefing's heist-NAME title while the logbook is open so it doesn't bleed through
--- behind the top-left LOGBOOK header. Two separate elements carry the name:
---   (1) MissionBriefingGui._panel  -- small description-tab title.
---   (2) HUDMissionBriefing layers  -- the prominent "CONTACT: JOBNAME" title (solid on
---       _foreground_layer_one + faded ghost on _background_layer_three), both named "job_text".
--- Vanilla MissionBriefingGui:hide() only dims to alpha 0.5, and the HUD title isn't touched at
--- all -- so the name stays readable. No-op when opened from the end-screen (no briefing present).
+-- Hide the mission-name title (MissionBriefingGui._panel + HUDMissionBriefing job_text layers) while open.
+-- Vanilla :hide() only dims to 0.5 and doesn't touch the HUD layer, so both must be hidden manually.
 function CrimeSpreeLogbookMenuComponent:_suppress_briefing()
 	local mbg = managers.menu_component and managers.menu_component._mission_briefing_gui
 	if mbg and mbg._panel and alive(mbg._panel) then
@@ -660,9 +655,7 @@ function CrimeSpreeLogbookMenuComponent:_populate_achievements_tab()
 end
 
 -- Three-column career-stats board: RECORDS / TOTALS / ITEMS.
--- Scaffold step: values come from managers.csr:career_stat (the _meta.stats bucket, all 0
--- until the tracking hooks land) except Items Unlocked, which reads the already-persisted
--- CSR_Logbook progress. Each label/value is its own loc key (no hardcoded strings).
+-- Values from career_stat(); Items Unlocked reads CSR_Logbook progress directly.
 function CrimeSpreeLogbookMenuComponent:_create_statistics()
 	local panel = self._stats_panel_ref or self._content_panel
 	local loc = managers.localization
@@ -695,8 +688,7 @@ function CrimeSpreeLogbookMenuComponent:_create_statistics()
 		return tostring(n)
 	end
 
-	-- Items unlocked / full catalogue: cross-reference registry against the unlock dict so stale
-	-- save keys and is_scrap entries can't inflate either counter. Numerator <= denominator guaranteed.
+	-- Cross-check registry vs unlock dict: stale save keys and is_scrap entries don't inflate counters.
 	local total_items = 0
 	local unlocked_items = 0
 	if mgr and mgr.registered_items then

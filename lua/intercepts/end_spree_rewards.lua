@@ -42,15 +42,9 @@ function CrimeSpreeManager:on_spree_complete()
 	return orig_on_spree_complete(self)
 end
 
--- Heal a leftover vanilla Crime Spree on load. CSR runs the STANDARD gamemode and keeps its own state
--- in csr_save.json; it never populates vanilla in_progress/spree_level/modifiers. So an in-progress
--- spree here is a pre-existing vanilla CS one (e.g. the player never ended it before installing this
--- mod). It corrupts CSR's menu: vanilla nodes render alongside ours (doubled Reroll/Start) and
--- modifiers_to_select() > 0 forces the modifier-select panel. We capture the unclaimed rewards into
--- CSR's _meta (so they survive a relaunch and aren't lost), then reset_crime_spree() to un-double the
--- menu (preserving highest_level). The captured rewards are claimed later via the vanilla reward
--- screen (contract_difficulty.lua prompts; _pending_end_rewards path grants them). Runs at game start,
--- after managers.csr:init(), before any menu builds -> self-healing for users who never reset vanilla CS.
+-- Heal a leftover vanilla CS run on load. A pre-existing in_progress spree doubles up CSR's menu
+-- nodes and forces the modifier-select panel. Capture any unclaimed rewards then reset_crime_spree()
+-- to clear the corruption. Rewards are granted later via _pending_end_rewards.
 local orig_load = CrimeSpreeManager.load
 function CrimeSpreeManager:load(data, version)
 	orig_load(self, data, version)
@@ -58,9 +52,7 @@ function CrimeSpreeManager:load(data, version)
 		return
 	end
 
-	-- calculate_rewards() = amount * reward_level, keyed by reward id (experience/cash/
-	-- continental_coins/loot_drop/random_cosmetic); needs in_progress true (still is here).
-	local rewards = self:calculate_rewards()
+	local rewards = self:calculate_rewards() -- in_progress still true here, so this is valid
 	local has_rewards = false
 	for _, amt in pairs(rewards) do
 		if (amt or 0) > 0 then

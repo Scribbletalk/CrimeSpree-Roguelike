@@ -322,12 +322,13 @@ function CrimeSpreeBlackMarketShopPage:_build_card_visuals(card, entry)
 	card.frame:set_center(frame_center_x, frame_center_y)
 
 	local itex, irect = resolve_icon(entry.icon)
+	local glyph = icon_size * (entry.icon_scale or 1)
 	card.icon = panel:bitmap({
 		name = "icon",
 		texture = itex,
 		texture_rect = irect,
-		w = icon_size,
-		h = icon_size,
+		w = glyph,
+		h = glyph,
 		color = Color.white,
 		layer = 2,
 	})

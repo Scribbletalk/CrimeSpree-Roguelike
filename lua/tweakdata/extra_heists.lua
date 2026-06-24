@@ -1,14 +1,8 @@
--- Crime Spree Roguelike — expand the mission-card pool with vanilla heists that
--- base Crime Spree omits. Ported from "More Heists In Crime Spree" (MHiCS),
--- normal heists only (no Holdout). Always on.
---
--- CSR reads tweak_data.crime_spree.missions (3 buckets: 1=stealth, 2=short loud,
--- 3=long loud) and picks one per bucket -> 3 cards. We append the extras after
--- vanilla builds the table. Bucket assignment + ghost derivation mirror MHiCS so
--- card slots keep their stealth/short/long meaning. add = CSR rank reward
--- (<=5 -> +1, <=7 -> +2, else +3).
+-- Expand the mission pool with vanilla heists that base Crime Spree omits. Ported from MHiCS; always on.
+-- Appended after vanilla builds tweak_data.crime_spree.missions (3 buckets: stealth / short loud / long loud).
+-- add = rank reward: <=5 -> +1, <=7 -> +2, else +3.
 
--- stage_id = { value = add, ghost = optional override (0 loud, 1 stealth, 2 both) }
+-- ghost override: 0 = loud only, 1 = stealth only, 2 = both; omit to auto-derive from tweak_data.levels.
 local EXTRA = {
 	vit = { value = 13 },
 	family = { value = 6 },
@@ -27,7 +21,7 @@ local EXTRA = {
 	crojob2_d = { value = 14 },
 	bph = { value = 13 },
 	nmh = { value = 13, ghost = 0 },
-	-- des = { value = 14 }, -- Henry's Rock: disabled until its optimization issues are fixed (re-enable then)
+	des = { value = 14 },
 	peta_1 = { value = 14 },
 	peta_2 = { value = 14 },
 	mex = { value = 14 },
@@ -43,7 +37,7 @@ local EXTRA = {
 	deep = { value = 12 },
 }
 
--- Derive stealth capability from the level's ghost flags (MHiCS repair_ghost_param).
+-- Derive stealth capability from ghost flags (mirrors MHiCS repair_ghost_param).
 local function resolve_ghost(tweak_data, level_id, override)
 	if override ~= nil then
 		return override
@@ -57,7 +51,7 @@ local function resolve_ghost(tweak_data, level_id, override)
 	return 0 -- loud only
 end
 
--- Buckets a mission belongs to (MHiCS add_mission): 1=stealth, 2=short loud, 3=long loud.
+-- Map ghost/add values to bucket indices (mirrors MHiCS add_mission).
 local function buckets_for(ghost, add)
 	local b = {}
 	if ghost > 0 then
@@ -83,9 +77,8 @@ Hooks:PostHook(CrimeSpreeTweakData, "init_missions", "CSR_ExtraHeists_init_missi
 		local stage = tweak_data.narrative.stages[stage_id]
 		if stage then
 			local add = params.value or 3
-			-- Resolve via the stage's level_id, not stage_id: they differ for several heists
-			-- (e.g. watchdogs_2_d -> watchdogs_2_day), so tweak_data.levels[stage_id] would miss
-			-- the ghost flags and wrongly drop stealth-capable extras from the stealth bucket.
+			-- Use stage.level_id, not stage_id: they differ (e.g. watchdogs_2_d -> watchdogs_2_day),
+			-- so tweak_data.levels[stage_id] would miss ghost flags and drop stealth extras.
 			local ghost = resolve_ghost(tweak_data, stage.level_id or stage_id, params.ghost)
 			local mission = {
 				stage_id = stage_id,
