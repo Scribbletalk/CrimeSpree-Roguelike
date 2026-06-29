@@ -4,6 +4,14 @@
 	"author": "Candy",
 	"version": "U1",
 	"blt_version": 2,
+	"updates": [
+		{
+			"identifier": "crime_spree_roguelike",
+			"host": {
+				"meta": "https://github.com/Scribbletalk/CrimeSpree-Roguelike/releases/latest/download/meta.json"
+			}
+		}
+	],
 	"hooks": [
 		{
 			"hook_id": "lib/entry",
