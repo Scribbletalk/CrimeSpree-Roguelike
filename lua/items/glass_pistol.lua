@@ -51,6 +51,19 @@ _G.CSR.register_item({
 		div_mul = DIV_PER_STACK,
 	},
 
+	-- Heister panel: glass cannon -- huge weapon damage, a fraction of the armor.
+	-- Health is on-path (health_skill_multiplier) so the panel folds it automatically; only the
+	-- off-path stats (armor + every weapon-damage class) are declared here.
+	stat_preview = function(count)
+		local mul = DMG_MUL_PER_STACK * count
+		return {
+			armor = 1 / (DIV_PER_STACK * count),
+			damage_ranged = mul,
+			damage_melee = mul,
+			damage_throwable = mul,
+		}
+	end,
+
 	hooks = {
 		-- Ranged damage.
 		["lib/units/weapons/raycastweaponbase"] = function()

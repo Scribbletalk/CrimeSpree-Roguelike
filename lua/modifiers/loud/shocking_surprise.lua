@@ -164,28 +164,37 @@ _G.CSR.register_modifier({
 						slow_local()
 					end
 
-					-- Notify in-range remote peers.
-					if LuaNetworking and managers.network and managers.network:session() and managers.criminals then
+					-- Broadcast the burst position to all remote peers; each client self-checks its
+					-- OWN live distance on receive. The host's husk-position estimate lags ~1s and
+					-- mis-drops spread-out guests, and a slow is computed on its own victim anyway.
+					-- Payload "x,y,z" (same serialization idiom as bonnie_chip).
+					if LuaNetworking and managers.network and managers.network:session() then
+						local payload = string.format("%.2f,%.2f,%.2f", burst_pos.x, burst_pos.y, burst_pos.z)
 						for _, peer in pairs(managers.network:session():peers() or {}) do
 							local pid = peer and peer:id()
 							if pid and pid ~= 1 then
-								local peer_unit = managers.criminals:character_unit_by_peer_id(pid)
-								if
-									alive(peer_unit)
-									and mvector3.distance(burst_pos, peer_unit:position()) <= RADIUS
-								then
-									LuaNetworking:SendToPeer(pid, RPC_NAME, "")
-								end
+								LuaNetworking:SendToPeer(pid, RPC_NAME, payload)
 							end
 						end
 					end
 				end)
 			end)
 
-			-- Client receiver — trusts the host.
+			-- Client receiver: self-check live distance to the burst, then slow. Host-only sender.
 			if _G.CSR_MP and _G.CSR_MP.register_handler then
-				_G.CSR_MP.register_handler(RPC_NAME, function(sender, data)
-					slow_local()
+				_G.CSR_MP.register_handler(RPC_NAME, function(sender, data, sender_num, is_from_host)
+					if not is_from_host then
+						return
+					end
+					local x, y, z = tostring(data):match("([^,]+),([^,]+),([^,]+)")
+					x, y, z = tonumber(x), tonumber(y), tonumber(z)
+					local pu = managers.player and managers.player:player_unit()
+					if not (x and y and z and alive(pu)) then
+						return
+					end
+					if mvector3.distance(Vector3(x, y, z), pu:position()) <= RADIUS then
+						slow_local()
+					end
 				end)
 			end
 		end,

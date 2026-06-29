@@ -52,6 +52,10 @@ local function csr_adaptive_grid(count, grid_w, avail_h)
 	local max_rows = math.max(1, math.floor((avail_h + OWNED_GAP) / (OWNED_MIN_CELL + OWNED_GAP)))
 	local per_row = math.ceil(count / max_rows)
 	local cell = math.min(OWNED_CELL, math.floor((grid_w - (per_row - 1) * OWNED_GAP) / per_row))
+	-- Bound cell by the vertical budget too: a wide-but-short strip (BM shop, 48px) must not yield
+	-- cells taller than the panel, or centered glyphs (esp. icon_scale > 1) clip at the bottom.
+	local row_budget = math.floor((avail_h + OWNED_GAP) / max_rows) - OWNED_GAP
+	cell = math.min(cell, row_budget)
 	return math.max(1, cell), per_row
 end
 

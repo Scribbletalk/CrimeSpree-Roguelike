@@ -83,7 +83,7 @@ local function display_name_for(def)
 	return "?"
 end
 
--- Same text as the Items panel tooltip (Critical Rule 15).
+-- Same text as the Items panel tooltip.
 local function desc_for(def)
 	if def and def.desc and managers and managers.localization and managers.localization.text then
 		local s = _G.CSR.item_text(def.desc, def)
@@ -384,7 +384,7 @@ local function build_panel(groups)
 		layer = 10,
 	})
 
-	-- Semi-transparent black fill; alpha is first Color arg (Critical Rule 6).
+	-- Semi-transparent black fill; alpha is first Color arg.
 	panel:rect({
 		color = PANEL_COLOR,
 		layer = 0,

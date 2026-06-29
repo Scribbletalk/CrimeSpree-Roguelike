@@ -16,16 +16,72 @@ local function csr_round1(n)
 	return (string.format("%.1f", n):gsub("%.?0+$", ""))
 end
 
--- Per-stat total (base + skill), mirrors PlayerInventoryGui:_get_armor_stats.
--- health/stamina/dodge route through vanilla getters that CSR hooks, so with_csr_heist matters.
+-- Run a max-stat multiplier through the modifier system, exactly like PlayerDamage:_raw_max_armor /
+-- _raw_max_health do (GageModifierMaxArmor / MaxHealth -- e.g. the Crime Spree increased-armor asset).
+-- Safe no-op when no modifiers are active or the manager is absent.
+local function csr_modify(id, value)
+	local m = managers and managers.modifiers
+	if m and m.modify_value then
+		return m:modify_value(id, value)
+	end
+	return value
+end
+
+-- Stats PlayerInventoryGui:_get_armor_stats computes. The vanilla fn only reads stat.name, but a
+-- faithful list lets third-party _get_armor_stats hooks (balance mods) find every stat they expect.
+local CSR_INV_STATS_SHOWN = {
+	{ name = "health" },
+	{ name = "armor" },
+	{ name = "movement" },
+	{ name = "dodge" },
+	{ name = "stamina" },
+	{ name = "concealment" },
+	{ name = "crit" },
+	{ name = "damage_shake" },
+}
+
+-- Player stat totals via the LIVE PlayerInventoryGui:_get_armor_stats -- the exact path the vanilla
+-- character screen uses, so any balance mod that hooks it (or the getters it calls) is reflected
+-- automatically. We pass a minimal stand-in self (the fn only reads self._stats_shown). Returns
+-- { [stat] = display_total } or nil to fall back to the hand-rolled formula.
+local function csr_inventory_stat_totals(name)
+	if not (name and PlayerInventoryGui and PlayerInventoryGui._get_armor_stats) then
+		return nil
+	end
+	local ok, base_stats, mods_stats, skill_stats =
+		pcall(PlayerInventoryGui._get_armor_stats, { _stats_shown = CSR_INV_STATS_SHOWN }, name)
+	if not (ok and type(base_stats) == "table" and type(skill_stats) == "table") then
+		return nil
+	end
+	local out = {}
+	for _, s in ipairs(CSR_INV_STATS_SHOWN) do
+		local b = (base_stats[s.name] and base_stats[s.name].value) or 0
+		local m = (mods_stats and mods_stats[s.name] and mods_stats[s.name].value) or 0
+		local k = (skill_stats[s.name] and skill_stats[s.name].value) or 0
+		out[s.name] = b + m + k
+	end
+	-- _get_armor_stats omits Frenzy (max_health_reduction lives in PlayerDamage, not the GUI math).
+	out.health = out.health * (managers.player:upgrade_value("player", "max_health_reduction", 1) or 1)
+	return out
+end
+
+-- Per-stat fallback (base + skill), mirrors PlayerInventoryGui:_get_armor_stats math by hand. Used
+-- only when the live call above is unavailable. health/armor route through CSR-hooked getters, so
+-- with_csr_heist matters.
 local function csr_heister_stat_value(stat_name, name, upgrade_level, detection_risk, mult)
 	local player = managers.player
 	if stat_name == "health" then
+		-- Mirror PlayerDamage:_raw_max_health (skill mult -> modifier system), then apply Frenzy's
+		-- max_health_reduction on top (playerdamage.lua:966 -- it lives OUTSIDE health_skill_multiplier).
 		local base = (tweak_data.player.damage.HEALTH_INIT + player:health_skill_addend()) * mult
-		return base * player:health_skill_multiplier()
+		local hmul = csr_modify("PlayerDamage:GetMaxHealth", player:health_skill_multiplier())
+		return base * hmul * player:upgrade_value("player", "max_health_reduction", 1)
 	elseif stat_name == "armor" then
-		local base = (tweak_data.player.damage.ARMOR_INIT + player:body_armor_value("armor", upgrade_level)) * mult
-		return (base + player:body_armor_skill_addend(name) * mult) * player:body_armor_skill_multiplier(name)
+		-- Mirror PlayerDamage:_raw_max_armor exactly: getters with NO override (engine resolves
+		-- equipped_armor(true, true)), and the skill mult run through the modifier system.
+		local base = (tweak_data.player.damage.ARMOR_INIT + player:body_armor_value("armor")) * mult
+		local amul = csr_modify("PlayerDamage:GetMaxArmor", player:body_armor_skill_multiplier())
+		return (base + player:body_armor_skill_addend() * mult) * amul
 	elseif stat_name == "movement" then
 		local base = tweak_data.player.movement_state.standard.movement.speed.STANDARD_MAX / 100 * mult
 		return base * player:movement_speed_multiplier(false, false, upgrade_level, 1)
@@ -75,11 +131,15 @@ local function csr_collect_heister_stats()
 		},
 	}
 
+	-- Prefer the live inventory math (mod-aware); fall back to the hand-rolled formula per stat.
+	local inv = csr_inventory_stat_totals(name)
+
 	local out = {}
 	for _, d in ipairs(defs) do
-		local ok, v = pcall(csr_heister_stat_value, d.key, name, upgrade_level, detection_risk, mult)
-		if not ok or type(v) ~= "number" then
-			v = d.fallback
+		local v = inv and inv[d.key]
+		if type(v) ~= "number" then
+			local ok, hv = pcall(csr_heister_stat_value, d.key, name, upgrade_level, detection_risk, mult)
+			v = (ok and type(hv) == "number") and hv or d.fallback
 		end
 		out[#out + 1] = {
 			key = d.key,
@@ -102,47 +162,58 @@ local function with_csr_heist(value, fn)
 	mgr.in_csr_heist = function()
 		return value
 	end
+	-- Also force the cached rank: rank_passives' on-path HP hook (health_skill_multiplier) reads
+	-- _G.CSR_active_rank, NOT in_csr_heist(), and PlayerDamage:update never ticks it in menus. So the
+	-- buffed pass must see host_rank for the HP-per-rank passive to show; the base pass sees 0.
+	local had_rank = _G.CSR_active_rank
+	_G.CSR_active_rank = (value and mgr.host_rank and mgr:host_rank()) or 0
 	local ok, res = pcall(fn)
 	mgr.in_csr_heist = had
+	_G.CSR_active_rank = had_rank
 	if ok then
 		return res
 	end
 	return nil
 end
 
--- Explicit multiplier for armor/movement: their CSR buff hooks a fn this panel never calls.
--- Constants mirror rank_passives.lua + item files (Rule #13: no shared accumulator).
-local function csr_stat_offpath_mult(key, mgr, rank)
-	if key == "armor" then
-		local glass = mgr:owned("glass_pistol")
-		return (1 + 0.025 * rank) -- rank_passives ARMOR_PER_RANK
-			* ((glass > 0) and 1 / (2 * glass) or 1) -- glass_pistol DIV_PER_STACK
-			* (1 + 0.50 * mgr:owned("dozer_guide")) -- dozer_guide ARMOR_BONUS
-	elseif key == "movement" then
-		local m = 1
-		local ep = mgr:owned("escape_plan")
-		if ep > 0 then
-			m = m * (1 + 0.50 * (1 - 1 / (1 + (3 / 47) * ep))) -- escape_plan hyperbolic speed bonus
-		end
-		local d = mgr:owned("dozer_guide")
-		if d > 0 then
-			m = m * math.max(0.40, 1 - 0.15 * d) -- dozer_guide SPEED_MIN / SPEED_PENALTY
-		end
-		return m
+-- Fold the multiplier every owned item contributes to one off-path stat, via its optional
+-- stat_preview descriptor (fn(count) -> { <stat_key> = multiplier, ... }). No item is named here,
+-- so any item -- including third-party addon items -- that declares stat_preview is reflected
+-- automatically. Pure multipliers compose order-independently (Critical Rule #13: no accumulator).
+-- stat_key is one of: armor, movement, damage_ranged, damage_melee, damage_throwable.
+local function csr_item_preview_mult(mgr, stat_key)
+	local mult = 1
+	local owned = mgr.player_items and mgr:player_items(mgr:local_peer_id())
+	if type(owned) ~= "table" then
+		return mult
 	end
-	return 1
+	for itype, count in pairs(owned) do
+		if type(count) == "number" and count > 0 then
+			local def = mgr.item_def and mgr:item_def(itype)
+			local sp = def and def.stat_preview
+			if sp then
+				-- pcall: a buggy addon descriptor must not blank the whole panel.
+				local ok, contrib = pcall(sp, count)
+				local m = ok and type(contrib) == "table" and contrib[stat_key]
+				if type(m) == "number" and m > 0 then
+					mult = mult * m
+				end
+			end
+		end
+	end
+	return mult
 end
 
--- CSR damage multiplier for ranged or melee; mirrors item files + rank DMG_PER_RANK.
-local function csr_weapon_dmg_mult(kind, mgr, rank)
-	local glass = mgr:owned("glass_pistol")
-	local m = (1 + 0.01 * rank) -- rank_passives DMG_PER_RANK
-		* ((glass > 0) and 2 * glass or 1) -- glass_pistol DMG_MUL_PER_STACK
-		* (1 + 0.10 * mgr:owned("evidence_rounds")) -- evidence_rounds PER_STACK
-	if kind == "melee" then
-		m = m * (1 + 1.0 * mgr:owned("jiro_last_wish")) -- jiro_last_wish MELEE_BONUS_PER_STACK
+-- Per-rank passive multiplier for an off-path stat. Reads the constants rank_passives.lua exports
+-- (_G.CSR_ARMOR_PER_RANK / _G.CSR_DMG_PER_RANK) so the panel never drifts from the balance source.
+-- Health is on-path (auto-folded) and movement has no rank scaling, so neither is handled here.
+local function csr_rank_mult(stat_key, rank)
+	if stat_key == "armor" then
+		return 1 + (_G.CSR_ARMOR_PER_RANK or 0) * rank
+	elseif stat_key == "damage" then
+		return 1 + (_G.CSR_DMG_PER_RANK or 0) * rank
 	end
-	return m
+	return 1
 end
 
 -- Localized weapon name; prefers player's custom name over tweak_data name_id.
@@ -191,7 +262,8 @@ local function csr_collect_weapon_rows(mgr, rank)
 				local v = (base.damage.value or 0)
 					+ ((mods and mods.damage and mods.damage.value) or 0)
 					+ ((skill and skill.damage and skill.damage.value) or 0)
-				local factor = (mgr and csr_weapon_dmg_mult("ranged", mgr, rank)) or 1
+				local factor = (mgr and csr_item_preview_mult(mgr, "damage_ranged") * csr_rank_mult("damage", rank))
+					or 1
 				out.dmg = tostring(math.round(v * factor))
 				out.color = dmg_color(factor)
 			end
@@ -213,7 +285,7 @@ local function csr_collect_weapon_rows(mgr, rank)
 		melee.name = (tw.name_id and managers.localization:text(tw.name_id)) or id
 		local st = tw.stats
 		if st and st.min_damage then
-			local factor = (mgr and csr_weapon_dmg_mult("melee", mgr, rank)) or 1
+			local factor = (mgr and csr_item_preview_mult(mgr, "damage_melee") * csr_rank_mult("damage", rank)) or 1
 			local mn = math.round((st.min_damage or 0) * mult * factor)
 			local mx = math.round((st.max_damage or st.min_damage or 0) * mult * factor)
 			-- "X (Y)": X = uncharged (min_damage), Y = full-charge (max_damage).
@@ -235,9 +307,7 @@ local function csr_collect_weapon_rows(mgr, rank)
 		throwable.name = (bmtw.name_id and managers.localization:text(bmtw.name_id)) or id
 		local ptw = tweak_data.projectiles[id]
 		if ptw and ptw.damage then
-			local glass = (mgr and mgr:owned("glass_pistol")) or 0
-			local factor = (1 + 0.01 * rank) -- rank_passives DMG_PER_RANK
-				* ((glass > 0) and 2 * glass or 1) -- glass_pistol DMG_MUL_PER_STACK (scales AoE)
+			local factor = (mgr and csr_item_preview_mult(mgr, "damage_throwable") * csr_rank_mult("damage", rank)) or 1
 			throwable.dmg = tostring(math.round(ptw.damage * 10 * factor))
 			throwable.color = dmg_color(factor)
 		elseif amount then
@@ -272,10 +342,15 @@ function CSRMissionsMenuComponent:_populate_heister_panel()
 	local base_stats = with_csr_heist(false, csr_collect_heister_stats) or csr_collect_heister_stats()
 	local buffed_stats = with_csr_heist(true, csr_collect_heister_stats) or csr_collect_heister_stats()
 
-	-- Armor/movement: apply explicit multiplier (their hooks bypass this panel's call path).
-	if mgr and mgr.owned then
+	-- Armor/movement: their CSR hooks bypass this panel's call path, so fold the off-path item
+	-- multipliers (+ rank for armor) here. health/stamina/dodge are on-path -> already in buffed_stats.
+	if mgr and mgr.player_items then
 		for _, s in ipairs(buffed_stats) do
-			s.value = s.value * csr_stat_offpath_mult(s.key, mgr, rank)
+			if s.key == "armor" then
+				s.value = s.value * csr_item_preview_mult(mgr, "armor") * csr_rank_mult("armor", rank)
+			elseif s.key == "movement" then
+				s.value = s.value * csr_item_preview_mult(mgr, "movement")
+			end
 		end
 	end
 

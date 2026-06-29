@@ -8,13 +8,10 @@ if not RequiredScript then
 	return
 end
 
--- Run rank via host_rank() so clients scale off the synced host rank. 0 outside a CSR heist.
+-- Per-frame cached rank (refreshed by rank_passives.lua's PlayerDamage:update hook). Reading a
+-- global avoids re-running in_csr_heist()/host_rank() on every upgrade getter. 0 outside a CSR heist.
 local function run_rank()
-	local mgr = managers and managers.csr
-	if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
-		return 0
-	end
-	return (mgr.host_rank and mgr:host_rank()) or 0
+	return _G.CSR_active_rank or 0
 end
 
 local function hp_mult(r)
@@ -67,6 +64,24 @@ local function scale_damage_to_armor(v, mult)
 	return copy
 end
 
+-- Only these player-category upgrades are scaled; gate on a hash lookup so the ~13-branch
+-- elseif chain (and run_rank) is skipped for every other upgrade_value("player", ...) call.
+local SCALED_PLAYER_UPGRADES = {
+	killshot_regen_armor_bonus = true,
+	killshot_close_regen_armor_bonus = true,
+	damage_to_hot = true,
+	armor_health_store_amount = true,
+	armor_max_health_store_multiplier = true,
+	tag_team_base = true,
+	tag_team_damage_absorption = true,
+	damage_to_armor = true,
+	armor_grinding = true,
+	wild_health_amount = true,
+	wild_armor_amount = true,
+	chico_injector_health_to_speed = true,
+	headshot_regen_health_bonus = true,
+}
+
 -- PlayerManager:upgrade_value - all local-getter decks. Key-gated so unrelated upgrades tail-call.
 -- MP-safe: runs on the acting player's own client; run_rank() uses synced host rank.
 if PlayerManager and not _G._CSR_PerkScale_Upgrade then
@@ -74,7 +89,7 @@ if PlayerManager and not _G._CSR_PerkScale_Upgrade then
 	local orig = PlayerManager.upgrade_value
 	if orig then
 		function PlayerManager:upgrade_value(category, upgrade, default)
-			if category == "player" then
+			if category == "player" and SCALED_PLAYER_UPGRADES[upgrade] then
 				if upgrade == "killshot_regen_armor_bonus" or upgrade == "killshot_close_regen_armor_bonus" then
 					local v = orig(self, category, upgrade, default)
 					local r = run_rank()

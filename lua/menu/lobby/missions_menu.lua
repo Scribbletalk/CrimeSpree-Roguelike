@@ -563,7 +563,7 @@ end
 
 function CSRMissionsMenuComponent:_create_status_bar(w)
 	-- Header row above the cards: MISSIONS COMPLETED (left) | RANK (center) | DIFFICULTY (right).
-	-- Dynamic values highlighted yellow via set_range_color; 4-arg Color per Rule #6.
+	-- Dynamic values highlighted yellow via set_range_color; 4-arg Color (alpha is first arg).
 	local highlight = Color(1, 1, 1, 0)
 	local cs_glyph = utf8.char(0xE018) -- Crime Spree glyph U+E018
 

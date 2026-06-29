@@ -206,6 +206,42 @@ function _G.CSR.register_texture(db_path, rel_file)
 	return db_path
 end
 
+-- Load an add-on's localization JSON so its item/modifier loc keys resolve in-game.
+-- Call at the TOP LEVEL of main.lua (needs the addon context for the path); rel_file is
+-- relative to the add-on folder. Loads now if the loc manager exists AND re-loads on every
+-- LocalizationManagerPostInit -- add-on vs. loc init order is not guaranteed; double-load is harmless.
+function _G.CSR.register_localization(rel_file)
+	if type(rel_file) ~= "string" then
+		log("[CSR][api] register_localization: rel_file string required -- ignored")
+		return false
+	end
+	if not _G.CSR._current_addon_dir then
+		log("[CSR][api] register_localization: no addon context (call from main.lua) -- ignored")
+		return false
+	end
+	local path = _G.CSR._current_addon_dir .. rel_file
+	if Application and Application.nice_path then
+		path = Application:nice_path(path, false)
+	end
+	local function do_load(loc)
+		if loc and loc.load_localization_file then
+			loc:load_localization_file(path)
+		end
+	end
+	if managers and managers.localization then
+		do_load(managers.localization)
+	end
+	if Hooks and Hooks.Add then
+		-- Unique id per (addon, file) so multiple addons / multiple language files don't collide.
+		Hooks:Add(
+			"LocalizationManagerPostInit",
+			"CSR_addon_loc_" .. tostring(_G.CSR._current_addon) .. "_" .. rel_file,
+			do_load
+		)
+	end
+	return true
+end
+
 -- Resolve icon to (texture, rect). "/" in value = full DB path (addon, 128x128);
 -- otherwise = built-in hud_icons id. Single source of truth for all CSR icon surfaces.
 function _G.CSR.icon_data(raw)
@@ -311,6 +347,11 @@ pass addon = CSR.addon_name() explicitly in the definition table BEFORE the hook
   Hooks:PostHook(SomeClass, "init", "my_id", function()
     CSR.register_item({ addon = MY_ADDON, ... })
   end)
+
+An item's name/desc fields are localization KEYS, not literal text -- an unregistered key
+shows in-game as "ERROR: <key>". Ship a "loc/english.json" (flat {"key":"text"}) and load it
+from the top level of main.lua with a single call:
+  CSR.register_localization("loc/english.json")
 
 For item icons, call CSR.register_texture("your/db/path", "icons/your_icon.dds") in main.lua
 (the file path is relative to your add-on folder) and set icon = "your/db/path" on the item.

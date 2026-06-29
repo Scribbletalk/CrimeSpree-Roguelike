@@ -70,6 +70,38 @@ local function trigger_guilt_flash()
 	end)
 end
 
+-- Civ-death handler: count the LOCAL player's civ kills, cap HP to the lowered max, flash.
+-- Shared by the CivilianDamage and HuskCivilianDamage die hooks (registered below).
+local function handle_civ_death(_, attack_data)
+	if not guilt_active() then
+		return
+	end
+	local au = attack_data and attack_data.attacker_unit
+	local by_local = au and alive(au) and au:base() and au:base().is_local_player == true
+	if not by_local then
+		return
+	end
+
+	guilt_kills = guilt_kills + 1
+
+	-- Cap current HP to the freshly-lowered max.
+	local pu = managers.player and managers.player:player_unit()
+	if pu and alive(pu) then
+		local cd = pu:character_damage()
+		if cd and cd._max_health and cd.get_real_health and cd.set_health then
+			local new_max = cd:_max_health()
+			if cd:get_real_health() > new_max then
+				cd:set_health(new_max)
+				if cd._send_set_health then
+					cd:_send_set_health()
+				end
+			end
+		end
+	end
+
+	trigger_guilt_flash()
+end
+
 _G.CSR.register_modifier({
 	id = "civilian_guilt",
 	category = "loud",
@@ -105,41 +137,23 @@ _G.CSR.register_modifier({
 		end,
 
 		-- Local-player civ kill: count + cap current HP to new max + flash.
+		-- Hook BOTH CivilianDamage (host real units) and HuskCivilianDamage (guest's host-spawned
+		-- civs): the husk class OVERRIDES die(), so a PostHook on the parent never fires for the
+		-- guest's own kills. attack_data.attacker_unit is the local player on both paths, so the
+		-- by_local gate inside handle_civ_death keeps each machine to its own kills (no double-count).
 		["lib/units/civilians/civiliandamage"] = function()
 			if _G._CSR_CIVILIAN_GUILT_DIE_HOOKED then
 				return
 			end
 			_G._CSR_CIVILIAN_GUILT_DIE_HOOKED = true
-
-			Hooks:PostHook(CivilianDamage, "die", "CSR_CivilianGuilt_Die", function(self, attack_data)
-				if not guilt_active() then
-					return
-				end
-				local au = attack_data and attack_data.attacker_unit
-				local by_local = au and alive(au) and au:base() and au:base().is_local_player == true
-				if not by_local then
-					return
-				end
-
-				guilt_kills = guilt_kills + 1
-
-				-- Cap current HP to the freshly-lowered max.
-				local pu = managers.player and managers.player:player_unit()
-				if pu and alive(pu) then
-					local cd = pu:character_damage()
-					if cd and cd._max_health and cd.get_real_health and cd.set_health then
-						local new_max = cd:_max_health()
-						if cd:get_real_health() > new_max then
-							cd:set_health(new_max)
-							if cd._send_set_health then
-								cd:_send_set_health()
-							end
-						end
-					end
-				end
-
-				trigger_guilt_flash()
-			end)
+			Hooks:PostHook(CivilianDamage, "die", "CSR_CivilianGuilt_Die", handle_civ_death)
+		end,
+		["lib/units/civilians/huskciviliandamage"] = function()
+			if _G._CSR_CIVILIAN_GUILT_HUSK_DIE_HOOKED then
+				return
+			end
+			_G._CSR_CIVILIAN_GUILT_HUSK_DIE_HOOKED = true
+			Hooks:PostHook(HuskCivilianDamage, "die", "CSR_CivilianGuilt_Die_Husk", handle_civ_death)
 		end,
 	},
 })

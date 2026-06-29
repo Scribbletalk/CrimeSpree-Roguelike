@@ -69,5 +69,15 @@ _G.CSR.register_item({
 			_G._CSR_PINK_SLIP_HOOKED = true
 			Hooks:PostHook(CopDamage, "die", "CSR_PinkSlip_Kill", on_enemy_die)
 		end,
+
+		-- MP guest: host-spawned enemies are husks whose die() OVERRIDES the parent, so the
+		-- CopDamage:die PostHook never fires for the guest's own kills. Hook the husk too.
+		["lib/units/enemies/cop/huskcopdamage"] = function()
+			if _G._CSR_PINK_SLIP_HUSK_HOOKED then
+				return
+			end
+			_G._CSR_PINK_SLIP_HUSK_HOOKED = true
+			Hooks:PostHook(HuskCopDamage, "die", "CSR_PinkSlip_Kill_Husk", on_enemy_die)
+		end,
 	},
 })

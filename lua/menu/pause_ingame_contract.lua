@@ -54,7 +54,7 @@ local function csr_adaptive_grid(count, avail_w, avail_h, max_size, min_size, ga
 	return min_size, math.min(count, per_row)
 end
 
--- Teammate colors match contours/chat via tweak_data.peer_vector_colors (Rule #6).
+-- Teammate colors match contours/chat via tweak_data.peer_vector_colors.
 local function csr_peer_color(peer_id)
 	local v = tweak_data and tweak_data.peer_vector_colors and tweak_data.peer_vector_colors[peer_id]
 	if v then

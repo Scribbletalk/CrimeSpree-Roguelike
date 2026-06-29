@@ -43,6 +43,12 @@ _G.CSR.register_item({
 		per_stack_pct = string.format("%g", PER_STACK * 100),
 	},
 
+	-- Heister panel: +PER_STACK/stack ranged (bullet/sentry) damage only; melee, throwables,
+	-- explosions and fire/DOT are intentionally NOT buffed, so they are not declared here.
+	stat_preview = function(count)
+		return { damage_ranged = 1 + PER_STACK * count }
+	end,
+
 	hooks = {
 		["lib/units/enemies/cop/copdamage"] = function()
 			if _G._CSR_EVIDENCE_ROUNDS_BULLET_HOOKED then

@@ -179,7 +179,7 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_REMINDER_INPUT_HOOKED then
 	end)
 
 	-- Raw wraps needed: mouse_moved/pressed return values matter to the dispatcher
-	-- and PostHook can't carry return values (see feedback_rule1_return_value_exception).
+	-- and PostHook can't carry return values.
 	-- When modal is open, yield nil so the selection window (lower priority) gets clicks.
 	local orig_mouse_moved = MissionBriefingGui.mouse_moved
 	if orig_mouse_moved then

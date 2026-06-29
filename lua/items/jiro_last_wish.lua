@@ -25,6 +25,11 @@ _G.CSR.register_item({
 	icon_scale = 1.0,
 	loc_macros = { melee_pct = string.format("%g", MELEE_BONUS_PER_STACK * 100) },
 
+	-- Heister panel: +MELEE_BONUS_PER_STACK/stack melee damage (mirror of the melee hook below).
+	stat_preview = function(count)
+		return { damage_melee = 1 + MELEE_BONUS_PER_STACK * count }
+	end,
+
 	hooks = {
 		-- Melee damage: +100%/stack (multiplies dmg and dmg_effect).
 		["lib/managers/blackmarketmanager"] = function()

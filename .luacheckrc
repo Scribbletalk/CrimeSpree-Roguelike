@@ -57,7 +57,7 @@ globals = {
     "BaseInteractionExt", "UseInteractionExt", "InteractionTweakData",
     "PlayerBase", "HuskPlayerBase", "PlayerDamage", "PlayerManager", "PlayerStandard", "StatisticsManager",
     "PlayerMovement", "HuskPlayerMovement",
-    "CopDamage", "CivilianDamage", "TeamAIDamage",
+    "CopDamage", "CivilianDamage", "TeamAIDamage", "HuskCivilianDamage", "HuskCopDamage",
     "NewRaycastWeaponBase", "RaycastWeaponBase", "NewNPCRaycastWeaponBase", "NPCRaycastWeaponBase", "SentryGunWeapon",
     "AmmoClip", "GageAssignmentBase", "WeaponDescription", "TearGasGrenade",
     "ProjectileBase", "ArrowBase", "ContourExt",
@@ -67,7 +67,7 @@ globals = {
     "MissionEndState", "MissionManager", "MissionScript",
     "ElementAreaTrigger", "ElementSpawnEnemyDummy", "ElementCarry",
     -- PD2 economy / black market
-    "MoneyManager", "BlackMarketGui", "BlackMarketManager",
+    "MoneyManager", "BlackMarketGui", "BlackMarketManager", "PlayerInventoryGui",
     -- PD2 crime spree (vanilla base classes CSR extends)
     "CrimeNetGui", "GamemodeCrimeSpree", "CrimeSpreeManager", "CrimeSpreeTweakData",
     "CrimeSpreeBlackMarketMenuComponent", "CrimeSpreeBlackMarketShopPage",

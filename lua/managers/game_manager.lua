@@ -2,7 +2,7 @@
 -- Hierarchical singleton: _meta (persists across runs), _state (active run), _registry (static content).
 
 CSRGameManager = CSRGameManager or class()
-CSRGameManager.VERSION = "U1-beta"
+CSRGameManager.VERSION = "U1"
 
 local SAVE_FILE = "csr_save.json"
 local LEGACY_SETTINGS_FILE = "crime_spree_roguelike.json"

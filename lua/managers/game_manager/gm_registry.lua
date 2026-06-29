@@ -74,6 +74,17 @@ function CSRGameManager:register_item(def)
 		icon_scale = nil
 	end
 
+	-- Optional Heister-panel stat preview: fn(count) -> { <stat_key> = multiplier, ... }.
+	-- Lets an item (incl. addon items) declare its off-path stat effect so the panel reflects
+	-- it generically without naming the item. Non-function values dropped silently.
+	local stat_preview = def.stat_preview
+	if stat_preview ~= nil and type(stat_preview) ~= "function" then
+		log_csr(
+			"register_item: '" .. t .. "' ignoring non-function 'stat_preview' field (got " .. type(stat_preview) .. ")"
+		)
+		stat_preview = nil
+	end
+
 	local entry = {
 		type = t,
 		rarity = def.rarity,
@@ -86,6 +97,8 @@ function CSRGameManager:register_item(def)
 		is_scrap = def.is_scrap == true or nil, -- excluded from the selection-window roll
 		-- $-macro substitution in loc strings; single-sourced from the def's tuning constants.
 		loc_macros = def.loc_macros,
+		-- Heister-panel preview hook (off-path stat multipliers); nil for items with no stat effect.
+		stat_preview = stat_preview,
 		effect = effect,
 		on_apply = def.on_apply,
 		on_remove = def.on_remove,
@@ -448,6 +461,18 @@ end
 local ENEMY_HEALTH_PCT_PER_RANK = 5
 local ENEMY_DAMAGE_PCT_PER_RANK = 5
 
+-- Vanilla modifier classes whose effect is computed on each player's OWN machine (a
+-- per-client local-unit spawn, or a player-side modify_value/run_func), so a host-only
+-- instance never reaches MP guests. apply_modifiers instantiates these on the client too.
+-- Verified safe: none mutate tweak_data in place or spawn networked units, and each
+-- player's effect is isolated to its own machine (no double-apply with the host).
+local CLIENT_LOCAL_MODIFIER_CLASSES = {
+	ModifierCloakerTearGas = true, -- stinkbug: OnEnemyDied spawns a per-client local tear-gas cloud
+	ModifierTaserOvercharge = true, -- rapid_shock: PlayerTased:TasedTime (victim client)
+	ModifierCloakerArrest = true, -- resisting_arrest: PlayerMovement:OnSpooked (victim client)
+	ModifierCloakerKick = true, -- smoke_bomb: OnPlayerCloakerKicked -> local smoke (each client)
+}
+
 -- Restore pristine HEALTH_INIT before each apply (ModifierEnemyHealth multiplies in place, never reverts).
 -- Runs on host AND client; each machine must inflate its own tweak_data to prevent tanky-vs-host-only.
 -- See pd2_enemy_hp_must_scale_on_client_too.md.
@@ -475,6 +500,37 @@ function CSRGameManager:_restore_enemy_health_baseline()
 		end
 	end
 	return restored, snapshotted
+end
+
+-- Aggregate active loud+stealth modifiers by engine class; same class from multiple slots
+-- merged via each key's aggregator. Returns { [class] = { key = value } }. Shared by the
+-- host apply path and the client-local subset (guest) path in apply_modifiers.
+function CSRGameManager:_aggregate_active_modifiers()
+	local to_activate = {}
+	for _, category in ipairs({ "loud", "stealth" }) do
+		for _, entry in ipairs(self:active_modifiers(category)) do
+			if entry.class and entry.data then
+				local agg = to_activate[entry.class] or {}
+				for key, value_data in pairs(entry.data) do
+					local value = value_data[1]
+					local method = value_data[2]
+					if method == "none" then
+						agg[key] = value
+					elseif method == "add" then
+						agg[key] = (agg[key] or 0) + value
+					elseif method == "sub" then
+						agg[key] = (agg[key] or 0) - value
+					elseif method == "min" then
+						agg[key] = math.min(agg[key] or math.huge, value)
+					elseif method == "max" then
+						agg[key] = math.max(agg[key] or -math.huge, value)
+					end
+				end
+				to_activate[entry.class] = agg
+			end
+		end
+	end
+	return to_activate
 end
 
 function CSRGameManager:apply_modifiers()
@@ -512,6 +568,20 @@ function CSRGameManager:apply_modifiers()
 					rank * ENEMY_DAMAGE_PCT_PER_RANK
 				)
 			)
+		end
+
+		-- Client-local modifier effects: vanilla classes whose result is computed on each
+		-- player's OWN machine (per-client local-unit spawn or a player-side modify_value),
+		-- so a host-only instance never reaches the guest. Instantiate the safe whitelist
+		-- locally; active_modifiers() resolves from the synced host_seed, so the guest's set
+		-- matches the host's. Re-fires with the rest of apply_modifiers on HANDSHAKE_OK.
+		for class, data in pairs(self:_aggregate_active_modifiers()) do
+			if CLIENT_LOCAL_MODIFIER_CLASSES[class] then
+				local mod_class = _G[class]
+				if mod_class then
+					managers.modifiers:add_modifier(mod_class:new(data), "csr")
+				end
+			end
 		end
 		return
 	end
@@ -584,30 +654,7 @@ function CSRGameManager:apply_modifiers()
 	end
 
 	-- Aggregate active modifiers by engine class; same class from multiple slots gets merged.
-	local to_activate = {}
-	for _, category in ipairs({ "loud", "stealth" }) do
-		for _, entry in ipairs(self:active_modifiers(category)) do
-			if entry.class and entry.data then
-				local agg = to_activate[entry.class] or {}
-				for key, value_data in pairs(entry.data) do
-					local value = value_data[1]
-					local method = value_data[2]
-					if method == "none" then
-						agg[key] = value
-					elseif method == "add" then
-						agg[key] = (agg[key] or 0) + value
-					elseif method == "sub" then
-						agg[key] = (agg[key] or 0) - value
-					elseif method == "min" then
-						agg[key] = math.min(agg[key] or math.huge, value)
-					elseif method == "max" then
-						agg[key] = math.max(agg[key] or -math.huge, value)
-					end
-				end
-				to_activate[entry.class] = agg
-			end
-		end
-	end
+	local to_activate = self:_aggregate_active_modifiers()
 
 	-- Per-rank HP/damage scaling injected directly (not passport-registered).
 	local rank = self:host_rank() or 0

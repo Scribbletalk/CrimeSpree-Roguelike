@@ -33,6 +33,15 @@ _G.CSR.register_item({
 		dodge = DODGE_PENALTY,
 	},
 
+	-- Heister panel: armor up, walk speed down. The dodge penalty is on-path
+	-- (skill_dodge_chance), so the panel reflects it automatically; only the off-path stats here.
+	stat_preview = function(count)
+		return {
+			armor = 1 + ARMOR_BONUS * count,
+			movement = math.max(SPEED_MIN, 1 - SPEED_PENALTY * count),
+		}
+	end,
+
 	hooks = {
 		["lib/units/beings/player/playerdamage"] = function()
 			if _G._CSR_DOZER_GUIDE_ARMOR_HOOKED then

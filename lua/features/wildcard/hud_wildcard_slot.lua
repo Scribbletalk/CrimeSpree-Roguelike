@@ -90,13 +90,22 @@ local function update_widget(slot_panel, state, dt)
 	if not alive(slot_panel) then
 		return
 	end
-	local owned = find_owned_wildcard()
+	-- Throttle the inventory scan: held_wildcard() iterates the whole inventory, and
+	-- wildcard ownership only changes on pick/use (rare). A 0.25s detection lag is invisible.
+	state.scan_t = (state.scan_t or 0) - (dt or 0)
+	if state.scan_t <= 0 then
+		state.scan_t = 0.25
+		state.owned = find_owned_wildcard()
+	end
+	local owned = state.owned
 	if not owned then
 		if slot_panel:visible() then
 			slot_panel:set_visible(false)
 		end
 		state.current = nil
 		state.displayed_progress = nil
+		state.last_progress = nil
+		state.last_bar_mode = nil
 		return
 	end
 
@@ -108,6 +117,8 @@ local function update_widget(slot_panel, state, dt)
 	if state.current ~= owned then
 		state.current = owned
 		state.displayed_progress = nil
+		state.last_progress = nil -- force the layer/color re-apply below for the new icon
+		state.last_bar_mode = nil
 		apply_icon_texture(slot_panel, owned)
 	end
 
@@ -132,6 +143,14 @@ local function update_widget(slot_panel, state, dt)
 
 	local progress = state.displayed_progress
 	local bar_mode = use_bar_mode()
+
+	-- Steady state (cooldown full, mode unchanged): visuals identical to last frame.
+	-- Skip the layer flips + per-frame Color()/fill rebuild to avoid HUD GC churn.
+	if progress == state.last_progress and bar_mode == state.last_bar_mode then
+		return
+	end
+	state.last_progress = progress
+	state.last_bar_mode = bar_mode
 
 	-- Both layer sets are pre-built; switching modes is a pure visibility flip.
 	set_layer_visible(slot_panel, "wildcard_icon_dim", not bar_mode)

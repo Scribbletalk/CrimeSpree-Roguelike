@@ -31,11 +31,17 @@ if GameSetup and not _G._CSR_HEIST_PACKAGES_HOOKED then
 					matched = matched + 1
 					local package = data.package
 					if not package then
-						csr_log("[CSR] heist_packages: job '" .. tostring(job_id) .. "' matches but has NO package")
+						if _G.CSR_DEBUG then
+							csr_log("[CSR] heist_packages: job '" .. tostring(job_id) .. "' matches but has NO package")
+						end
 					elseif not PackageManager:package_exists(package) then
-						csr_log("[CSR] heist_packages: job '" .. tostring(job_id) .. "' package missing")
+						if _G.CSR_DEBUG then
+							csr_log("[CSR] heist_packages: job '" .. tostring(job_id) .. "' package missing")
+						end
 					elseif PackageManager:loaded(package) then
-						csr_log("[CSR] heist_packages: job '" .. tostring(job_id) .. "' package already loaded")
+						if _G.CSR_DEBUG then
+							csr_log("[CSR] heist_packages: job '" .. tostring(job_id) .. "' package already loaded")
+						end
 					elseif not table.contains(self._loaded_job_packages, package) then
 						table.insert(self._loaded_job_packages, package)
 						PackageManager:load(package)

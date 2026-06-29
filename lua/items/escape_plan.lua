@@ -15,6 +15,12 @@ _G.CSR.register_item({
 	icon = "csr_escape_plan",
 	icon_scale = 1.0,
 
+	-- Heister panel: same hyperbolic walk-speed bonus as the _get_max_walk_speed hook below.
+	stat_preview = function(count)
+		local k = 3 / 47
+		return { movement = 1 + 0.50 * (1 - 1 / (1 + k * count)) }
+	end,
+
 	hooks = {
 		["lib/units/beings/player/states/playerstandard"] = function()
 			if _G._CSR_ESCAPE_PLAN_HOOKED then

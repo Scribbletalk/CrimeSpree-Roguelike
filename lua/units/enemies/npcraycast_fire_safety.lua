@@ -1,6 +1,8 @@
 -- Verbatim mirror of NPCRaycastWeaponBase:_fire_raycast (npcraycastweaponbase.lua:345-408,
--- game 1.152.269) with two added alive() guards marked "CSR GUARD". LIES MWS / FSS can free
--- target_unit mid-call (on_collision fires area damage) -> dead userdata AV on build_suppression.
+-- game 1.152.269) with three added alive() guards marked "CSR GUARD". A cop's weapon unit (or its
+-- target) can be freed mid-call (LIES MWS / FSS area damage, or a generic mid-shoot teardown where
+-- CopActionShoot:update fires one extra frame) -> dead userdata native AV. Sites: on_collision,
+-- build_suppression, and _spawn_trail_effect (self._obj_fire). Not LIES-specific.
 -- PreHook can't fix this (target freed after entry); must own the body. NOT a CSR bug.
 -- Re-diff against vanilla if the game updates this function. See pd2_mia_npcraycast_fire_native_av.md.
 
@@ -77,7 +79,11 @@ function NPCRaycastWeaponBase:_fire_raycast(
 		target_unit:character_damage():build_suppression(tweak_data.weapon[self._name_id].suppression)
 	end
 
-	if not col_ray or col_ray.distance > 600 or result.guaranteed_miss then
+	-- CSR GUARD: alive(self._unit) added vs vanilla. _spawn_trail_effect derefs self._obj_fire
+	-- (a child object of self._unit, set at npcraycastweaponbase.lua:49) -> native AV if the weapon
+	-- unit is disposed mid-action (cop removed while CopActionShoot:update fires one extra frame).
+	-- No weapon unit = nothing to attach a trail to, so skipping is harmless.
+	if alive(self._unit) and (not col_ray or col_ray.distance > 600 or result.guaranteed_miss) then
 		local num_rays = (tweak_data.weapon[self._name_id] or {}).rays or 1
 
 		for i = 1, num_rays do

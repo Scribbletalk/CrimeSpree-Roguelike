@@ -88,6 +88,53 @@ local function apply_drill_reduction(seconds)
 	end
 end
 
+-- Local-player kill: cut saw interactions (local) and drill timers (host-authoritative;
+-- client kills RPC the host). Shared by the CopDamage and HuskCopDamage die hooks -- the husk
+-- class OVERRIDES die(), so a parent-class PostHook never fires for a guest's own kills.
+local function wolfs_on_kill(self, attack_data)
+	local mgr = managers and managers.csr
+	if not wolfs_active(mgr) then
+		return
+	end
+	local au = attack_data and attack_data.attacker_unit
+	if not au or not au:base() or au:base().is_local_player ~= true then
+		return
+	end
+
+	local is_special = (self._char_tweak and self._char_tweak.priority_shout) and true or false
+	local reduction = wolfs_reduction(mgr:owned("wolfs_toolbox"), is_special)
+	if reduction <= 0 then
+		return
+	end
+
+	-- Saw interactions — local, reduce directly.
+	local saw_state = local_saw_state()
+	if saw_state then
+		saw_state._interact_expire_t = math.max(0, saw_state._interact_expire_t - reduction)
+		if mgr:debug_enabled() then
+			mgr:debug_log(
+				string.format("wolfs_toolbox saw interaction -%.2fs (special=%s)", reduction, tostring(is_special))
+			)
+		end
+	end
+
+	-- TimerGui drills — host-authoritative.
+	if not has_active_drill() then
+		return
+	end
+	if Network:is_client() then
+		LuaNetworking:SendToPeer(1, WOLF_KILL_RPC, string.format("%.4f", reduction))
+		if mgr:debug_enabled() then
+			mgr:debug_log(string.format("wolfs_toolbox client kill -> RPC host -%.2fs", reduction))
+		end
+	else
+		apply_drill_reduction(reduction)
+		if mgr:debug_enabled() then
+			mgr:debug_log(string.format("wolfs_toolbox drill -%.2fs (special=%s)", reduction, tostring(is_special)))
+		end
+	end
+end
+
 _G.CSR.register_item({
 	type = "wolfs_toolbox",
 	rarity = "uncommon",
@@ -112,55 +159,7 @@ _G.CSR.register_item({
 			end
 			_G._CSR_WOLFS_KILL_HOOKED = true
 
-			Hooks:PostHook(CopDamage, "die", "CSR_WolfsToolbox_Kill", function(self, attack_data)
-				local mgr = managers and managers.csr
-				if not wolfs_active(mgr) then
-					return
-				end
-				local au = attack_data and attack_data.attacker_unit
-				if not au or not au:base() or au:base().is_local_player ~= true then
-					return
-				end
-
-				local is_special = (self._char_tweak and self._char_tweak.priority_shout) and true or false
-				local reduction = wolfs_reduction(mgr:owned("wolfs_toolbox"), is_special)
-				if reduction <= 0 then
-					return
-				end
-
-				-- Saw interactions — local, reduce directly.
-				local saw_state = local_saw_state()
-				if saw_state then
-					saw_state._interact_expire_t = math.max(0, saw_state._interact_expire_t - reduction)
-					if mgr:debug_enabled() then
-						mgr:debug_log(
-							string.format(
-								"wolfs_toolbox saw interaction -%.2fs (special=%s)",
-								reduction,
-								tostring(is_special)
-							)
-						)
-					end
-				end
-
-				-- TimerGui drills — host-authoritative.
-				if not has_active_drill() then
-					return
-				end
-				if Network:is_client() then
-					LuaNetworking:SendToPeer(1, WOLF_KILL_RPC, string.format("%.4f", reduction))
-					if mgr:debug_enabled() then
-						mgr:debug_log(string.format("wolfs_toolbox client kill -> RPC host -%.2fs", reduction))
-					end
-				else
-					apply_drill_reduction(reduction)
-					if mgr:debug_enabled() then
-						mgr:debug_log(
-							string.format("wolfs_toolbox drill -%.2fs (special=%s)", reduction, tostring(is_special))
-						)
-					end
-				end
-			end)
+			Hooks:PostHook(CopDamage, "die", "CSR_WolfsToolbox_Kill", wolfs_on_kill)
 
 			if _G.CSR_MP and _G.CSR_MP.register_handler then
 				_G.CSR_MP.register_handler(WOLF_KILL_RPC, function(sender, data)
@@ -170,6 +169,17 @@ _G.CSR.register_item({
 					apply_drill_reduction(tonumber(data) or 0)
 				end)
 			end
+		end,
+
+		-- MP guest: host-spawned enemies are husks whose die() OVERRIDES the parent, so the
+		-- CopDamage:die PostHook never fires for the guest's own kills. Hook the husk too,
+		-- which makes the client-kill RPC branch above (previously dead on the guest) live.
+		["lib/units/enemies/cop/huskcopdamage"] = function()
+			if _G._CSR_WOLFS_KILL_HUSK_HOOKED then
+				return
+			end
+			_G._CSR_WOLFS_KILL_HUSK_HOOKED = true
+			Hooks:PostHook(HuskCopDamage, "die", "CSR_WolfsToolbox_Kill_Husk", wolfs_on_kill)
 		end,
 
 		["lib/units/props/timergui"] = function()

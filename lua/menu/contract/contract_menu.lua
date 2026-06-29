@@ -5,7 +5,7 @@
 CSRContractMenuComponent = CSRContractMenuComponent or class(MenuGuiComponentGeneric)
 
 -- One loc key per difficulty (index 2..8). Keyed by index, not internal name, to avoid the
--- display-name/internal-id mismatch (Rule #9: "overkill" displays as "Very Hard", etc.).
+-- display-name/internal-id mismatch ("overkill" displays as "Very Hard", etc.).
 local DIFFICULTY_LINE_KEYS = {
 	[2] = "csr_diff_name_reward_normal",
 	[3] = "csr_diff_name_reward_hard",

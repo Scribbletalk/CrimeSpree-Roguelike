@@ -318,7 +318,7 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 		self:_csr_remove_sidebar()
 	end)
 
-	-- Raw wraps (Rule #1 exception): PostHook can't carry mouse_moved's (used,pointer) tuple.
+	-- Raw wraps: PostHook can't carry mouse_moved's (used,pointer) tuple.
 	local orig_mouse_moved = MissionBriefingGui.mouse_moved
 	if orig_mouse_moved then
 		function MissionBriefingGui:mouse_moved(x, y)

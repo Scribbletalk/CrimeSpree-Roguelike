@@ -9,7 +9,6 @@ end
 
 local CHANCE = 0.10
 local COOLDOWN = 1.5
-local BONNIE_CHIP_RPC = "CSR_ChipKill"
 
 -- Full-boss enemies are immune to the instakill (fought normally instead).
 -- biker_boss=The Biker Heist d2, deep_boss=Crude Awakening, triad_boss=Mountain Master;
@@ -75,24 +74,11 @@ local function bonnie_try_proc(cop, attack_data)
 	return true
 end
 
-local function bonnie_play_chip_at(pos)
-	if pos and _G.CSR and _G.CSR.play_sound then
-		_G.CSR.play_sound("bonnie_chip", { position = pos, volume = 0.7 })
-	end
-end
-
-local function bonnie_play_kill_sound(dead_unit)
-	if not (dead_unit and alive(dead_unit)) then
-		return
-	end
-	local pos = dead_unit:position()
-	bonnie_play_chip_at(pos)
-	-- Broadcast the kill spot so other peers hear it too.
-	if LuaNetworking and LuaNetworking.GetNumberOfPeers and LuaNetworking:GetNumberOfPeers() > 0 then
-		local payload = string.format("%.2f,%.2f,%.2f", pos.x, pos.y, pos.z)
-		pcall(function()
-			LuaNetworking:SendToPeers(BONNIE_CHIP_RPC, payload)
-		end)
+-- 2D flat playback to the local killer only (positional 3D never worked reliably).
+-- Proc is gated to the local player, so this only fires for whoever landed the kill.
+local function bonnie_play_kill_sound()
+	if _G.CSR and _G.CSR.play_sound then
+		_G.CSR.play_sound("bonnie_chip", { volume = 0.5 })
 	end
 end
 
@@ -125,21 +111,10 @@ _G.CSR.register_item({
 			end)
 			Hooks:PostHook(CopDamage, "damage_bullet", "CSR_BonnieChip_Post", function(cop, attack_data)
 				if cop._csr_chip_proc and cop._dead then
-					bonnie_play_kill_sound(cop._unit)
+					bonnie_play_kill_sound()
 				end
 				cop._csr_chip_proc = nil
 			end)
-
-			-- Peer's broadcast chip-kill — play locally at the sent position.
-			if _G.CSR_MP and _G.CSR_MP.register_handler then
-				_G.CSR_MP.register_handler(BONNIE_CHIP_RPC, function(sender, data)
-					local x, y, z = tostring(data):match("([^,]+),([^,]+),([^,]+)")
-					x, y, z = tonumber(x), tonumber(y), tonumber(z)
-					if x and y and z then
-						bonnie_play_chip_at(Vector3(x, y, z))
-					end
-				end)
-			end
 		end,
 	},
 })

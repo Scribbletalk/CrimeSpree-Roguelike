@@ -93,6 +93,16 @@ _G.CSR.register_item({
 			Hooks:PostHook(CopDamage, "die", "CSR_Overkill_Kill", on_enemy_die)
 		end,
 
+		-- MP guest: host-spawned enemies are husks whose die() OVERRIDES the parent, so the
+		-- CopDamage:die PostHook never fires for the guest's own kills. Hook the husk too.
+		["lib/units/enemies/cop/huskcopdamage"] = function()
+			if _G._CSR_OVERKILL_KILL_HUSK_HOOKED then
+				return
+			end
+			_G._CSR_OVERKILL_KILL_HUSK_HOOKED = true
+			Hooks:PostHook(HuskCopDamage, "die", "CSR_Overkill_Kill_Husk", on_enemy_die)
+		end,
+
 		["lib/units/weapons/newraycastweaponbase"] = function()
 			if _G._CSR_OVERKILL_WEAPON_HOOKED then
 				return

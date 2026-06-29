@@ -12,18 +12,30 @@ local ARMOR_PER_RANK = 0.025
 _G.CSR_ARMOR_PER_RANK = ARMOR_PER_RANK
 _G.CSR_HP_PER_RANK = HP_PER_RANK
 local DMG_PER_RANK = 0.01
+-- Shared with the Heister panel (weapon-damage preview) so it never drifts from this balance source.
+_G.CSR_DMG_PER_RANK = DMG_PER_RANK
 local BOT_HP_PER_RANK = 0.01
 local BOT_DMG_PER_RANK = 0.1
 
 -- Rank we're playing at. host_rank() so clients scale off the host's synced rank.
 -- Gated on in_csr_heist() (not is_run_active) so HP/armor/damage never leak into vanilla
 -- heists: returns 0 outside a CSR heist, making every wrap below a no-op there.
-local function run_rank()
+-- Authoritative computation; runs once per frame via the PlayerDamage:update hook below.
+local function compute_run_rank()
 	local mgr = managers and managers.csr
 	if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
 		return 0
 	end
 	return (mgr.host_rank and mgr:host_rank()) or 0
+end
+
+-- Per-frame cache: per-hit hooks read this global instead of re-querying managers.csr on every
+-- bullet. Rank is immutable during a heist, so a 1-frame refresh lag is irrelevant. Shared with
+-- perk_deck_scaling.lua, whose run_rank() reads the same global.
+_G.CSR_active_rank = _G.CSR_active_rank or 0
+
+local function run_rank()
+	return _G.CSR_active_rank or 0
 end
 
 -- Debug-only trace (silent unless _G.CSR_DEBUG).
@@ -47,6 +59,16 @@ local function is_bot_unit(unit)
 	end
 	local data = crim:character_data_by_unit(unit)
 	return data ~= nil and data.ai == true
+end
+
+-- Refresh the cached rank once per frame. PlayerDamage:update ticks for the LOCAL player only
+-- (husks use HuskPlayerDamage), so this fires exactly once/frame and keeps run_rank() a cheap
+-- global read on every per-hit hook below. compute_run_rank() yields 0 outside a CSR heist.
+if PlayerDamage and not _G._CSR_RankCacheTick then
+	_G._CSR_RankCacheTick = true
+	Hooks:PostHook(PlayerDamage, "update", "CSR_RankCacheTick", function()
+		_G.CSR_active_rank = compute_run_rank()
+	end)
 end
 
 -- HP: same field Dog Tags touches.
@@ -83,11 +105,14 @@ if RaycastWeaponBase and not _G._CSR_RankPassive_Dmg then
 		function RaycastWeaponBase:_get_current_damage(...)
 			local dmg = orig(self, ...)
 			if type(dmg) == "number" then
+				local r = run_rank()
+				if r == 0 then
+					return dmg
+				end
 				local user = self._setup and self._setup.user_unit
 				if user and is_bot_unit(user) then
 					return dmg
 				end
-				local r = run_rank()
 				dbg_mult("ranged_dmg_mult", 1 + DMG_PER_RANK * r)
 				return dmg * (1 + DMG_PER_RANK * r)
 			end
