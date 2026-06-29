@@ -114,8 +114,8 @@ local function csr_collect_heister_stats()
 	end)
 
 	local defs = {
-		{ key = "health", loc = "bm_menu_health", pct = false, fallback = (pd.damage.HEALTH_INIT or 0) * mult },
 		{ key = "armor", loc = "bm_menu_armor", pct = false, fallback = (pd.damage.ARMOR_INIT or 0) * mult },
+		{ key = "health", loc = "bm_menu_health", pct = false, fallback = (pd.damage.HEALTH_INIT or 0) * mult },
 		{
 			key = "movement",
 			loc = "bm_menu_movement",
