@@ -1082,6 +1082,45 @@ function _G.CSR_OpenItemSelection(num_to_select)
 		return
 	end
 
+	-- Install ESC gates lazily on first open. MenuInput / MenuManager may be nil at file-scope load
+	-- time (this file hooks menucomponentmanager, which can load BEFORE menuinput/menumanager), so a
+	-- file-scope install would silently no-op. By open time every menu class is loaded. ESC over the
+	-- modal must be neutralised at TWO independent entry points, both keyed on _csr_item_selection:
+	--   1. MenuInput:back / force_back -> navigate_back pops the underlying screen to the previous
+	--      menu. Swallow it (force_back bypasses the _back_disabled guard, so wrap it too).
+	--   2. MenuManager:toggle_menu_state -> opens menu_pause over the window. Swallow it.
+	-- The window itself still closes via the MCM:back_pressed wrap.
+	if not _G._CSR_ITEMSEL_INPUT_GATES then
+		_G._CSR_ITEMSEL_INPUT_GATES = true
+
+		if MenuInput then
+			local orig_back = MenuInput.back
+			function MenuInput:back(...)
+				if _G._csr_item_selection then
+					return
+				end
+				return orig_back(self, ...)
+			end
+			local orig_force_back = MenuInput.force_back
+			function MenuInput:force_back(...)
+				if _G._csr_item_selection then
+					return
+				end
+				return orig_force_back(self, ...)
+			end
+		end
+
+		if MenuManager then
+			local orig_toggle = MenuManager.toggle_menu_state
+			function MenuManager:toggle_menu_state(...)
+				if _G._csr_item_selection then
+					return
+				end
+				return orig_toggle(self, ...)
+			end
+		end
+	end
+
 	-- Pre-generate N offers before building the first card set; ensure_offers is
 	-- idempotent, so re-opening the same owed pick always shows the same cards.
 	local mgr = managers and managers.csr
@@ -1132,6 +1171,38 @@ if MenuComponentManager and not _G._CSR_ITEMSEL_INPUT_GATE then
 			return _G._csr_item_selection
 		end
 	end)
+end
+
+-- ESC closes the modal via renderer:back_pressed -> MCM:back_pressed. Consume it here so the
+-- component's Back button and the ESC key share one close path. _on_back defers the actual
+-- close to update() (closing mid-dispatch corrupts MCM's _alive_components iteration).
+if MenuComponentManager and not _G._CSR_ITEMSEL_BACK_GATE then
+	_G._CSR_ITEMSEL_BACK_GATE = true
+	local orig_back_pressed = MenuComponentManager.back_pressed
+	function MenuComponentManager:back_pressed(...)
+		if _G._csr_item_selection then
+			if _G._csr_item_selection._on_back then
+				_G._csr_item_selection:_on_back()
+			end
+			return true
+		end
+		return orig_back_pressed(self, ...)
+	end
+end
+
+-- Block the pause menu while the modal is open. MenuManager:toggle_menu_state opens menu_pause
+-- unless managers.menu_component:input_focus() == true. This wrap is on MCM (the class this file
+-- hooks, so it installs reliably regardless of load order). MenuInput/MenuManager gates that are
+-- NOT guaranteed loaded here are installed lazily on open instead (see CSR_OpenItemSelection).
+if MenuComponentManager and not _G._CSR_ITEMSEL_FOCUS_GATE then
+	_G._CSR_ITEMSEL_FOCUS_GATE = true
+	local orig_input_focus = MenuComponentManager.input_focus
+	function MenuComponentManager:input_focus(...)
+		if _G._csr_item_selection then
+			return true
+		end
+		return orig_input_focus(self, ...)
+	end
 end
 
 csr_log("[CSR] item_selection.lua loaded (forked selection window)")

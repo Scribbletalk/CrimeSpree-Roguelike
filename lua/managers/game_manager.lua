@@ -83,6 +83,9 @@ local function default_registry()
 		constants = {
 			dog_tags_hp_bonus = 0.10,
 			rank_per_heist = 1,
+			-- Free baseline rank granted at run start (heist-1 flavor: modifiers/printer/item pick).
+			-- Excluded from payout via CSRGameManager:payable_rank() so it can't be cashed out for free.
+			starting_rank = 1,
 			-- Continue cost = continue_cost_per_rank * current rank (a failed run keeps its rank).
 			continue_cost_per_rank = 3,
 			-- Interrupting a live heist (crash / alt-F4 / quit-to-menu) after this many seconds = a loss.
@@ -423,7 +426,7 @@ function CSRGameManager:start_run()
 	-- No heist in flight yet; the loss-penalty flag arms on IngameWaitingForPlayersState.
 	self._state.in_heist = false
 	self._state.heist_grace_over = false
-	self._state.rank = 0
+	self._state.rank = self._registry.constants.starting_rank
 	self._state.missions_completed = 0
 	self._state.run_purchases = 0
 	self._state.difficulty = self:_default_difficulty()

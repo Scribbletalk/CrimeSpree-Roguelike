@@ -16,7 +16,7 @@ end
 local function get_or_create_peer_entry(state, peer_id)
 	local entry = state.peer_items[peer_id]
 	if not entry then
-		entry = { counts = {} }
+		entry = { counts = {}, tokens = 5 }
 		state.peer_items[peer_id] = entry
 	end
 	-- Migrate legacy { items = [...] } save shape to { counts = { [type]=n } }.

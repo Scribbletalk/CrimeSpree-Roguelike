@@ -103,10 +103,17 @@ function CSRGameManager:accrue_escalated_coins(rank_amount)
 	return add
 end
 
+-- Rank actually earned through play, excluding the free starting_rank floor granted at run
+-- start. Ending/restarting a fresh spree without completing a heist must pay out nothing.
+function CSRGameManager:payable_rank()
+	local starting_rank = (self._registry.constants and self._registry.constants.starting_rank) or 0
+	return math.max(0, (self._state.rank or 0) - starting_rank)
+end
+
 function CSRGameManager:projected_rewards()
 	-- Bucket A: own rank/difficulty. Continental coins come from the escalated accumulator,
 	-- not the flat rank*COINS_PER_RANK term (escalation is banked per heist).
-	local r = self:_rewards_for(self:rank(), self:reward_difficulty_index())
+	local r = self:_rewards_for(self:payable_rank(), self:reward_difficulty_index())
 	r.continental_coins = math.round(self:coins_escalated())
 	return r
 end

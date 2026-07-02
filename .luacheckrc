@@ -43,7 +43,7 @@ globals = {
     "BoxGuiObject", "WalletGuiObject", "ScrollablePanel", "TimerGui",
     -- PD2 menu system
     "MenuBackdropGUI", "MenuGuiComponentGeneric", "MenuGuiItem", "MenuHelper",
-    "MenuCallbackHandler", "MenuComponentManager", "MenuManager",
+    "MenuCallbackHandler", "MenuComponentManager", "MenuManager", "MenuInput",
     "MissionBriefingGui", "StageEndScreenGui", "StatsTabItem",
     "SkirmishBriefingProgress",
     -- PD2 ingame UI

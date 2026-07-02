@@ -38,9 +38,11 @@ function CSRGameManager:_mission_lists()
 		for _, mission in ipairs(mission_list) do
 			local lvl = mission.level
 			local dlc = lvl and lvl.dlc
-			local dlc_unlocked = not dlc or (managers.dlc and managers.dlc:is_dlc_unlocked(dlc))
-			local should_hide = dlc and managers.dlc and managers.dlc:should_hide_unavailable(dlc) or false
-			if dlc_unlocked or not should_hide then
+			-- Only surface missions whose DLC the host owns (or DLC-free): drop unowned even when purchasable,
+			-- since the host can't load a heist it doesn't own. Guests mirror the host set and may play as non-owners.
+			-- managers.dlc nil-guard: keep the mission if the DLC manager isn't ready yet (don't poison the cache empty).
+			local owned = not dlc or not managers.dlc or managers.dlc:is_dlc_unlocked(dlc)
+			if owned then
 				table.insert(lists[index], mission)
 			end
 		end

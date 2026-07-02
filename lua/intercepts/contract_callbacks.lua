@@ -117,7 +117,7 @@ function MenuCallbackHandler:start_new_csr_spree(item, node)
 		-- Compute reward totals BEFORE start_run resets rank/state.
 		local show_rewards = false
 		if is_active then
-			local own_rank = (mgr.rank and mgr:rank()) or 0
+			local own_rank = (mgr.payable_rank and mgr:payable_rank()) or 0
 			local has_b = mgr.has_mp_earnings and mgr:has_mp_earnings()
 			show_rewards = own_rank > 0 or has_b
 			if show_rewards and mgr.projected_rewards then
@@ -352,7 +352,7 @@ end
 function MenuCallbackHandler:_dialog_end_csr_yes()
 	-- Pay bucket A (own run) + bucket B (guest earnings), so a guest with rank 0 still cashes out.
 	local mgr = managers.csr
-	local own_rank = (mgr and mgr.rank and mgr:rank()) or 0
+	local own_rank = (mgr and mgr.payable_rank and mgr:payable_rank()) or 0
 	local has_b = mgr and mgr.has_mp_earnings and mgr:has_mp_earnings()
 	local show_rewards = own_rank > 0 or has_b
 

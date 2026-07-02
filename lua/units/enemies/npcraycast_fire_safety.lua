@@ -1,8 +1,8 @@
 -- Verbatim mirror of NPCRaycastWeaponBase:_fire_raycast (npcraycastweaponbase.lua:345-408,
--- game 1.152.269) with three added alive() guards marked "CSR GUARD". A cop's weapon unit (or its
+-- game 1.152.269) with four added alive() guards marked "CSR GUARD". A cop's weapon unit (or its
 -- target) can be freed mid-call (LIES MWS / FSS area damage, or a generic mid-shoot teardown where
--- CopActionShoot:update fires one extra frame) -> dead userdata native AV. Sites: on_collision,
--- build_suppression, and _spawn_trail_effect (self._obj_fire). Not LIES-specific.
+-- CopActionShoot:update fires one extra frame) -> dead userdata native AV. Sites: on_hit_player,
+-- on_collision, build_suppression, and _spawn_trail_effect (self._obj_fire). Not LIES-specific.
 -- PreHook can't fix this (target freed after entry); must own the body. NOT a CSR bug.
 -- Re-diff against vanilla if the game updates this function. See pd2_mia_npcraycast_fire_native_av.md.
 
@@ -51,7 +51,9 @@ function NPCRaycastWeaponBase:_fire_raycast(
 	if shoot_player and self._hit_player then
 		player_hit, player_ray_data = self:damage_player(col_ray, from_pos, direction, result)
 
-		if player_hit then
+		-- CSR GUARD: alive(self._unit) added vs vanilla. Weapon unit can be freed mid-frame
+		-- (cop disposed mid-action) between damage_player() and here -> native AV on :base().
+		if player_hit and alive(self._unit) then
 			self._unit:base():bullet_class():on_hit_player(col_ray or player_ray_data, self._unit, user_unit, damage)
 		end
 	end
