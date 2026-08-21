@@ -36,6 +36,11 @@ function CSRMissionsMenuComponent:init(ws, fullscreen_ws, node)
 	self._is_lobby = pnode ~= nil and pnode.name == "crime_spree_lobby"
 
 	self:_setup()
+
+	-- On a controller the lobby has no d-pad focus map, so drive a virtual mouse pointer
+	-- (exactly as CrimeNet does) to keep every widget reachable. The vanilla lobby node's own
+	-- mouse highlight is suppressed via input_focus(). Balanced by hide_cursor() in close().
+	CSR_ControllerNav.show_cursor(self)
 end
 
 function CSRMissionsMenuComponent:close()
@@ -48,6 +53,8 @@ function CSRMissionsMenuComponent:close()
 		end
 		self._csr_unsubs = nil
 	end
+	-- Balance the controller cursor activated in init.
+	CSR_ControllerNav.hide_cursor(self)
 	WalletGuiObject.close_wallet(self._ws:panel())
 	self._ws:panel():remove(self._panel)
 	self._fullscreen_ws:panel():remove(self._fullscreen_panel)
@@ -190,9 +197,10 @@ function CSRMissionsMenuComponent:_setup()
 	self._start_button:set_text(managers.localization:to_upper_text("menu_cs_start"))
 	self._start_button:set_callback(callback(self, self, "_start_pressed"))
 
-	if managers.menu:is_pc_controller() then
-		self._start_button:shrink_wrap_button()
-	end
+	-- Shrink-wrap in every input mode: set_text already includes the controller
+	-- button glyph in text_rect, and the default 35%-parent width leaves huge
+	-- gaps between the horizontally-anchored action buttons on a controller.
+	self._start_button:shrink_wrap_button()
 
 	self._start_button:panel():set_right(self._buttons_panel:right())
 	self._start_button:panel():set_bottom(parent:bottom() - padding)
@@ -203,9 +211,7 @@ function CSRMissionsMenuComponent:_setup()
 	self._reroll_button:set_text(managers.localization:to_upper_text("menu_cs_reroll"))
 	self._reroll_button:set_callback(callback(self, self, "_reroll_pressed"))
 
-	if managers.menu:is_pc_controller() then
-		self._reroll_button:shrink_wrap_button()
-	end
+	self._reroll_button:shrink_wrap_button()
 
 	self._reroll_button:panel():set_right(self._start_button:panel():left() - large_padding)
 	self._reroll_button:panel():set_bottom(self._start_button:panel():bottom())
@@ -714,7 +720,11 @@ function CSRMissionsMenuComponent:_on_unselected_items_clicked()
 end
 
 function CSRMissionsMenuComponent:_start_pressed()
-	MenuCallbackHandler:csr_start_game()
+	-- Defer to update(): csr_start_game() tears down the active menu, but on a controller
+	-- MenuInput:update() indexes active_menu():disable_input() right after confirm_pressed()
+	-- returns. Starting synchronously leaves that a nil index (crash menuinput.lua:843). One
+	-- frame later the menu is still alive for MenuInput to finish its frame.
+	self._csr_pending_start = true
 end
 
 function CSRMissionsMenuComponent:_reroll_pressed()
@@ -760,9 +770,7 @@ function CSRMissionsMenuComponent:_refresh_action_buttons()
 			self._reroll_button:set_callback(callback(self, self, "_reroll_pressed"))
 		end
 
-		if managers.menu:is_pc_controller() then
-			self._reroll_button:shrink_wrap_button()
-		end
+		self._reroll_button:shrink_wrap_button()
 
 		-- When locked, Start is hidden and Reroll becomes "Continue Crime Spree": right-align it to
 		-- the panel edge (where Start sat) instead of leaving it floating left of the hidden Start.
@@ -784,9 +792,7 @@ function CSRMissionsMenuComponent:_refresh_action_buttons()
 			self._action_button:set_callback(callback(self, self, "_action_return_to_lobby"))
 		end
 
-		if managers.menu:is_pc_controller() then
-			self._action_button:shrink_wrap_button()
-		end
+		self._action_button:shrink_wrap_button()
 
 		self._action_button:panel():set_right(self._reroll_button:panel():left() - large_padding)
 		self._action_button:panel():set_bottom(self._reroll_button:panel():bottom())
@@ -942,6 +948,14 @@ function CSRMissionsMenuComponent.get_height()
 end
 
 function CSRMissionsMenuComponent:update(t, dt)
+	-- Run a deferred heist start one frame after the controller confirm (see _start_pressed).
+	if self._csr_pending_start then
+		self._csr_pending_start = nil
+		MenuCallbackHandler:csr_start_game()
+
+		return
+	end
+
 	local randomizing = self:is_randomizing()
 
 	for idx, btn in ipairs(self._buttons) do
@@ -958,9 +972,12 @@ function CSRMissionsMenuComponent:update(t, dt)
 end
 
 function CSRMissionsMenuComponent:mouse_moved(o, x, y)
-	if not managers.menu:is_pc_controller() then
-		return
-	end
+	-- No is_pc_controller gate: this must run for the real mouse (pc) AND the
+	-- controller-driven virtual cursor, so hover-select works on a gamepad too.
+
+	-- Remember the cursor position so a controller confirm can replay a click here (the
+	-- gamepad confirm button carries no coordinates of its own). See confirm_pressed.
+	self._csr_last_x, self._csr_last_y = x, y
 
 	-- When a sub-screen covers the cards (self._csr_overlay_active), the sidebar + open feature
 	-- panel stay interactive, but card/button hover is suppressed by folding it into `host` (cards
@@ -1057,6 +1074,14 @@ function CSRMissionsMenuComponent:mouse_moved(o, x, y)
 		used = true
 	end
 
+	-- Track whether the cursor sits on one of our widgets. input_focus() reads this so the hidden
+	-- vanilla lobby node stays interactive when the cursor is off our UI (over its own buttons).
+	self._csr_cursor_over_widget = used and true or false
+	-- Off our widgets, note whether the cursor is directly over a vanilla node button. input_focus
+	-- yields to the node ONLY there, so controller A activates a button just when the cursor is on it
+	-- (over empty space we keep focus and A stays inert). Skip the hit-test while over our own UI.
+	self._csr_over_vanilla_button = not used and CSR_ControllerNav.cursor_over_node_item(x, y) or false
+
 	return used, pointer
 end
 
@@ -1113,6 +1138,19 @@ function CSRMissionsMenuComponent:mouse_released(o, button, x, y)
 end
 
 function CSRMissionsMenuComponent:confirm_pressed()
+	-- On a gamepad the engine raises no ws mouse click, so a controller confirm (A) replays a
+	-- left click at the virtual cursor's last position (stored by mouse_moved). Reusing the whole
+	-- mouse_pressed hit-test makes every widget reachable through one path -- sidebar, Modifiers
+	-- Loud/Stealth, Preferences, the Black Market reminder, mission cards. The reentrancy guard
+	-- stops the mouse_pressed -> confirm_pressed tail call from recursing.
+	if self._csr_controller_mouse and self._csr_last_x and not self._csr_in_confirm then
+		self._csr_in_confirm = true
+		local handled = CSR_ControllerNav.replay_click(self, self._csr_last_x, self._csr_last_y)
+		self._csr_in_confirm = nil
+
+		return handled
+	end
+
 	-- Item-pick reminder is the one control guests may click; checked before the host guard.
 	if self._unselected_items_hover then
 		self:_on_unselected_items_clicked()
@@ -1156,19 +1194,112 @@ function CSRMissionsMenuComponent:confirm_pressed()
 	end
 end
 
+-- What the controller cursor may snap to on stick release. Same live-ness rules mouse_moved uses to
+-- decide hover, so the magnet never pulls towards something a click would ignore.
+function CSRMissionsMenuComponent:csr_magnet_targets(out)
+	CSR_ControllerNav.add_sidebar_targets(out, self._sidebar)
+	CSR_ControllerNav.add_feature_panel_targets(out, self)
+	-- Reminder plates are clickable for guests too, so they go in above the host-only block.
+	if self._unselected_visible and not self._csr_overlay_active then
+		CSR_ControllerNav.add_target(out, self._unselected_panel)
+	end
+	CSR_ControllerNav.add_target(out, self._csr_bm_lobby_panel)
+	if not self:_is_host() or self._csr_overlay_active then
+		return
+	end
+	for _, btn in ipairs(self._buttons) do
+		CSR_ControllerNav.add_target(out, btn:panel())
+	end
+	if self._start_button and not self:_is_locked() then
+		CSR_ControllerNav.add_target(out, self._start_button:panel())
+	end
+	if self._reroll_button then
+		CSR_ControllerNav.add_target(out, self._reroll_button:panel())
+	end
+	if self._action_button then
+		CSR_ControllerNav.add_target(out, self._action_button:panel())
+	end
+end
+
+-- START on a pad fires "Start the Heist" from anywhere in the lobby, so the cursor never has to
+-- find the button. The button already draws the BTN_START glyph, and vanilla routes that pad button
+-- through the menu_respec_tree_all connection (blackmarketgui.lua:3247, crimespreemenucomponent.lua:10);
+-- MenuInput lists it in _give_special_buttons (menuinput.lua:862), so it reaches live components as
+-- special_btn_pressed. Guards mirror the click path: host, unlocked, and no sub-screen or item-pick
+-- modal over the lobby.
+function CSRMissionsMenuComponent:special_btn_pressed(button)
+	if button ~= Idstring("menu_respec_tree_all") then
+		return
+	end
+	if self._csr_overlay_active or _G._csr_item_selection then
+		return
+	end
+	if not self:_is_host() or self:_is_locked() then
+		return
+	end
+	local panel = self._start_button and self._start_button:panel()
+	if not (panel and alive(panel) and panel:visible()) then
+		return
+	end
+	self:_start_pressed()
+
+	return true
+end
+
+function CSRMissionsMenuComponent:back_pressed()
+	if managers.menu:is_pc_controller() then
+		return
+	end
+
+	-- Controller B (cancel) fires MenuInput:back via a controller trigger, but that early-returns while
+	-- we hijack input (input_focus == true), so B only pops when the cursor sits on a vanilla node
+	-- button (the one spot we do NOT hijack). Pop the node ourselves whenever we ARE hijacking so B
+	-- works everywhere; over a node button we are not hijacked, so let MenuInput:back do it (this same
+	-- flag drives input_focus, so exactly one of the two paths ever pops -- no double back).
+	if not self._csr_over_vanilla_button then
+		return CSR_ControllerNav.navigate_back()
+	end
+end
+
 function CSRMissionsMenuComponent:dummy_trigger()
 	return self:confirm_pressed()
 end
 
+-- On a controller the virtual cursor selects cards, so suppress discrete stick nav
+-- here (it would jump card selection while the cursor is also moving). Keyboard on
+-- pc keeps left/right card navigation.
 function CSRMissionsMenuComponent:move_left()
-	self:move_selection(-1)
+	if not managers.menu:is_pc_controller() then
+		return
+	end
+
+	return self:move_selection(-1)
 end
 
 function CSRMissionsMenuComponent:move_right()
-	self:move_selection(1)
+	if not managers.menu:is_pc_controller() then
+		return
+	end
+
+	return self:move_selection(1)
 end
 
-function CSRMissionsMenuComponent:input_focus() end
+function CSRMissionsMenuComponent:input_focus()
+	if managers.menu:is_pc_controller() then
+		return
+	end
+
+	-- Controller: keep hard focus (hijack) everywhere EXCEPT directly over a vanilla lobby-node button.
+	-- Over our widgets OR empty space -> true: MenuInput routes the cursor to us and, being hijacked,
+	-- CoreMenuInput:update skips node-item confirm, so A can't fire a stale node selection. Only when
+	-- the cursor is on a real node button do we return nil, letting MenuInput hit-test + activate it
+	-- (menuinput mouse_moved gates on input_focus ~= true) -- so A works exactly when the cursor is on
+	-- the button. _csr_over_vanilla_button is already false whenever _csr_cursor_over_widget is true.
+	if self._csr_over_vanilla_button then
+		return
+	end
+	return true
+end
 
 CSRMissionButton = CSRMissionButton or class(MenuGuiItem)
 CSRMissionButton._type = "CSRMissionButton"

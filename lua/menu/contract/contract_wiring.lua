@@ -4,6 +4,13 @@ if not RequiredScript then
 	return
 end
 
+-- True once the CSR lobby's own missions component is up, i.e. a contract was accepted rather than
+-- backed out of. Also decides CrimeSpreeContractBoxGui (peer panels) over ContractBoxGui.
+local function csr_lobby_is_active(mcm)
+	local comp = mcm and mcm._crime_spree_missions
+	return comp ~= nil and CSRMissionsMenuComponent ~= nil and getmetatable(comp) == CSRMissionsMenuComponent
+end
+
 Hooks:PostHook(
 	MenuComponentManager,
 	"create_crime_spree_contract_gui",
@@ -34,17 +41,19 @@ Hooks:PostHook(MenuComponentManager, "close_crime_spree_contract_gui", "CSR_Swap
 		self._csr_contract_menu_comp = nil
 		self:unregister_component("crimenet_crime_spree_contract")
 
-		-- Our create nil'd _crime_spree_contract_menu_comp, so vanilla's close skips enable_crimenet; call it manually.
-		self:enable_crimenet()
+		-- Our create nil'd _crime_spree_contract_menu_comp, so vanilla's close skips enable_crimenet.
+		-- Only re-enable when the popup is actually being backed out of. Accepting builds the lobby
+		-- FIRST and closes the popup after, and enable_crimenet sets a flag that MenuComponentManager
+		-- consumes on the next frame -> CrimeNetGui:enable_crimenet -> managers.crimenet:activate().
+		-- CrimeNetManager:update gates on nothing but that flag, so it goes on spawning and removing
+		-- job widgets on the CrimeNet map while the lobby transition tears it down: native crash one
+		-- frame after this hook returns.
+		if self:has_crimenet_gui() and not csr_lobby_is_active(self) then
+			self:enable_crimenet()
+		end
 		csr_log("[CSR] wiring: CSRContractMenuComponent closed")
 	end
 end)
-
--- Use CrimeSpreeContractBoxGui (peer panels) instead of ContractBoxGui (placeholder text) in the CSR lobby.
-local function csr_lobby_is_active(mcm)
-	local comp = mcm and mcm._crime_spree_missions
-	return comp ~= nil and CSRMissionsMenuComponent ~= nil and getmetatable(comp) == CSRMissionsMenuComponent
-end
 
 Hooks:PostHook(MenuComponentManager, "_contract_gui_class", "CSR_ContractGuiClass_UseCSBox", function(self)
 	if csr_lobby_is_active(self) then

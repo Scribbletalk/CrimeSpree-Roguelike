@@ -24,6 +24,9 @@
 	"csr_pref_hud_wildcard_bar": "ALTERNATIVE HUD DISPLAY FOR WILDCARDS",
 	"csr_pref_skip_blackscreen": "SKIP HEIST INTRO BLACK SCREEN (HOST ONLY)",
 	"csr_pref_item_sound_volume": "ITEMS' SOUND VOLUME",
+	"csr_pref_wildcard_bind": "ACTIVATE WILDCARD",
+	"csr_pref_bind_none": "NOT SET",
+	"csr_pref_bind_listening": "PRESS A KEY OR BUTTON...",
 
 	"csr_rewards_cash": "CASH",
 	"csr_rewards_experience": "EXPERIENCE",

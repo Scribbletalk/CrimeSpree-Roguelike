@@ -60,9 +60,14 @@ end
 
 function MenuCallbackHandler:return_to_csr_lobby_visible()
 	-- Pause-menu "Return to Lobby" — CSR sessions only, host/SP only.
-	-- Gate on is_active() (a CSR run is in flight), NOT is_run_active() (always-true alpha stub),
-	-- so the button never leaks onto a vanilla heist's victory/gameover screen.
+	-- is_active() (a CSR run is in flight) is necessary but NOT sufficient: it is run-long, so on its
+	-- own the button appears on a VANILLA heist's briefing and victory/gameover screen played mid-run.
+	-- in_csr_heist() scopes it to the actual CSR job; it still holds on MissionEndState and on the
+	-- briefing, which is where the two state checks below fire.
 	if not (managers.csr and managers.csr.is_active and managers.csr:is_active()) then
+		return false
+	end
+	if not (managers.csr.in_csr_heist and managers.csr:in_csr_heist()) then
 		return false
 	end
 	if Network and Network.is_client and Network:is_client() then
@@ -196,6 +201,11 @@ function MenuCallbackHandler:_accept_csr_contract_mp(item, node)
 
 	-- MP lobby is async; routing flag consumed by lobby_routing.lua's on_enter_lobby hook.
 	Global.CSR_RETURN_TO_LOBBY = true
+	-- Marks THIS lobby as a CSR lobby for as long as the host stays in it (survives attr re-uploads
+	-- from set_server_attributes). Read by crimenet_lobby.lua's apply_matchmake_attributes gate;
+	-- cleared on genuine lobby exit (lobby_routing.lua on_leave_lobby hook). Set before create_lobby
+	-- so the async create callback already sees it.
+	Global.CSR_HOSTING_LOBBY = true
 
 	local matchmake_attributes = self:get_matchmake_attributes()
 
@@ -399,6 +409,10 @@ function MenuCallbackHandler:return_to_csr_lobby()
 			if game_state_machine:current_state_name() ~= "disconnected" then
 				-- Must be Global.*: _G dies across the Lua-state reinit triggered by load_start_menu_lobby.
 				Global.CSR_RETURN_TO_LOBBY = true
+				-- Re-mark the returning lobby as CSR (see _accept_csr_contract_mp); load_start_menu_lobby
+				-- keeps the session (no on_leave_lobby), so the flag would otherwise stay from accept, but
+				-- set it explicitly to cover the post-heist path independently.
+				Global.CSR_HOSTING_LOBBY = true
 				csr_log("[CSR] return_to_csr_lobby: flag set, calling load_start_menu_lobby")
 				self:load_start_menu_lobby()
 			end

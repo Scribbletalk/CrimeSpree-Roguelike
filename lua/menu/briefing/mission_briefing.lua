@@ -804,7 +804,6 @@ function CSRMissionBriefing:hide()
 end
 
 function CSRMissionBriefing:show()
-	print("SHOW")
 	self._backdrop:show()
 end
 

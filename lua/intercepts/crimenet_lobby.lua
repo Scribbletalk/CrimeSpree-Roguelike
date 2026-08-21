@@ -15,7 +15,11 @@ Hooks:PostHook(
 	"apply_matchmake_attributes",
 	"CSR_AdvertiseLobbyAsCrimeSpree",
 	function(self, lobby_attributes)
-		if managers.csr and managers.csr:is_active() then
+		-- Gate on CSR_HOSTING_LOBBY, not is_active() alone: is_active() is a persistent run flag
+		-- (survives menu/restart) that leaks into normal lobbies hosted while a run exists, wrongly
+		-- advertising them as Crime Spree. CSR_HOSTING_LOBBY is true only while the host sits in the
+		-- CSR lobby (set on CSR accept/return, cleared on genuine lobby exit).
+		if Global.CSR_HOSTING_LOBBY and managers.csr and managers.csr:is_active() then
 			-- crime_spree>=0 puts the lobby in the Crime Spree browser; value shows as the spree level.
 			lobby_attributes.crime_spree = managers.csr:rank()
 			-- crime_spree_mission: without it an in-progress server shows "unknown heist" in the browser.

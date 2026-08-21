@@ -37,6 +37,27 @@ local function csr_heist_active()
 	return managers.job and managers.job:current_job_id() == "crime_spree"
 end
 
+-- The pause panel is mouse-only, so on a gamepad raise the same virtual cursor the lobby uses.
+-- Deferred when the menu controller isn't up yet: Manager:open_menu builds the node's components
+-- (this gui) BEFORE menu.input:open() creates the controller the cursor rides on, so the very first
+-- ESC of a session would otherwise index a nil controller.
+local function csr_show_pause_cursor(gui)
+	if not _G.CSR_ControllerNav or managers.menu:is_pc_controller() then
+		return
+	end
+	local function try_show()
+		if gui._csr_pause_panel and gui._panel and alive(gui._panel) then
+			CSR_ControllerNav.show_cursor(gui)
+		end
+	end
+	local menu = managers.menu:active_menu()
+	if menu and menu.input and menu.input._controller then
+		try_show()
+	elseif _G.setup and setup.add_end_frame_clbk then
+		setup:add_end_frame_clbk(try_show)
+	end
+end
+
 -- Adaptive grid: fewest columns (largest cells, capped at max) whose rows fit avail_h.
 -- Ported from lobby_sidebar_items.lua.
 local function csr_adaptive_grid(count, avail_w, avail_h, max_size, min_size, gap)
@@ -745,6 +766,20 @@ Hooks:PostHook(IngameContractGui, "init", "CSR_IngameContract_Relayout", functio
 
 	-- Snap children to integer positions to avoid blurry text (vanilla does this).
 	self:_rec_round_object(self._panel)
+
+	-- Marks the CSR panel as live; every controller hook below gates on it so vanilla heists
+	-- (and vanilla pause menus) keep their stock behaviour.
+	self._csr_pause_panel = true
+	csr_show_pause_cursor(self)
+end)
+
+-- Balance the cursor activation (MenuInput ref-counts it and the pause menu's input object is
+-- reused for the whole heist, so a leak would stick until the heist ends).
+Hooks:PostHook(IngameContractGui, "close", "CSR_IngameContract_HideCursor", function(self)
+	if _G.CSR_ControllerNav then
+		CSR_ControllerNav.hide_cursor(self)
+	end
+	self._csr_pause_panel = nil
 end)
 
 -- Item hover tooltips on the Items tab. Edge-triggered: only rebuild when the target changes.
@@ -771,33 +806,68 @@ end)
 
 -- Sidebar hover highlights + in-panel hover. Handlers self-gate on panel:visible(), so calling
 -- both is safe regardless of active tab; no-ops on non-CSR panels.
+-- Each also reports whether the cursor landed on something clickable, and this hook returns the
+-- pointer for those: vanilla answers "arrow" for everything but its own rewards link
+-- (ingamecontractgui.lua:688) and that return value is what picks the cursor image (MenuInput ->
+-- renderer -> MenuComponentManager -> run_return_on_all_live_components, menuinput.lua:249), so
+-- every CSR control used to keep the plain arrow. A SuperBLT post hook that returns something
+-- replaces the original's return values; returning nothing leaves them alone.
 Hooks:PostHook(IngameContractGui, "mouse_moved", "CSR_IngameContract_SidebarHover", function(self, o, x, y)
+	local link = false
 	if self._csr_sidebar_items then
 		for _, item in pairs(self._csr_sidebar_items) do
 			if alive(item:panel()) then
-				item:set_highlight(item:inside(x, y))
+				local inside = item:inside(x, y)
+				item:set_highlight(inside)
+				if inside and item:callback() then
+					link = true
+				end
 			end
 		end
 	end
-	if self._modifiers_panel_mouse_moved then
-		self:_modifiers_panel_mouse_moved(x, y)
+	if self._modifiers_panel_mouse_moved and self:_modifiers_panel_mouse_moved(x, y) then
+		link = true
 	end
-	if self._preferences_panel_mouse_moved then
-		self:_preferences_panel_mouse_moved(x, y)
+	if self._preferences_panel_mouse_moved and self:_preferences_panel_mouse_moved(x, y) then
+		link = true
+	end
+	if link then
+		return true, "link"
 	end
 end)
 
+-- Controller cursor bookkeeping. A gamepad confirm carries no coordinates, so remember where the
+-- cursor was; also note whether it sits on a vanilla pause-node button, which input_focus() below
+-- yields to so A activates Resume/Options/Quit exactly when the cursor is on one.
+Hooks:PostHook(IngameContractGui, "mouse_moved", "CSR_IngameContract_CursorTrack", function(self, o, x, y)
+	if not self._csr_pause_panel then
+		return
+	end
+	self._csr_last_x, self._csr_last_y = x, y
+	local over_ours = self._panel and alive(self._panel) and self._panel:inside(x, y) or false
+	self._csr_over_vanilla_button = not over_ours
+			and _G.CSR_ControllerNav ~= nil
+			and CSR_ControllerNav.cursor_over_node_item(x, y)
+		or false
+end)
+
 -- Sidebar tab clicks + in-panel clicks (left button only; wheel handled separately).
--- In-panel handlers run first and self-gate on visibility to avoid double-dispatch.
-Hooks:PostHook(IngameContractGui, "mouse_pressed", "CSR_IngameContract_SidebarClick", function(self, button, x, y)
+-- In-panel handlers run first and self-gate on visibility to avoid double-dispatch. Raw wrap rather
+-- than a PostHook so the consumed result reaches MenuComponentManager and confirm_pressed below;
+-- vanilla runs first and returns nothing, so nothing of its behaviour is lost.
+local orig_contract_mouse_pressed = IngameContractGui.mouse_pressed
+function IngameContractGui:mouse_pressed(button, x, y)
+	if orig_contract_mouse_pressed then
+		orig_contract_mouse_pressed(self, button, x, y)
+	end
 	if button ~= Idstring("0") then
 		return
 	end
 	if self._modifiers_panel_mouse_pressed and self:_modifiers_panel_mouse_pressed(x, y) then
-		return
+		return true
 	end
 	if self._preferences_panel_mouse_pressed and self:_preferences_panel_mouse_pressed(x, y) then
-		return
+		return true
 	end
 	-- Grab the Modifiers scroll bar for dragging (_modifiers_panel_mouse_pressed only handles sub-tabs).
 	if
@@ -805,18 +875,18 @@ Hooks:PostHook(IngameContractGui, "mouse_pressed", "CSR_IngameContract_SidebarCl
 		and self:_modifiers_scroll_visible()
 		and self._modifiers_scroll:mouse_pressed(button, x, y)
 	then
-		return
+		return true
 	end
 	if self._csr_sidebar_items then
 		for _, item in pairs(self._csr_sidebar_items) do
 			if alive(item:panel()) and item:inside(x, y) and item:callback() then
 				managers.menu_component:post_event("menu_enter")
 				item:callback()(self)
-				return
+				return true
 			end
 		end
 	end
-end)
+end
 
 -- IngameContractGui has no vanilla mouse_released/wheel; define them here so MenuComponentManager
 -- routes events. Return nil (not false) when not consumed to pass through to other components.
@@ -867,6 +937,132 @@ function IngameContractGui:mouse_wheel_down(x, y)
 	if orig_contract_wheel_down then
 		return orig_contract_wheel_down(self, x, y)
 	end
+end
+
+-- ============================================================================
+-- Controller confirm / back / focus. All three gate on _csr_controller_mouse, which only exists
+-- while our virtual cursor is up (CSR heist + gamepad), so mouse players and vanilla heists are
+-- untouched. Mirrors the lobby component; see lua/menu/controller_nav.lua for the why.
+-- ============================================================================
+
+-- A carries no coordinates and the engine raises no ws click on a gamepad, so replay a full click
+-- at the cursor's last position: one path reaches every widget (tabs, Modifiers, Preferences).
+function IngameContractGui:confirm_pressed()
+	if not self._csr_controller_mouse or not self._csr_last_x or self._csr_in_confirm then
+		return
+	end
+	-- Over a vanilla button we are not hijacking, so the node activates it; our stored position is
+	-- stale there (MenuInput stops forwarding mouse_moved once a row item is selected).
+	if self._csr_over_vanilla_button then
+		return
+	end
+	self._csr_in_confirm = true
+	local handled = CSR_ControllerNav.replay_click(self, self._csr_last_x, self._csr_last_y)
+	self._csr_in_confirm = nil
+
+	return handled
+end
+
+-- B also reaches MenuInput:back, but that early-returns while we hijack input (input_focus ==
+-- true), so resume here whenever we ARE hijacking; over a vanilla button we are not hijacked and
+-- MenuInput:back does it. Both branch on the same flag, so exactly one path fires.
+function IngameContractGui:back_pressed()
+	if not self._csr_controller_mouse then
+		return
+	end
+	if not self._csr_over_vanilla_button then
+		return CSR_ControllerNav.navigate_back()
+	end
+end
+
+-- No vanilla input_focus on this class; MenuComponentManager reads it off live components. Hard
+-- focus everywhere except directly over a vanilla pause-node button: over our panel or empty space
+-- the node stays hijacked (A can't fire a stale selection), on a button we yield so A activates it.
+function IngameContractGui:input_focus()
+	if not self._csr_controller_mouse or not self._panel or not alive(self._panel) then
+		return
+	end
+	if self._csr_over_vanilla_button then
+		return
+	end
+
+	return true
+end
+
+-- Snap targets for the pause panel: the tab rail plus whatever the open feature panel shows.
+function IngameContractGui:csr_magnet_targets(out)
+	if not self._csr_pause_panel then
+		return
+	end
+	if self._csr_sidebar_items then
+		for _, item in pairs(self._csr_sidebar_items) do
+			if item.panel then
+				CSR_ControllerNav.add_target(out, item:panel())
+			end
+		end
+	end
+	CSR_ControllerNav.add_feature_panel_targets(out, self)
+end
+
+-- The engine's own controller-pointer animation (MousePointerManager:change_mouse_to_controller ->
+-- update_controller_pointer, mousepointermanager.lua:138-204) never advances in the GAME state: the
+-- stick reaches _axis_move and _controller_x updates, but the pointer never moves -- the pause
+-- cursor came up visible and frozen. Vanilla never raises that cursor in-game (every
+-- activate_controller_mouse caller is a menu-state screen: CrimeNet, casino, contract broker), so
+-- nothing else relies on it. While OUR pause cursor is up, move the pointer here using vanilla's own
+-- acceleration curve. MenuInput:update re-feeds mouse_moved from the pointer position every frame
+-- (menuinput.lua:849), so hover, _csr_last_x and A-as-click follow without extra plumbing.
+local csr_pointer_acc = 0
+local csr_pointer_t = nil
+
+local function csr_drive_pause_cursor(t, dt)
+	local mc = managers.menu_component
+	local gui = mc and mc._ingame_contract_gui
+	if not (gui and gui._csr_controller_mouse) then
+		csr_pointer_acc = 0
+		return
+	end
+	-- Both update hooks can fire in the same frame (MP pause runs the unpaused one); move once.
+	if t == csr_pointer_t then
+		return
+	end
+	csr_pointer_t = t
+	local menu = managers.menu:active_menu()
+	local ctrl = menu and menu.input and menu.input._controller
+	local mp = managers.mouse_pointer
+	if not (ctrl and ctrl.get_input_axis and mp) then
+		return
+	end
+	dt = dt or 0
+	local axis_x, axis_y = CSR_ControllerNav.stick_axis(ctrl)
+	if axis_x == 0 and axis_y == 0 then
+		csr_pointer_acc = 0
+		return
+	end
+	local tw = tweak_data.gui.mouse_pointer.controller
+	csr_pointer_acc = math.min(csr_pointer_acc + dt * tw.acceleration_speed, tw.max_acceleration)
+	local speed = math.max(1, csr_pointer_acc) * tw.mouse_pointer_speed * dt
+	local move_x = axis_x * speed
+	local move_y = -axis_y * speed
+	local mouse = mp.mouse and mp:mouse()
+	if not mouse then
+		return
+	end
+	-- Vanilla clamps only when a confine panel is set and none ever is here, so keep the pointer
+	-- inside its own workspace or the stick can push it off screen for good.
+	local bounds = mp._ws and alive(mp._ws:panel()) and mp._ws:panel()
+	if bounds then
+		local x = math.clamp(mouse:world_x() + move_x, bounds:world_left(), bounds:world_right() - mouse:w())
+		local y = math.clamp(mouse:world_y() + move_y, bounds:world_top(), bounds:world_bottom() - mouse:h())
+		move_x = x - mouse:world_x()
+		move_y = y - mouse:world_y()
+	end
+	mp:force_move_mouse_pointer(move_x, move_y)
+end
+
+if Hooks then
+	Hooks:Add("GameSetupPausedUpdate", "CSR_PauseCursorDrive_Paused", csr_drive_pause_cursor)
+	Hooks:Add("GameSetupUpdate", "CSR_PauseCursorDrive", csr_drive_pause_cursor)
 end
 
 csr_log("[CSR] pause_ingame_contract.lua loaded")

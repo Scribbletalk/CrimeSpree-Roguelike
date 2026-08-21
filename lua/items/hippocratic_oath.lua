@@ -1,7 +1,8 @@
 -- Hippocratic Oath (wildcard): on loud, spawns a Medic offscreen, converts it to a leashed joker,
 -- and pulses a heal aura. On medic death a respawn timer ticks, then a fresh one spawns. Stealth-blocked.
--- Host spawns/tracks every owner's medic and runs the aura/respawn/DR; owners heal locally (remote
--- owners via an OATH_HEAL ping). HUD respawn timer via CSR_SetWildcardCooldown.
+-- Host spawns/tracks every owner's medic and runs the aura/respawn/DR; the aura heals ALL allies in
+-- range (local player heals locally, remote humans via an OATH_HEAL ping, NPC allies host-healed).
+-- HUD respawn timer via CSR_SetWildcardCooldown.
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -28,9 +29,9 @@ local VOICE_THROTTLE = 30 -- min seconds between heal voicelines per machine
 local MEDIC_UNIT_PATH = "units/payday2/characters/ene_medic_r870/ene_medic_r870"
 
 -- File-locals shared by every hook closure (file is dofile'd once). state is host-authoritative;
--- pulse/last_voice_t are per-machine (drive the local visual).
+-- pulses/last_voice_t are per-machine (drive the local visual).
 local state = {} -- [peer_id] = { medic_unit, medic_unit_key, respawn_at }
-local pulse = { active = false, start_t = 0, medic_unit = nil }
+local pulses = {} -- [medic_key] = { start_t = <game time>, medic_unit = <unit> } (one ring per medic)
 local last_voice_t = 0
 local next_aura_t = 0
 local next_spawn_t = 0
@@ -158,9 +159,21 @@ local function start_pulse(medic_unit)
 	if not alive(medic_unit) then
 		return
 	end
-	pulse.active = true
-	pulse.start_t = TimerManager:game():time()
-	pulse.medic_unit = medic_unit
+	pulses[medic_unit:key()] = { start_t = TimerManager:game():time(), medic_unit = medic_unit }
+end
+
+-- Heal one NPC ally in place. CopDamage/TeamAIDamage/SentryGunDamage share the _HEALTH_INIT/_health
+-- shape, so bumping _health + _health_ratio covers bots, converted jokers, and player turrets alike.
+local function heal_npc(cd, pct)
+	if not cd or cd._dead or cd._fatal then
+		return
+	end
+	local max_hp = cd._HEALTH_INIT
+	if not max_hp or max_hp <= 0 or not cd._health then
+		return
+	end
+	cd._health = math.min(max_hp, cd._health + max_hp * pct)
+	cd._health_ratio = cd._health / max_hp
 end
 
 -- Play the medic's heal voiceline only if the heal restored HP and the per-machine
@@ -346,31 +359,102 @@ local function host_check_spawns()
 	end
 end
 
--- Heal aura tick: each living medic heals its owner if within radius.
+-- Heal aura tick: every living medic heals ALL allies (players, bots, converted jokers, turrets)
+-- within AURA_RADIUS. Host-authoritative: the local player self-heals, remote humans get an OATH_HEAL
+-- ping (they self-heal + honor their own heal-block pref), NPC allies are healed directly. Each ally
+-- is healed at most once per tick even if it sits inside several medics' auras.
 local function host_aura_tick()
 	if not Network:is_server() or not is_playing() then
 		return
 	end
-	for peer_id, s in pairs(state) do
+
+	-- Snapshot the living medic centers once.
+	local medics = {}
+	for _, s in pairs(state) do
 		if s and s.medic_unit and alive(s.medic_unit) and s.medic_unit:movement() then
-			local owner_unit = get_peer_player_unit(peer_id)
-			if alive(owner_unit) and owner_unit:movement() then
-				local d = mvector3.distance(owner_unit:movement():m_pos(), s.medic_unit:movement():m_pos())
-				if d <= AURA_RADIUS then
-					if peer_id == local_peer_id() then
-						local cdmg = owner_unit:character_damage()
-						if cdmg and cdmg.restore_health then
-							local hp_before = cdmg.get_real_health and cdmg:get_real_health() or nil
-							pcall(cdmg.restore_health, cdmg, HEAL_PCT, false)
-							local hp_after = cdmg.get_real_health and cdmg:get_real_health() or nil
-							try_play_voice(s.medic_unit, hp_before, hp_after)
-						end
-						start_pulse(s.medic_unit)
-					else
-						send_oath_heal(peer_id)
-					end
+			medics[#medics + 1] = s.medic_unit
+		end
+	end
+	if #medics == 0 then
+		return
+	end
+
+	-- First medic whose aura covers pos (nil = out of range); attributes the ring/voice to it.
+	local function medic_in_range(pos)
+		for _, m in ipairs(medics) do
+			if mvector3.distance(pos, m:movement():m_pos()) <= AURA_RADIUS then
+				return m
+			end
+		end
+		return nil
+	end
+
+	local pulsed = {} -- [medic_key] = true, so each medic rings at most once per tick
+	local function pulse_medic(m)
+		if not pulsed[m:key()] then
+			pulsed[m:key()] = true
+			start_pulse(m)
+		end
+	end
+
+	-- 1. Host's local player (own health is authoritative here). Gated on the heal-block pref.
+	local lpu = managers.player and managers.player:player_unit()
+	if alive(lpu) and lpu:movement() then
+		local m = medic_in_range(lpu:movement():m_pos())
+		if m then
+			local cdmg = lpu:character_damage()
+			if cdmg and cdmg.restore_health and not (managers.csr and managers.csr:item_heal_blocked()) then
+				local hp_before = cdmg.get_real_health and cdmg:get_real_health() or nil
+				pcall(cdmg.restore_health, cdmg, HEAL_PCT, false)
+				local hp_after = cdmg.get_real_health and cdmg:get_real_health() or nil
+				try_play_voice(m, hp_before, hp_after)
+			end
+			pulse_medic(m)
+		end
+	end
+
+	-- 2. Remote human peers (their own machine self-heals on the ping and honors its pref).
+	local session = managers.network and managers.network:session()
+	if session and session.peers then
+		for _, peer in pairs(session:peers()) do
+			local u = peer:unit()
+			if alive(u) and u:movement() then
+				local m = medic_in_range(u:movement():m_pos())
+				if m then
+					send_oath_heal(peer:id())
+					pulse_medic(m)
 				end
 			end
+		end
+	end
+
+	-- 3. NPC allies: AI bots, converted jokers (incl. the medics themselves), player turrets.
+	-- Host-simulated, so healed directly; NPC heals are never heal-block gated.
+	local groupai = managers.groupai and managers.groupai:state()
+	if not groupai then
+		return
+	end
+	local function heal_ally_unit(u)
+		if not (alive(u) and u:movement()) then
+			return
+		end
+		local m = medic_in_range(u:movement():m_pos())
+		if m then
+			heal_npc(u:character_damage(), HEAL_PCT)
+			pulse_medic(m)
+		end
+	end
+	for _, record in pairs(groupai:all_criminals() or {}) do
+		if record.ai then
+			heal_ally_unit(record.unit)
+		end
+	end
+	for _, unit in pairs(groupai._converted_police or {}) do
+		heal_ally_unit(unit)
+	end
+	for _, unit in pairs(groupai:turrets() or {}) do
+		if alive(unit) and unit:base() and unit:base()._owner_id then
+			heal_ally_unit(unit)
 		end
 	end
 end
@@ -422,7 +506,7 @@ end
 
 local function reset_state()
 	state = {}
-	pulse = { active = false, start_t = 0, medic_unit = nil }
+	pulses = {}
 	last_voice_t = 0
 	next_aura_t = 0
 	next_spawn_t = 0
@@ -543,23 +627,26 @@ local function install_global_hooks()
 		end
 	end)
 
-	-- Expanding heal ring at the medic (all peers, one-shot fade); opacity_add blend so alpha scales.
+	-- Expanding heal ring at each pulsing medic (all peers, one-shot fade); opacity_add blend so
+	-- alpha scales. Keyed by medic so several medics can ring at once.
 	Hooks:Add("GameSetupUpdate", "CSR_HippocraticOath_PulseDraw", function(t, dt)
-		if not pulse.active then
+		if not next(pulses) then
 			return
 		end
-		local elapsed = t - (pulse.start_t or 0)
-		if elapsed >= PULSE_DURATION or not alive(pulse.medic_unit) or not pulse.medic_unit:movement() then
-			pulse.active = false
-			return
+		for key, p in pairs(pulses) do
+			local elapsed = t - (p.start_t or 0)
+			if elapsed >= PULSE_DURATION or not alive(p.medic_unit) or not p.medic_unit:movement() then
+				pulses[key] = nil
+			else
+				local progress = elapsed / PULSE_DURATION
+				local radius = AURA_RADIUS * progress
+				local alpha = PULSE_ALPHA * (1 - progress)
+				local pos = p.medic_unit:movement():m_pos()
+				local brush = Draw:brush(Color(alpha, 0.4, 0.85, 0.5))
+				brush:set_blend_mode("opacity_add")
+				brush:cylinder(pos, pos + Vector3(0, 0, 6), radius)
+			end
 		end
-		local progress = elapsed / PULSE_DURATION
-		local radius = AURA_RADIUS * progress
-		local alpha = PULSE_ALPHA * (1 - progress)
-		local pos = pulse.medic_unit:movement():m_pos()
-		local brush = Draw:brush(Color(alpha, 0.4, 0.85, 0.5))
-		brush:set_blend_mode("opacity_add")
-		brush:cylinder(pos, pos + Vector3(0, 0, 6), radius)
 	end)
 
 	-- Per-heist reset (fires on all peers at load).

@@ -15,6 +15,11 @@ local pref_row_gap = 4
 local pref_slider_h = 56
 local slider_track_h = 10
 local slider_handle_w = 6
+-- Pad glyphs are unreadable at the row's own text size, so they run at the large font's native
+-- size (fonts/font_large_mf.merged_font pulls in font_large_buttons, so the glyphs exist there) and
+-- the bind row is given the height to hold one.
+local pref_bind_row_h = 52
+local pref_bind_glyph_font_size = 44
 
 -- menu_tickbox atlas: col 0=off / 24=on, row 0=normal / 24=hover (matches mod-options ItemToggle).
 local function tickbox_rect(checked, hover)
@@ -35,6 +40,38 @@ local function csr_apply_slider(btn, frac)
 	if btn.setting_key and managers.csr then
 		managers.csr:set_setting(btn.setting_key, frac, true)
 	end
+end
+
+-- Right-hand side of the wildcard bind row, split in two so the pad glyph can be drawn large: the
+-- glyph (nil for a keyboard key) and the text beside it -- the key name, or the d-pad direction the
+-- one shared d-pad glyph cannot express. Recomputed on every repopulate and after a capture.
+local function bind_value_parts()
+	local bind_api = _G.CSR_WildcardBind
+	local bind = bind_api and bind_api.binding()
+	if not bind then
+		return nil, managers.localization:text("csr_pref_bind_none")
+	end
+	return bind_api.display(bind)
+end
+
+-- Lays out that right side: the glyph sits against the right edge at its own drawn width, the text
+-- is packed against it. Build and refresh both go through here, so the two cannot drift apart.
+local function set_bind_value(btn, glyph_text, value_text)
+	if not (alive(btn.panel) and alive(btn.glyph) and alive(btn.val)) then
+		return
+	end
+	local right = btn.panel:w() - 8
+	btn.glyph:set_text(glyph_text or "")
+	btn.glyph:set_visible(glyph_text ~= nil)
+	if glyph_text then
+		local _, _, gw = btn.glyph:text_rect()
+		btn.glyph:set_w(math.max(gw, 1))
+		btn.glyph:set_right(right)
+		right = right - btn.glyph:w() - 6
+	end
+	btn.val:set_text(value_text or "")
+	btn.val:set_w(math.max(right - btn.panel:w() * 0.4, 40))
+	btn.val:set_right(right)
 end
 
 function CSRMissionsMenuComponent:_populate_preferences_panel()
@@ -198,6 +235,69 @@ function CSRMissionsMenuComponent:_populate_preferences_panel()
 		}
 	end
 
+	-- Wildcard bind row: label left, current binding right. Clicking opens a capture window that
+	-- wildcard_bind.lua drives (keyboard keys and gamepad buttons; mouse stays on the BLT keybind).
+	local function make_bind(label)
+		local row = content:panel({ x = pad, y = y, w = row_w, h = pref_bind_row_h, layer = 5 })
+
+		row:rect({ name = "bg", color = Color.black, alpha = 0.4, layer = 0 })
+		local hl = row:rect({
+			name = "hl",
+			blend_mode = "add",
+			color = tweak_data.screen_colors.button_stage_3,
+			layer = 0,
+		})
+		hl:set_visible(false)
+
+		BoxGuiObject:new(row:panel({ layer = 2 }), { sides = { 1, 1, 1, 1 } })
+
+		row:text({
+			text = label,
+			font = tweak_data.menu.pd2_small_font,
+			font_size = tweak_data.menu.pd2_small_font_size,
+			color = tweak_data.screen_colors.text,
+			x = 8,
+			w = row_w * 0.4 - 8,
+			h = pref_bind_row_h,
+			align = "left",
+			vertical = "center",
+			layer = 2,
+		})
+
+		local glyph = row:text({
+			text = "",
+			font = tweak_data.menu.pd2_large_font,
+			font_size = pref_bind_glyph_font_size,
+			color = tweak_data.screen_colors.button_stage_3,
+			h = pref_bind_row_h,
+			align = "right",
+			vertical = "center",
+			layer = 2,
+		})
+
+		-- "PRESS A KEY OR BUTTON..." and a spelled-out key name are both longer than the row's right
+		-- side, so this one wraps; two lines fit the taller bind row at this size.
+		local val = row:text({
+			text = "",
+			font = tweak_data.menu.pd2_small_font,
+			font_size = tweak_data.menu.pd2_small_font_size,
+			color = tweak_data.screen_colors.button_stage_3,
+			wrap = true,
+			word_wrap = true,
+			w = row_w * 0.6 - 8,
+			h = pref_bind_row_h,
+			align = "right",
+			vertical = "center",
+			layer = 2,
+		})
+
+		y = y + pref_bind_row_h + pref_row_gap
+
+		local btn = { kind = "bind", panel = row, hl = hl, val = val, glyph = glyph }
+		set_bind_value(btn, bind_value_parts())
+		return btn
+	end
+
 	local skip_bs = make_toggle(managers.localization:text("csr_pref_skip_blackscreen"), "skip_blackscreen")
 	table.insert(self._preferences_buttons, skip_bs)
 
@@ -206,6 +306,10 @@ function CSRMissionsMenuComponent:_populate_preferences_panel()
 
 	local wc_bar = make_toggle(managers.localization:text("csr_pref_hud_wildcard_bar"), "hud_wildcard_use_bar")
 	table.insert(self._preferences_buttons, wc_bar)
+
+	if _G.CSR_WildcardBind then
+		table.insert(self._preferences_buttons, make_bind(managers.localization:text("csr_pref_wildcard_bind")))
+	end
 
 	local sfx = make_slider(managers.localization:text("csr_pref_item_sound_volume"), "sfx_volume")
 	table.insert(self._preferences_buttons, sfx)
@@ -260,6 +364,17 @@ function CSRMissionsMenuComponent:_preferences_panel_mouse_pressed(x, y)
 				self._pref_dragging = btn
 				local wx = btn.panel:world_position()
 				csr_apply_slider(btn, (x - wx - btn.track_x) / btn.track_w)
+			elseif btn.kind == "bind" then
+				-- Second click while listening cancels; the callback restores the row text either way.
+				local bind_api = _G.CSR_WildcardBind
+				if bind_api and bind_api.listening() then
+					bind_api.cancel_listen()
+				elseif bind_api then
+					set_bind_value(btn, nil, managers.localization:text("csr_pref_bind_listening"))
+					bind_api.begin_listen(function()
+						set_bind_value(btn, bind_value_parts())
+					end)
+				end
 			else
 				btn.checked = not btn.checked
 				btn.cb:set_texture_rect(unpack(tickbox_rect(btn.checked, true)))

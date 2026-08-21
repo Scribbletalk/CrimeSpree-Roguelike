@@ -1368,6 +1368,20 @@ function CSRStageEndScreenGui:mouse_pressed(button, x, y)
 	end
 end
 
+-- Snap targets for the controller cursor: the tab strip, the paging arrows and Continue. Tabs are
+-- hit-tested on their text (StatsTabItem:mouse_moved, stageendscreengui.lua:451), not a panel.
+function CSRStageEndScreenGui:csr_magnet_targets(out)
+	if not self._enabled then
+		return
+	end
+	for _, tab in ipairs(self._items or {}) do
+		CSR_ControllerNav.add_target(out, tab._tab_text)
+	end
+	CSR_ControllerNav.add_target(out, self._prev_page)
+	CSR_ControllerNav.add_target(out, self._next_page)
+	CSR_ControllerNav.add_target(out, self._continue_button)
+end
+
 function CSRStageEndScreenGui:mouse_moved(x, y)
 	if not alive(self._panel) or not alive(self._fullscreen_panel) or not self._enabled then
 		return false
@@ -1498,6 +1512,19 @@ end
 function CSRStageEndScreenGui:confirm_pressed()
 	if not alive(self._panel) or not alive(self._fullscreen_panel) or not self._enabled then
 		return
+	end
+
+	-- On a controller the endscreen shares the screen with the CSRMissionsMenuComponent (its sidebar
+	-- and item reminders, docked below). MenuComponentManager checks this node-gui's confirm BEFORE
+	-- live components, so A would fire continue and never reach the sidebar. Give the component the
+	-- click first (it replays at the virtual cursor); only continue if the cursor is over nothing there.
+	if not managers.menu:is_pc_controller() then
+		local comp = managers.menu_component and managers.menu_component._crime_spree_missions
+		if comp and CSRMissionsMenuComponent and getmetatable(comp) == CSRMissionsMenuComponent then
+			if comp:confirm_pressed() then
+				return true
+			end
+		end
 	end
 
 	if game_state_machine:current_state()._continue_cb() then

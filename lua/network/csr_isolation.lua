@@ -32,7 +32,14 @@ function CSR_MP.is_peer_verified(pid)
 end
 
 -- Host-only gate: enforce isolation only while hosting an active CSR lobby; never in a vanilla game.
+-- CSR_HOSTING_LOBBY is required, not just is_active(): is_active() is a run-long flag that survives
+-- menus and restarts, so on its own it would kick joiners out of a VANILLA lobby hosted mid-run.
+-- Same signal crimenet_lobby.lua gates its Crime Spree attributes on; set on CSR accept/return and
+-- cleared by lobby_routing.lua's on_leave_lobby hook.
 local function csr_lobby_host()
+	if not Global.CSR_HOSTING_LOBBY then
+		return false
+	end
 	return CSR_MP.is_host and CSR_MP.is_host() and managers and managers.csr and managers.csr:is_active()
 end
 

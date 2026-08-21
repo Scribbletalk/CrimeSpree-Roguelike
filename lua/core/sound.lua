@@ -154,6 +154,11 @@ function _G.CSR._load_sound(name, def)
 		else
 			snd_err("ZERO variants loaded for " .. name)
 		end
+	elseif not def._csr_bad_def_logged then
+		-- register_sound accepts any table, so a def missing both shapes stays "missing" forever
+		-- and drives the retry sweep to exhaustion. Name it once instead of failing silently.
+		def._csr_bad_def_logged = true
+		snd_err("BAD REGISTRATION '" .. tostring(name) .. "': def needs .path, or .pattern and .n")
 	end
 end
 
@@ -163,13 +168,12 @@ local function load_all_registered()
 	end
 end
 
--- Loaded = single buffer, or at least one variant loaded.
+-- Presence == loaded: _load_sound assigns only on a live buffer, or on a variant list with >=1 entry.
+-- Do NOT branch on type(e) == "table" here. XAudio.Buffer is a blt_class, so a single buffer is itself
+-- a table with no [1], and testing [1] marked every single-path sound permanently missing -- which drove
+-- the retry sweep to exhaustion and rebuilt those buffers every 4 s.
 local function is_loaded(name)
-	local e = loaded_buffers[name]
-	if type(e) == "table" then
-		return e[1] ~= nil
-	end
-	return e ~= nil
+	return loaded_buffers[name] ~= nil
 end
 
 local function any_missing()
@@ -179,6 +183,16 @@ local function any_missing()
 		end
 	end
 	return false
+end
+
+local function missing_names()
+	local names = {}
+	for name in pairs(_G.CSR._sound_registrations) do
+		if not is_loaded(name) then
+			names[#names + 1] = name
+		end
+	end
+	return table.concat(names, ", ")
 end
 
 -- Retry missing buffers on a bounded schedule so a client with late XAudio init
@@ -199,7 +213,7 @@ local function reload_missing_sweep()
 	if any_missing() and reload_sweeps < MAX_RELOAD_SWEEPS then
 		DelayedCalls:Add("CSR_SoundReloadSweep_" .. reload_sweeps, 4.0, reload_missing_sweep)
 	elseif any_missing() then
-		snd_err("reload sweep: gave up after " .. reload_sweeps .. " sweeps; some sounds still unavailable")
+		snd_err("reload sweep: gave up after " .. reload_sweeps .. " sweeps; still unavailable: " .. missing_names())
 	end
 end
 

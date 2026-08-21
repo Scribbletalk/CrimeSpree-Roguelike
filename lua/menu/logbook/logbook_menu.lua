@@ -207,9 +207,15 @@ function CrimeSpreeLogbookMenuComponent:init(ws, fullscreen_ws, node)
 	self:_setup_logbook()
 	self:_suppress_endscreen()
 	self:_suppress_briefing()
+
+	-- Controller: drive a virtual cursor so the logbook is usable without a mouse (no d-pad
+	-- focus map here). Balanced by hide_cursor() in close().
+	CSR_ControllerNav.show_cursor(self)
 end
 
 function CrimeSpreeLogbookMenuComponent:close()
+	-- Balance the controller cursor activated in init.
+	CSR_ControllerNav.hide_cursor(self)
 	self:_set_back_enabled(true)
 	self:_restore_endscreen()
 	self:_restore_briefing()
@@ -219,7 +225,20 @@ function CrimeSpreeLogbookMenuComponent:close()
 end
 
 function CrimeSpreeLogbookMenuComponent:input_focus()
+	-- On a controller claim hard focus (true) so MenuInput routes the virtual cursor here and
+	-- the hidden vanilla node stops phantom-highlighting its rows. Soft value kept on pc.
+	if not managers.menu:is_pc_controller() then
+		return true
+	end
 	return self._input_focus or 0
+end
+
+function CrimeSpreeLogbookMenuComponent:confirm_pressed()
+	-- Gamepad raises no ws mouse click, so a controller confirm (A) replays a full click at the
+	-- cursor's last position (stored by mouse_moved). Tabs act on release, buttons on press.
+	if self._csr_controller_mouse and self._csr_last_x then
+		return CSR_ControllerNav.replay_click(self, self._csr_last_x, self._csr_last_y)
+	end
 end
 
 -- Disable back-nav while details are open so ESC closes details, not the logbook.
@@ -236,6 +255,13 @@ function CrimeSpreeLogbookMenuComponent:back_pressed()
 		self:_close_details()
 		self:_set_back_enabled(true)
 		return true
+	end
+
+	-- Main view: the logbook node has no back item, and the controller "back" (B) only reaches
+	-- here (renderer:back_pressed -> menu_component:back_pressed), never MenuInput:back the way
+	-- keyboard ESC does. So pop the node ourselves on a controller; pc ESC keeps its own path.
+	if not managers.menu:is_pc_controller() then
+		return CSR_ControllerNav.navigate_back()
 	end
 end
 
@@ -1296,6 +1322,9 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 end
 
 function CrimeSpreeLogbookMenuComponent:mouse_moved(o, x, y)
+	-- Remember the cursor position for the controller confirm replay (see confirm_pressed).
+	self._csr_last_x, self._csr_last_y = x, y
+
 	if not self._content_panel then
 		return false
 	end
@@ -1415,6 +1444,11 @@ function CrimeSpreeLogbookMenuComponent:mouse_pressed(button, x, y)
 	end
 
 	if self._back_button and alive(self._back_button) and self._back_button:inside(x, y) then
+		-- On a controller managers.menu:back() no-ops (input_focus()==true hijacks MenuInput:back),
+		-- so pop the node directly like the B button does. PC keeps its normal back path.
+		if not managers.menu:is_pc_controller() then
+			return CSR_ControllerNav.navigate_back()
+		end
 		managers.menu_component:post_event("menu_back")
 		managers.menu:back()
 		return true

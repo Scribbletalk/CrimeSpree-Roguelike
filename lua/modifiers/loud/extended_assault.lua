@@ -34,7 +34,18 @@ _G.CSR.register_modifier({
 			end
 			_G._CSR_ASSAULT_EXTENDER_HOOKED = true
 
-			local function csr_modify_value(self, id, value)
+			-- Vanilla Crime Spree instantiates this same class. Keep its modify_value and delegate
+			-- to it outside a CSR heist, so a plain Crime Spree run keeps vanilla assault balance.
+			local vanilla_modify_value = ModifierAssaultExtender.modify_value
+
+			local function csr_modify_value(self, id, value, ...)
+				local mgr = managers and managers.csr
+				if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
+					if vanilla_modify_value then
+						return vanilla_modify_value(self, id, value, ...)
+					end
+					return value
+				end
 				if id == "GroupAIStateBesiege:SustainEndTime" then
 					self:_update_hostage_time()
 					local extension = self:value("duration") * 0.01

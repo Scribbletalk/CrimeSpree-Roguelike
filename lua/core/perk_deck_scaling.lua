@@ -414,12 +414,18 @@ end
 
 -- PlayerDamage:_init_armor_grinding_data -- Anarchist tier fix. Vanilla's equipped_armor(true,true) returns
 -- level_1 while player is "civilian" at spawn -> heavy armor grinds at tier-1 rate. Recompute from actual armor.
+-- Gated on in_csr_heist() directly, not run_rank(): this runs at PlayerDamage init, before the first
+-- PlayerDamage:update tick refreshes _G.CSR_active_rank, so the cached rank is stale here.
 if PlayerDamage and not _G._CSR_PerkScale_Grind then
 	_G._CSR_PerkScale_Grind = true
 	local orig = PlayerDamage._init_armor_grinding_data
 	if orig then
 		function PlayerDamage:_init_armor_grinding_data(...)
 			local ret = orig(self, ...)
+			local mgr = managers and managers.csr
+			if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
+				return ret
+			end
 			if self._armor_grinding and managers.player and managers.blackmarket then
 				local data = managers.player:upgrade_value("player", "armor_grinding", nil)
 				local armor_id = managers.blackmarket:equipped_armor()

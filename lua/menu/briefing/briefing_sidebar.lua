@@ -21,6 +21,50 @@ local function csr_briefing_active()
 	return true
 end
 
+-- MenuComponentManager checks _mission_briefing_gui (confirm:1274, mouse_moved:2041, mouse_pressed:1567)
+-- UNCONDITIONALLY while it is non-nil -- even when a CSR overlay node is on top. The logbook / black
+-- market are live components that receive input only AFTER the briefing, so unless the briefing goes
+-- input-transparent it consumes the event and starves the overlay's virtual cursor (its mouse_moved never
+-- runs -> _csr_last_x stays nil -> its confirm replay clicks nothing). The selected node name is the
+-- authoritative "overlay on top" signal; panel visibility is not (briefing update re-asserts it per frame).
+local CSR_BRIEFING_OVERLAY_NODES = {
+	logbook_screen = true,
+	black_market_screen = true,
+}
+local function csr_briefing_overlay_open()
+	local menu = managers.menu and managers.menu:active_menu()
+	local logic = menu and menu.logic
+	if not logic or not logic:selected_node() then
+		return false
+	end
+	return CSR_BRIEFING_OVERLAY_NODES[logic:selected_node_name()] == true
+end
+
+-- Fire the overlay node's live component confirm_pressed directly. MenuComponentManager:confirm_pressed
+-- reaches the overlay only via run_return_on_all_live_components, which stops at the first component
+-- returning non-nil -- an upstream live component (endscreen / mission-end residue whose confirm_pressed
+-- is not neutered by _suppress_endscreen) can swallow a controller A before the overlay is reached. Mouse
+-- is unaffected: its dispatch stops only on a truthy "used", and that residue returns falsy. The briefing's
+-- own confirm_pressed is queried early (before that machinery), so routing A to the overlay here makes it
+-- land regardless of the blocker. The component id equals the selected node's menu_components string.
+local function csr_route_confirm_to_overlay()
+	local mc = managers.menu_component
+	local menu = managers.menu and managers.menu:active_menu()
+	local logic = menu and menu.logic
+	local node = logic and logic:selected_node()
+	local id = node and node:parameters().menu_components
+	if not mc or not mc._alive_components or type(id) ~= "string" then
+		return false
+	end
+	for _, comp_data in ipairs(mc._alive_components) do
+		if comp_data.id == id and comp_data.component and comp_data.component.confirm_pressed then
+			comp_data.component:confirm_pressed()
+			return true
+		end
+	end
+	return false
+end
+
 -- Methods borrowed from CSRMissionsMenuComponent onto MissionBriefingGui so the briefing
 -- drives the same feature-panel pipeline as the lobby. Lazy: applied at first build, not load.
 local METHODS_TO_BORROW = {
@@ -292,6 +336,9 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 			self:_csr_build_sidebar()
 		end
 		if self._sidebar then
+			-- CSR briefing only (sidebar present): the sidebar/reminders are mouse-only, so on a
+			-- controller drive them with the virtual cursor (idempotent; balanced in hide/close).
+			CSR_ControllerNav.show_cursor(self)
 			local p = self._sidebar:panel()
 			if p and alive(p) then
 				p:set_visible(true)
@@ -300,9 +347,16 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 		if self._csr_reopen_pinned_feature_panel then
 			self:_csr_reopen_pinned_feature_panel()
 		end
+		-- Missions/rank/difficulty strip lives on the HUD briefing; restore it when returning from a subscreen.
+		local hud_b = managers and managers.hud and managers.hud._hud_mission_briefing
+		local hdr = hud_b and hud_b._csr_progress_header
+		if hdr and alive(hdr) then
+			hdr:set_visible(true)
+		end
 	end)
 
 	Hooks:PostHook(MissionBriefingGui, "hide", "CSR_BriefingSidebarHide", function(self)
+		CSR_ControllerNav.hide_cursor(self)
 		if self._sidebar then
 			local p = self._sidebar:panel()
 			if p and alive(p) then
@@ -312,9 +366,16 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 		if self.hide_feature_panels then
 			self:hide_feature_panels()
 		end
+		-- Hide the HUD-side run-progress strip while Black Market / Logbook cover the briefing.
+		local hud_b = managers and managers.hud and managers.hud._hud_mission_briefing
+		local hdr = hud_b and hud_b._csr_progress_header
+		if hdr and alive(hdr) then
+			hdr:set_visible(false)
+		end
 	end)
 
 	Hooks:PostHook(MissionBriefingGui, "close", "CSR_BriefingSidebarClose", function(self)
+		CSR_ControllerNav.hide_cursor(self)
 		self:_csr_remove_sidebar()
 	end)
 
@@ -322,6 +383,16 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 	local orig_mouse_moved = MissionBriefingGui.mouse_moved
 	if orig_mouse_moved then
 		function MissionBriefingGui:mouse_moved(x, y)
+			-- Covered by a CSR overlay (logbook / black market hide our panel but leave us enabled):
+			-- stay transparent so MenuComponentManager:mouse_moved passes the event to the overlay
+			-- component behind us. Our sidebar lives on a separate panel and is still hit-testable, so
+			-- consuming here would block the overlay's hover AND its cursor (_csr_last_x) update.
+			if csr_briefing_overlay_open() then
+				return false, "arrow"
+			end
+			-- Stash the cursor for a controller confirm (A carries no coords). Store the real
+			-- position for both the physical mouse and the virtual cursor, before any -9999 clear.
+			self._csr_last_x, self._csr_last_y = x, y
 			-- Modal open: clear sticky hover (-9999 pushes pointer outside all inside() checks).
 			if _G._csr_item_selection or not self._enabled then
 				if self._sidebar and self._sidebar.mouse_moved then
@@ -374,6 +445,11 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 	local orig_mouse_pressed = MissionBriefingGui.mouse_pressed
 	if orig_mouse_pressed then
 		function MissionBriefingGui:mouse_pressed(button, x, y)
+			-- Covered by a CSR overlay (logbook / black market): stay transparent so the click
+			-- reaches the overlay component behind us (see mouse_moved for the rationale).
+			if csr_briefing_overlay_open() then
+				return
+			end
 			if _G._csr_item_selection or not self._enabled then
 				return orig_mouse_pressed(self, button, x, y)
 			end
@@ -394,6 +470,16 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 					return true
 				end
 			end
+			-- Scrollbar drag and the arrow buttons belong to the ScrollablePanel itself; the borrowed
+			-- _modifiers_panel_mouse_pressed only covers the sub-tabs, so the briefing had neither.
+			if
+				self._modifiers_scroll
+				and self._modifiers_scroll_visible
+				and self:_modifiers_scroll_visible()
+				and self._modifiers_scroll:mouse_pressed(button, x, y)
+			then
+				return true
+			end
 			if self._modifiers_panel_mouse_pressed and self:_modifiers_panel_mouse_pressed(x, y) then
 				return true
 			end
@@ -401,6 +487,57 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 				return true
 			end
 			return orig_mouse_pressed(self, button, x, y)
+		end
+	end
+
+	-- Controller A is a discrete press+release via replay_click, but MissionBriefingGui has no vanilla
+	-- mouse_released, so replay_click would fire only the press -- leaving a Preferences slider grab
+	-- (_pref_dragging) stuck to the cursor. Mirror the lobby's release routing so the drag ends on A;
+	-- press+release at the same point sets the slider to the cursor position. On a physical mouse
+	-- MenuComponentManager does not route mouse_released here (the MCM:mouse_released PostHook below
+	-- covers PC), so this method is reached only through replay_click.
+	local orig_mouse_released = MissionBriefingGui.mouse_released
+	function MissionBriefingGui:mouse_released(o, button, x, y)
+		if self._preferences_panel_mouse_released and self:_preferences_panel_mouse_released(button, x, y) then
+			return true
+		end
+		if self._modifiers_scroll then
+			return self._modifiers_scroll:mouse_released(button, x, y)
+		end
+		if orig_mouse_released then
+			return orig_mouse_released(self, o, button, x, y)
+		end
+	end
+
+	-- Controller confirm (A) carries no cursor coords, so replay a click at the last cursor position.
+	-- It routes through the mouse_pressed wrap above -> sidebar/reminders, then vanilla tabs/assets/
+	-- ready-tick. Gamepad only, and only while our virtual cursor owns input. No fallthrough needed:
+	-- on a gamepad vanilla confirm_pressed never readies up (that path is is_pc_controller-gated), and
+	-- an open asset is closed by the replayed press too, so consuming A loses nothing.
+	-- MenuComponentManager queries this gui's confirm BEFORE its live-component loop, so when a CSR
+	-- overlay (logbook / black market) covers the briefing we forward A straight to the overlay's
+	-- component here -- reaching it via the loop is unreliable (an upstream live component can swallow A
+	-- first; see csr_route_confirm_to_overlay). Consuming A after routing also blocks a double fire.
+	local orig_confirm_pressed = MissionBriefingGui.confirm_pressed
+	if orig_confirm_pressed then
+		function MissionBriefingGui:confirm_pressed(...)
+			if csr_briefing_overlay_open() then
+				-- Controller only: route A to the overlay component (pc keeps its native mouse-click path).
+				if not managers.menu:is_pc_controller() and csr_route_confirm_to_overlay() then
+					return true
+				end
+				return false
+			end
+			if
+				not managers.menu:is_pc_controller()
+				and self._csr_controller_mouse
+				and self._csr_last_x
+				and self._enabled
+			then
+				CSR_ControllerNav.replay_click(self, self._csr_last_x, self._csr_last_y)
+				return true
+			end
+			return orig_confirm_pressed(self, ...)
 		end
 	end
 
@@ -412,6 +549,18 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 			self:_csr_set_chrome_hidden(_G._csr_item_selection ~= nil)
 		end
 	end)
+
+	-- Snap targets for the controller cursor: the sidebar rail plus the open feature panel.
+	function MissionBriefingGui:csr_magnet_targets(out)
+		if not self._enabled or csr_briefing_overlay_open() then
+			return
+		end
+		CSR_ControllerNav.add_sidebar_targets(out, self._sidebar)
+		CSR_ControllerNav.add_feature_panel_targets(out, self)
+		-- Reminder plates open the item pick / Black Market, so they pull like any other button.
+		CSR_ControllerNav.add_target(out, self._csr_reminder_panel)
+		CSR_ControllerNav.add_target(out, self._csr_bm_panel)
+	end
 end
 
 -- MissionBriefingGui is not routed mouse_released by MenuComponentManager, so forward it here

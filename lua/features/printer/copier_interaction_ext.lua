@@ -10,9 +10,14 @@ end
 -- first installs its half; a once-flag prevents double-install.
 if HUDInteraction and not _G._CSR_HoverPromptHookInstalled then
 	_G._CSR_HoverPromptHookInstalled = true
-	-- Reset the hover-prompt text to white on every show_interact. Vanilla never
-	-- resets it, so our red "blocked" tint would bleed onto the next interactable.
+	-- Clear our red "blocked" tint on the next show_interact; vanilla never resets it, so it would
+	-- bleed onto the following interactable. Gated on _csr_prompt_tinted (set only where we tint)
+	-- so this never writes the prompt colour in heists where CSR tinted nothing.
 	Hooks:PostHook(HUDInteraction, "show_interact", "CSR_ResetHoverPromptColor", function(self, data)
+		if not self._csr_prompt_tinted then
+			return
+		end
+		self._csr_prompt_tinted = nil
 		if not (self._hud_panel and self._child_name_text) then
 			return
 		end
@@ -148,5 +153,7 @@ function CrimeSpreeCopierInteractionExt:update_show_interact(player, locator)
 	local text_obj = hud._hud_panel:child(hud._child_name_text)
 	if text_obj then
 		text_obj:set_color(BLOCKED_PROMPT_COLOR)
+		-- Arms the reset hook above; without it that hook leaves vanilla prompts alone.
+		hud._csr_prompt_tinted = true
 	end
 end

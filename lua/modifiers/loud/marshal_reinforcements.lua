@@ -24,14 +24,15 @@ _G.CSR.register_modifier({
 			end
 			_G._CSR_HEAVY_SNIPER_HOOKED = true
 
-			-- Accumulate `amount` instead of vanilla `spawn_chance`.
-			ModifierHeavySniper.default_value = "amount"
+			-- Vanilla Crime Spree instantiates this same class, so default_value and modify_value are
+			-- set per INSTANCE in the init hook below (only inside a CSR heist) rather than on the
+			-- class. BaseModifier:value() reads self.default_value lazily and BaseModifier:init only
+			-- stores _data, so assigning in a PostHook on init is early enough.
 
 			-- Skip the vanilla ZEAL-sniper unit swap.
 			local function no_modify_value(_self, _id, value)
 				return value
 			end
-			ModifierHeavySniper.modify_value = no_modify_value
 
 			local function _get_marshal_squad()
 				local groups = tweak_data and tweak_data.group_ai and tweak_data.group_ai.enemy_spawn_groups
@@ -94,6 +95,12 @@ _G.CSR.register_modifier({
 			end
 
 			Hooks:PostHook(ModifierHeavySniper, "init", "CSR_HeavySniperMarshal_Init", function(self)
+				local mgr = managers and managers.csr
+				if not (mgr and mgr.in_csr_heist and mgr:in_csr_heist()) then
+					return
+				end
+				-- Accumulate `amount` instead of vanilla `spawn_chance`.
+				self.default_value = "amount"
 				self.modify_value = no_modify_value
 				_apply(self)
 			end)

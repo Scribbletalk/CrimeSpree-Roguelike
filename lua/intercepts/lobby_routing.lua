@@ -1,4 +1,7 @@
 -- Redirects vanilla on_enter_lobby to the CSR lobby node (vanilla gamemode flag never set).
+--
+-- hook_id MUST stay lib/managers/menumanager: menumanager.lua requires MenuManagerPD2 at its line 34,
+-- so a menumanagerpd2 hook fires before menumanager.lua declares on_leave_lobby and BLT refuses it.
 
 if not RequiredScript then
 	return
@@ -96,6 +99,15 @@ Hooks:PostHook(MenuManager, "on_enter_lobby", "CSR_OnEnterLobbyRoute", function(
 
 	logic:select_node("crime_spree_lobby", true, {})
 	csr_log("[CSR] lobby routing: rerouted on_enter_lobby -> crime_spree_lobby node")
+end)
+
+-- Clear the "this lobby is a CSR lobby" host flag on genuine lobby exit. on_leave_lobby is the
+-- universal exit funnel: normal back-out (_dialog_leave_lobby_yes), server-left/disconnect
+-- (MenuMainState:on_server_left_ok_pressed), and kick (basenetworksession) all route through it, so
+-- this also covers abnormal disconnects that skip _dialog_leave_lobby_yes. It does NOT fire on heist
+-- start or return-between-heists (load_start_menu_lobby keeps the session), so the flag survives those.
+Hooks:PostHook(MenuManager, "on_leave_lobby", "CSR_ClearHostingLobbyFlag", function(self)
+	Global.CSR_HOSTING_LOBBY = nil
 end)
 
 csr_log("[CSR] lobby_routing.lua loaded")

@@ -171,11 +171,21 @@ if MissionBriefingGui and not _G._CSR_BRIEFING_REMINDER_INPUT_HOOKED then
 		end
 	end)
 
+	-- Plate lives on the shared saferect workspace, so vanilla close() -- which only removes its own
+	-- _panel and _fullscreen_panel (missionbriefinggui.lua:4829) -- leaves it on screen: pressing READY
+	-- closed the briefing and the plate stayed up. Remove it ourselves; a fresh briefing rebuilds it.
 	Hooks:PostHook(MissionBriefingGui, "close", "CSR_BriefingReminderClose", function(self)
 		if self._csr_reminder_unsub then
 			self._csr_reminder_unsub()
 			self._csr_reminder_unsub = nil
 		end
+		local ws_panel = self._safe_workspace and self._safe_workspace:panel()
+		if self._csr_reminder_panel and alive(self._csr_reminder_panel) and ws_panel and alive(ws_panel) then
+			ws_panel:remove(self._csr_reminder_panel)
+		end
+		self._csr_reminder_panel = nil
+		self._csr_reminder_bg = nil
+		self._csr_reminder_text = nil
 	end)
 
 	-- Raw wraps needed: mouse_moved/pressed return values matter to the dispatcher

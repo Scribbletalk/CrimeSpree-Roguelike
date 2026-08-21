@@ -11,9 +11,14 @@ if not RequiredScript then
 end
 
 -- Returns the bare item type string of the local player's wildcard, or nil.
+-- in_csr_heist() first: ownership is a run-long inventory fact, so on its own it would show this
+-- slot in vanilla heists played while a run exists. nil here takes update_widget's hide path.
 local function find_owned_wildcard()
 	local mgr = managers and managers.csr
 	if not (mgr and mgr.held_wildcard and mgr.local_peer_id) then
+		return nil
+	end
+	if not (mgr.in_csr_heist and mgr:in_csr_heist()) then
 		return nil
 	end
 	return mgr:held_wildcard(mgr:local_peer_id())

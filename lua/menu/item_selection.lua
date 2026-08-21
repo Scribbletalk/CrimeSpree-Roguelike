@@ -383,9 +383,25 @@ function CSRItemSelectionComponent:init(ws, fullscreen_ws, items, num_to_select)
 	self._current_num = 1
 
 	self:_setup()
+
+	-- This screen navigates with the d-pad/stick (move_up/down + confirm_pressed), so hide
+	-- the lobby's virtual cursor while it is open. Ref-counted; restored in close().
+	local menu = managers.menu:active_menu()
+	if menu and menu.input and not managers.menu:is_pc_controller() then
+		menu.input:deactivate_controller_mouse()
+		self._csr_controller_mouse_off = true
+	end
 end
 
 function CSRItemSelectionComponent:close()
+	-- Restore the virtual cursor suppressed in init (balances the ref count).
+	if self._csr_controller_mouse_off then
+		local menu = managers.menu:active_menu()
+		if menu and menu.input then
+			menu.input:activate_controller_mouse()
+		end
+		self._csr_controller_mouse_off = nil
+	end
 	if self._owned_strip then
 		self._owned_strip:destroy()
 		self._owned_strip = nil

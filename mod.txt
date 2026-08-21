@@ -1,8 +1,8 @@
 {
-	"name": "Crime Spree Roguelike (U1.1)",
-	"description": "Turns Crime Spree into a roguelike: climb ranks to earn powerful player buffs, in the spirit of Risk of Rain 2. Items across five rarity tiers, an in-world Printer and Scrapper, a Gage-token item shop, wildcard active abilities, and full co-op support.",
+	"name": "Crime Spree Roguelike (U1.2)",
+	"description": "Turns Crime Spree into a roguelike: climb ranks to earn powerful player buffs, in the spirit of Risk of Rain 2.",
 	"author": "Candy",
-	"version": "U1.1",
+	"version": "U1.2",
 	"blt_version": 2,
 	"updates": [
 		{
@@ -199,6 +199,10 @@
 		},
 		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",
+			"script_path": "lua/features/wildcard/wildcard_bind.lua"
+		},
+		{
+			"hook_id": "lib/managers/menu/menucomponentmanager",
 			"script_path": "lua/menu/lobby/lobby_button.lua"
 		},
 		{
@@ -260,6 +264,10 @@
 		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",
 			"script_path": "lua/menu/owned_items_strip.lua"
+		},
+		{
+			"hook_id": "lib/managers/menu/menucomponentmanager",
+			"script_path": "lua/menu/controller_nav.lua"
 		},
 		{
 			"hook_id": "lib/managers/menu/menucomponentmanager",
@@ -426,7 +434,7 @@
 			"script_path": "lua/intercepts/crimenet_lobby.lua"
 		},
 		{
-			"hook_id": "lib/managers/menumanagerpd2",
+			"hook_id": "lib/managers/menumanager",
 			"script_path": "lua/intercepts/lobby_routing.lua"
 		},
 		{

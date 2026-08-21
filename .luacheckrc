@@ -14,7 +14,7 @@ read_globals = {
     -- PD2 utilities
     "deep_clone", "clone",
     -- PD2 platform
-    "NOT_WIN_32", "XAudio",
+    "NOT_WIN_32", "XAudio", "IS_PC", "IS_CONSOLE",
     -- SuperBLT / LuaJIT extras
     "json", "utf8",
 }
@@ -43,8 +43,9 @@ globals = {
     "BoxGuiObject", "WalletGuiObject", "ScrollablePanel", "TimerGui",
     -- PD2 menu system
     "MenuBackdropGUI", "MenuGuiComponentGeneric", "MenuGuiItem", "MenuHelper",
+    "MenuCustomizeControllerCreator",
     "MenuCallbackHandler", "MenuComponentManager", "MenuManager", "MenuInput",
-    "MissionBriefingGui", "StageEndScreenGui", "StatsTabItem",
+    "MenuRenderer", "MissionBriefingGui", "StageEndScreenGui", "StatsTabItem",
     "SkirmishBriefingProgress",
     -- PD2 ingame UI
     "IngameContractGui",
@@ -85,6 +86,7 @@ globals = {
     "CSRMenuComponent", "CSRMissionsMenuComponent", "CSRMissionBriefing",
     "CSRHUDStageEndScreen", "CSRStageEndScreenGui", "CSRCrimeSpreeResultTabItem",
     -- CSR UI widgets
+    "CSR_ControllerNav",
     "CSRSidebar", "CSRSidebarItem", "CSRSidebarSeparator",
     "CSRMissionButton", "CSRStartButton",
     "CSRItemSelectionComponent", "CSRItemSelectionButton", "CSRItemSelectionActionButton",
@@ -92,7 +94,9 @@ globals = {
     -- CSR contract
     "CSRContractMenuComponent", "MenuCSRContractInitiator",
     -- CSR module tables / singletons
-    "CSR_Shop", "CSR_LogbookProgress", "CSR_MP",
+    "CSR_Shop", "CSR_LogbookProgress", "CSR_MP", "CSR_WildcardBind",
+    -- CSR wildcard dispatcher API
+    "CSR_TriggerWildcard", "CSR_SetWildcardCooldown", "CSR_WildcardActives", "CSR_WildcardCooldowns",
     -- CSR global helpers
     "csr_log",
     -- CSR callbacks
