@@ -49,6 +49,13 @@ function CSRCrimeSpreeResultTabItem:init(panel, tab_panel, text, i)
 	self._panel:grow(0, -self._panel:y())
 	self:deselect()
 	self:_setup()
+
+	-- HoloUI compat: Holo adds its tab underline (_line_select) from a PostHook on
+	-- StatsTabItem:init, which this subclass override never runs, so its select hook
+	-- crashed on a nil _line_select. Run Holo's initialiser ourselves when present.
+	if self.init_holo then
+		self:init_holo()
+	end
 end
 
 function CSRCrimeSpreeResultTabItem:_setup()
