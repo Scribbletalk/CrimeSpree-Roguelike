@@ -1,0 +1,50 @@
+{
+	"csr_pause_return_to_lobby": "Вернуться в лобби",
+	"csr_pause_return_to_lobby_desc": "Покинуть этот экран и вернуться в лобби Crime Spree Roguelike.",
+	"csr_pause_rank": "Ранг Crime Spree:",
+	"csr_pause_difficulty": "Сложность:",
+	"csr_pause_items": "Предметы:",
+
+	"dialog_return_to_cs_lobby": "Вы уверены, что хотите вернуться в лобби Crime Spree Roguelike?",
+	"csr_dialog_quit_heist_loss_title": "ПОКИНУТЬ ОГРАБЛЕНИЕ?",
+	"csr_dialog_quit_heist_loss_text": "Выход сейчас засчитается как поражение в Crime Spree. Чтобы продолжить, придется заплатить $BTN_CONTINENTAL_COINS;$cost континентальных монет. Все равно выйти?",
+
+	"csr_sidebar_heister": "Грабитель",
+	"csr_sidebar_items": "Предметы",
+	"csr_sidebar_modifiers": "Модификаторы",
+	"csr_sidebar_rewards": "Награды",
+	"csr_sidebar_black_market": "Черный рынок",
+	"csr_sidebar_logbook": "Журнал",
+	"csr_sidebar_preferences": "Настройки",
+	"csr_sidebar_hide": "Скрыть панель",
+	"csr_sidebar_show": "Показать панель",
+
+	"csr_pref_block_item_heal": "БЛОКИРОВАТЬ ЛЕЧЕНИЕ ОТ ПРЕДМЕТОВ",
+	"csr_pref_hud_wildcard_bar": "АЛЬТЕРНАТИВНОЕ ОТОБРАЖЕНИЕ КОЗЫРЕЙ В HUD",
+	"csr_pref_skip_blackscreen": "ПРОПУСКАТЬ ЧЕРНЫЙ ЭКРАН ПЕРЕД ОГРАБЛЕНИЕМ (ТОЛЬКО ХОСТ)",
+	"csr_pref_item_sound_volume": "ГРОМКОСТЬ ЗВУКОВ ПРЕДМЕТОВ",
+	"csr_pref_aloe_aura_opacity": "НЕПРОЗРАЧНОСТЬ ЗОНЫ ЛИСТА АЛОЭ",
+	"csr_pref_wildcard_bind": "АКТИВИРОВАТЬ КОЗЫРЬ",
+	"csr_pref_bind_none": "НЕ ЗАДАНО",
+	"csr_pref_bind_listening": "НАЖМИТЕ КЛАВИШУ ИЛИ КНОПКУ...",
+
+	"csr_rewards_cash": "НАЛИЧНЫЕ",
+	"csr_rewards_experience": "ОПЫТ",
+	"csr_rewards_continental_coins": "КОНТИНЕНТАЛЬНЫЕ МОНЕТЫ",
+	"csr_rewards_loot_cards": "КАРТЫ ДОБЫЧИ",
+	"csr_rewards_this_run": "ЗА ЭТОТ ЗАБЕГ",
+	"csr_rewards_mp_sessions": "ОНЛАЙН СЕССИИ",
+
+	"csr_logbook_title": "ЖУРНАЛ",
+	"csr_logbook_tab_items": "ПРЕДМЕТЫ",
+	"csr_logbook_tab_statistics": "СТАТИСТИКА",
+	"csr_logbook_tab_achievements": "ДОСТИЖЕНИЯ",
+
+	"csr_logbook_dog_tags_name": "СОЛДАТСКИЕ ЖЕТОНЫ",
+	"csr_item_dog_tags_desc": "Повышает максимальное здоровье.",
+	"csr_logbook_dog_tags_effect": "Повышает максимальное здоровье на {g}$pct%{/} (+$pct% за стак, линейно).",
+
+	"csr_logbook_duct_tape_name": "СКОТЧ",
+	"csr_item_duct_tape_desc": "Повышает скорость взаимодействия.",
+	"csr_logbook_duct_tape_effect": "Повышает скорость взаимодействия на {g}$pct%{/} (+$pct% за стак, линейно).\nВлияет на взлом замков, упаковку добычи, ремонт и т.д. {r}Не{/} действует на подъем напарников и снятие наручников."
+}
