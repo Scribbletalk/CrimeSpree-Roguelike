@@ -124,11 +124,26 @@ local function mark_remote_aura(pid)
 	end
 end
 
+-- Local visual preference: 0..1 multiplier on the zone's opacity (1 = default look, 0 = hidden).
+-- Purely cosmetic and per-machine, so it never affects the heal itself or the remote zones' data.
+local function aura_opacity()
+	local mgr = managers and managers.csr
+	local v = mgr and mgr.setting and mgr:setting("aloe_aura_opacity")
+	if type(v) ~= "number" then
+		return 1.0
+	end
+	return math.clamp(v, 0, 1)
+end
+
 -- Draw the heal zone: a translucent disc growing 0 -> AURA_RADIUS over GROW_TIME, then holding.
 local function draw_aura(pos, elapsed)
+	local opacity = aura_opacity()
+	if opacity <= 0 then
+		return
+	end
 	local progress = math.min(1, (elapsed or 0) / GROW_TIME)
 	local radius = AURA_RADIUS * progress
-	local alpha = AURA_ALPHA * progress
+	local alpha = AURA_ALPHA * progress * opacity
 	local brush = Draw:brush(Color(alpha, 0.4, 0.85, 0.5))
 	brush:set_blend_mode("opacity_add")
 	brush:cylinder(pos, pos + Vector3(0, 0, 6), radius)

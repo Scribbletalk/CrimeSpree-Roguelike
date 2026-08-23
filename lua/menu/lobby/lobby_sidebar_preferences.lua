@@ -313,6 +313,9 @@ function CSRMissionsMenuComponent:_populate_preferences_panel()
 
 	local sfx = make_slider(managers.localization:text("csr_pref_item_sound_volume"), "sfx_volume")
 	table.insert(self._preferences_buttons, sfx)
+
+	local aloe = make_slider(managers.localization:text("csr_pref_aloe_aura_opacity"), "aloe_aura_opacity")
+	table.insert(self._preferences_buttons, aloe)
 end
 
 function CSRMissionsMenuComponent:_preferences_panel_mouse_moved(x, y)
