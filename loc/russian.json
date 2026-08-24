@@ -62,5 +62,108 @@
 
 	"csr_logbook_worn_bandaid_name": "ИСПОЛЬЗОВАННЫЙ ПЛАСТЫРЬ",
 	"csr_item_worn_bandaid_desc": "Восстанавливает здоровье со временем.",
-	"csr_logbook_worn_bandaid_effect": "Восстанавливает {g}$first_pct%{/} (+$first_pct% за стак, гиперболически, максимум $max_pct%) максимального здоровья каждые $interval секунд."
+	"csr_logbook_worn_bandaid_effect": "Восстанавливает {g}$first_pct%{/} (+$first_pct% за стак, гиперболически, максимум $max_pct%) максимального здоровья каждые $interval секунд.",
+
+	"csr_logbook_lockes_beret_name": "БЕРЕТ ЛОКА",
+	"csr_item_lockes_beret_desc": "Периодически лечит всю вашу команду.",
+	"csr_logbook_lockes_beret_effect": "Каждые {g}$interval{/} секунд лечит всю вашу команду (вас, напарников, ботов, джокеров, турели) на {g}$first_pct%{/} (+$first_pct% за стак, гиперболически, максимум $max_pct%) максимального здоровья.",
+
+	"csr_logbook_cup_of_joe_name": "ЧАШКА КОФЕ",
+	"csr_item_cup_of_joe_desc": "Повышает максимальную выносливость.",
+	"csr_logbook_cup_of_joe_effect": "Повышает максимальную выносливость на {g}$stamina_pct%{/} (+$stamina_pct% за стак, линейно).",
+
+	"csr_logbook_rebar_name": "КУСОК АРМАТУРЫ",
+	"csr_item_rebar_desc": "Первое попадание по врагу наносит дополнительный урон.",
+	"csr_logbook_rebar_effect": "Первое попадание по врагу наносит {g}+$base_bonus_pct%{/} (+$extra_bonus_pct% за стак, линейно) урона.",
+
+	"csr_logbook_half_a_glass_name": "ПОЛОВИНА ЛУПЫ",
+	"csr_item_half_a_glass_desc": "Посылки от Гейджа восстанавливают патроны и увеличивают боезапас.",
+	"csr_logbook_half_a_glass_effect": "Подбор посылки от Гейджа мгновенно восполняет {g}$refill_pct%{/} патронов основного и дополнительного оружия и увеличивает их боезапас на {g}$first_pct%{/} (+$extra_pct% за стак, линейно) до конца ограбления.",
+
+	"csr_logbook_evidence_rounds_name": "ПАТРОНЫ-УЛИКИ",
+	"csr_item_evidence_rounds_desc": "Повышает урон вашего стрелкового оружия и турелей.",
+	"csr_logbook_evidence_rounds_effect": "Повышает урон вашего огнестрельного оружия, луков, арбалетов и турелей на {g}$per_stack_pct%{/} (+$per_stack_pct% за стак, линейно).",
+
+	"csr_logbook_falcogini_keys_name": "КЛЮЧИ ОТ ФАЛЬКОДЖИНИ",
+	"csr_item_falcogini_keys_desc": "Дает шанс уклониться от входящего урона.",
+	"csr_logbook_falcogini_keys_effect": "Повышает шанс уклонения на {g}3%{/} (+3% за стак, гиперболически).\nУспешное уклонение полностью блокирует урон (не действует на урон, нанесенный самому себе).",
+
+	"csr_logbook_wolfs_toolbox_name": "ЯЩИК С ИНСТРУМЕНТАМИ ВУЛФА",
+	"csr_item_wolfs_toolbox_desc": "Убийства врагов сокращают таймер активных дрелей и пил.",
+	"csr_logbook_wolfs_toolbox_effect": "Убийство обычного врага сокращает таймер активной дрели или пилы на {g}$normal_base сек.{/} (+$normal_extra_s; сек. за стак, линейно).\nУбийство особого врага сокращает таймер на {g}$special_base сек.{/} (+$special_extra_s; сек. за стак, линейно).",
+
+	"csr_logbook_pink_slip_name": "УВЕДОМЛЕНИЕ ОБ УВОЛЬНЕНИИ",
+	"csr_item_pink_slip_desc": "Убийство врага восстанавливает здоровье.",
+	"csr_logbook_pink_slip_effect": "Убийство любого врага восстанавливает {g}$base_pct%{/} (+$base_pct% за стак, гиперболически) максимального здоровья.",
+
+	"csr_logbook_the_edge_name": "ГРАНЬ",
+	"csr_item_the_edge_desc": "При критически низком здоровье восстанавливает здоровье и дает кратковременную неуязвимость.",
+	"csr_logbook_the_edge_effect": "Когда здоровье падает ниже {r}$hp_threshold_pct%{/}, восстанавливает {g}$heal_pct%{/} максимального здоровья + {g}$heal_flat{/} (+$heal_flat_extra за стак) и дает {g}$invuln_s; сек.{/} неуязвимости.\nОткат $cooldown_s; сек.",
+
+	"csr_logbook_overkill_rush_name": "ПРИЛИВ OVERKILL",
+	"csr_item_overkill_rush_desc": "Убийства врагов временно повышают скорострельность и скорость перезарядки.",
+	"csr_logbook_overkill_rush_effect": "Убийство любого врага дает стак прилива, до {g}$max_stacks{/}. Каждый стак прилива повышает скорострельность на {g}$fire_pct%{/} (+$fire_extra_pct% за стак, линейно) и скорость перезарядки на {g}$reload_pct%{/} (+$reload_extra_pct% за стак, линейно).\nВсе стаки прилива пропадают через $duration секунд после последнего убийства.",
+
+	"csr_logbook_bonnie_chip_name": "СЧАСТЛИВАЯ ФИШКА БОННИ",
+	"csr_item_bonnie_chip_desc": "Каждое попадание имеет небольшой шанс мгновенно убить цель.",
+	"csr_logbook_bonnie_chip_effect": "Дает {g}$chance_pct%{/} (+$chance_pct% за стак, гиперболически) шанс мгновенно убить врага при попадании.\nОткат $cooldown сек.\nНе действует на боссов.",
+
+	"csr_logbook_plush_shark_name": "ПЛЮШЕВАЯ АКУЛА",
+	"csr_item_plush_shark_desc": "Один раз за жизнь спасает от ареста и дает неуязвимость на несколько секунд.",
+	"csr_logbook_plush_shark_effect": "Срабатывает в момент, когда вас должны арестовать: здоровье падает до 0 при последнем падении или истекает время до ареста.\nПри срабатывании восстанавливает {g}1 падение{/}, {g}100%{/} максимального {g}здоровья{/} и {g}брони{/}, затем дает неуязвимость на {g}$invuln_base сек.{/} (+$invuln_per_stack; сек. за стак, линейно).\nМожет сработать снова, если вас освободили из-под стражи.",
+
+	"csr_logbook_jiro_last_wish_name": "ПОСЛЕДНЕЕ ЖЕЛАНИЕ ДЖИРО",
+	"csr_item_jiro_last_wish_desc": "Позволяет бежать во время замаха. Повышает урон в ближнем бою.",
+	"csr_logbook_jiro_last_wish_effect": "Позволяет бежать во время замаха ближнего боя. Повышает урон в ближнем бою на {g}$melee_pct%{/} (+$melee_pct% за стак, линейно).",
+
+	"csr_logbook_dearest_possession_name": "САМОЕ ДОРОГОЕ",
+	"csr_item_dearest_possession_desc": "Лечение при полном здоровье превращается во временные щиты, которые быстро убывают.",
+	"csr_logbook_dearest_possession_effect": "Лечение, полученное при полном здоровье, превращается во временные щиты. Предел временных щитов: $cap_pct% максимального здоровья (+$cap_pct% за стак, линейно). Временные щиты убывают на $drain_pct% максимального здоровья каждые $drain_interval секунд.",
+
+	"csr_logbook_viklund_vinyl_name": "ВИНИЛ ВИКЛУНДА",
+	"csr_item_viklund_vinyl_desc": "...и его биты были электрическими.",
+	"csr_logbook_viklund_vinyl_effect": "Дает {g}$proc_chance_pct%{/} шанс при попадании ударить электричеством по {g}$chain_count{/} ближайшим врагам в радиусе {g}$radius; м{/} (+$radius_step; м за стак, линейно). Задетые враги получают {g}$chain_dmg_pct%{/} исходного урона.",
+
+	"csr_logbook_dozer_guide_name": "БУЛЬДОЗЕР ДЛЯ \"ЧАЙНИКОВ\"",
+	"csr_item_dozer_guide_desc": "Сильно повышает броню. Но замедляет вас и снижает уклонение.",
+	"csr_logbook_dozer_guide_effect": "Повышает броню на {g}$armor_pct%{/} (+$armor_pct% за стак, линейно).\nНо снижает скорость передвижения на {r}$speed_pct%{/} (+$speed_pct% за стак, линейно) (не ниже $speed_min_pct% от обычной скорости) и шанс уклонения на {r}$dodge{/} (+$dodge за стак, линейно).",
+
+	"csr_logbook_glass_pistol_name": "СТЕКЛЯННЫЙ ПИСТОЛЕТ",
+	"csr_item_glass_pistol_desc": "Колоссально повышает весь урон. Но вдвое уменьшает максимальное здоровье и броню.",
+	"csr_logbook_glass_pistol_effect": "Умножает весь наносимый урон на {g}$dmg_mul{/} (+$dmg_mul за стак, линейно).\nНо делит максимальное здоровье и броню на {r}$div_mul{/} (+$div_mul за стак, линейно).",
+
+	"csr_logbook_equalizer_name": "ЭКВАЛАЙЗЕР",
+	"csr_item_equalizer_desc": "Сильно повышает урон по особым врагам. Но снижает урон по обычным.",
+	"csr_logbook_equalizer_effect": "Умножает урон по особым врагам на {g}x$bonus_mul{/} (x$bonus_mul за стак, мультипликативно).\nНо урон по обычным врагам умножает на {r}x$penalty_mul{/} (x$penalty_mul за стак, мультипликативно).",
+
+	"csr_logbook_crooked_badge_name": "КРИВОЙ ЗНАЧОК",
+	"csr_item_crooked_badge_desc": "Шанс восстановить падение после каждого штурма. Но время до ареста сокращается.",
+	"csr_logbook_crooked_badge_effect": "После каждого штурма дает {g}50%{/} (+25% за стак, гиперболически) шанс восстановить 1 падение.\nНо время до ареста сокращается на {r}10{/} (+7.5 за стак, гиперболически) секунд.",
+
+	"csr_logbook_dead_mans_trigger_name": "ЧЕКА МЕРТВЕЦА",
+	"csr_item_dead_mans_trigger_desc": "Падение вызывает взрыв вокруг вас. Но союзники тоже получают от него урон.",
+	"csr_logbook_dead_mans_trigger_effect": "При падении вы взрываетесь, нанося {g}480{/} (+240 за стак, линейно) урона в радиусе {g}3{/} (+2 за стак, линейно) метров. Урон растет с рангом Crime Spree.\nНо союзники в радиусе получают {r}$ally_pct%{/} этого урона.",
+
+	"csr_logbook_familiar_friend_name": "ЗНАКОМЫЙ ДРУГ",
+	"csr_item_familiar_friend_desc": "Активируемый. Выпускает вокруг вас волну шипов.",
+	"csr_logbook_familiar_friend_effect": "Выпускает вокруг вас волну шипов в радиусе {g}$aura_radius; м{/}, нанося {g}$base_dmg{/} урона. Урон растет с рангом Crime Spree. Откат {b}$cooldown; сек.{/}",
+
+	"csr_logbook_side_satchel_name": "СУМКА ЧЕРЕЗ ПЛЕЧО",
+	"csr_item_side_satchel_desc": "Пассивный. Позволяет нести вдвое больше снаряжения для задания.",
+	"csr_logbook_side_satchel_effect": "{g}Позволяет нести вдвое больше снаряжения для задания{/} (например, C4, ключ-карты, доски и т.д.). Повышает скорость передвижения с сумкой на {g}$carry_speed_pct%{/}.",
+
+	"csr_logbook_turron_name": "ТУРРОН",
+	"csr_item_turron_desc": "Активируемый. Лечит вас и снижает получаемый урон на несколько секунд.",
+	"csr_logbook_turron_effect": "Мгновенно восстанавливает {g}$heal_pct% максимального здоровья{/} и дает {g}$dr_pct% снижения урона{/} на {b}$dr_s{/} секунд. Откат {b}$cooldown_s{/} секунд.",
+
+	"csr_logbook_hippocratic_oath_name": "КЛЯТВА ГИППОКРАТА",
+	"csr_item_hippocratic_oath_desc": "Пассивный. При громком подходе к вашей команде присоединяется медик и лечит вас, находясь рядом.",
+	"csr_logbook_hippocratic_oath_effect": "При переходе к громкому подходу призывает {g}медика, который сражается на вашей стороне{/}. Каждые {b}$tick_s{/} секунд медик выпускает ауру радиусом {g}$aura_radius; м{/}, восстанавливающую {g}$heal_pct% здоровья{/}. После смерти медик возрождается через {b}$respawn_min{/} минут.",
+
+	"csr_logbook_scrap_common_name": "ОБЫЧНЫЙ ХЛАМ",
+	"csr_item_scrap_common_desc": "Ничего не делает. Принтеры расходуют его в первую очередь.",
+	"csr_logbook_scrap_uncommon_name": "НЕОБЫЧНЫЙ ХЛАМ",
+	"csr_item_scrap_uncommon_desc": "Ничего не делает. Принтеры расходуют его в первую очередь.",
+	"csr_logbook_scrap_rare_name": "РЕДКИЙ ХЛАМ",
+	"csr_item_scrap_rare_desc": "Ничего не делает. Принтеры расходуют его в первую очередь."
 }
