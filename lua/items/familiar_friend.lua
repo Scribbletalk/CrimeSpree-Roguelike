@@ -257,9 +257,9 @@ _G.CSR.register_item({
 
 	-- $aura_radius / $base_dmg / $cooldown fill csr_logbook_familiar_friend_effect.
 	loc_macros = {
-		aura_radius = string.format("%gm", RADIUS / 100),
+		aura_radius = string.format("%g", RADIUS / 100),
 		base_dmg = BASE_DISPLAY_DAMAGE,
-		cooldown = string.format("%gs", COOLDOWN),
+		cooldown = string.format("%g", COOLDOWN),
 	},
 
 	hooks = {

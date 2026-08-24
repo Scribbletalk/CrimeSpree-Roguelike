@@ -147,9 +147,9 @@ _G.CSR.register_item({
 	icon_scale = 1.0,
 	loc_macros = {
 		normal_base = string.format("%g", NORMAL_BASE),
-		normal_extra_s = string.format("%gs", NORMAL_EXTRA),
+		normal_extra_s = string.format("%g", NORMAL_EXTRA),
 		special_base = string.format("%g", SPECIAL_BASE),
-		special_extra_s = string.format("%gs", SPECIAL_EXTRA),
+		special_extra_s = string.format("%g", SPECIAL_EXTRA),
 	},
 
 	hooks = {
