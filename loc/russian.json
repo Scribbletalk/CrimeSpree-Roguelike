@@ -90,7 +90,7 @@
 
 	"csr_logbook_wolfs_toolbox_name": "ЯЩИК С ИНСТРУМЕНТАМИ ВУЛФА",
 	"csr_item_wolfs_toolbox_desc": "Убийства врагов сокращают таймер активных дрелей и пил.",
-	"csr_logbook_wolfs_toolbox_effect": "Убийство обычного врага сокращает таймер активной дрели или пилы на {g}$normal_base сек.{/} (+$normal_extra_s; сек. за стак, линейно).\nУбийство особого врага сокращает таймер на {g}$special_base сек.{/} (+$special_extra_s; сек. за стак, линейно).",
+	"csr_logbook_wolfs_toolbox_effect": "Убийство обычного врага сокращает таймер активной дрели или пилы на {g}$normal_base сек.{/} (+$normal_extra_s; сек. за стак, линейно).\nУбийство спец-юнита сокращает таймер на {g}$special_base сек.{/} (+$special_extra_s; сек. за стак, линейно).",
 
 	"csr_logbook_pink_slip_name": "УВЕДОМЛЕНИЕ ОБ УВОЛЬНЕНИИ",
 	"csr_item_pink_slip_desc": "Убийство врага восстанавливает здоровье.",
@@ -133,8 +133,8 @@
 	"csr_logbook_glass_pistol_effect": "Умножает весь наносимый урон на {g}$dmg_mul{/} (+$dmg_mul за стак, линейно).\nНо делит максимальное здоровье и броню на {r}$div_mul{/} (+$div_mul за стак, линейно).",
 
 	"csr_logbook_equalizer_name": "ЭКВАЛАЙЗЕР",
-	"csr_item_equalizer_desc": "Сильно повышает урон по особым врагам. Но снижает урон по обычным.",
-	"csr_logbook_equalizer_effect": "Умножает урон по особым врагам на {g}x$bonus_mul{/} (x$bonus_mul за стак, мультипликативно).\nНо урон по обычным врагам умножает на {r}x$penalty_mul{/} (x$penalty_mul за стак, мультипликативно).",
+	"csr_item_equalizer_desc": "Сильно повышает урон по спец-юнитам. Но снижает урон по обычным.",
+	"csr_logbook_equalizer_effect": "Умножает урон по спец-юнитам на {g}x$bonus_mul{/} (x$bonus_mul за стак, мультипликативно).\nНо урон по обычным врагам умножает на {r}x$penalty_mul{/} (x$penalty_mul за стак, мультипликативно).",
 
 	"csr_logbook_crooked_badge_name": "КРИВОЙ ЗНАЧОК",
 	"csr_item_crooked_badge_desc": "Шанс восстановить падение после каждого штурма. Но время до ареста сокращается.",
@@ -165,5 +165,149 @@
 	"csr_logbook_scrap_uncommon_name": "НЕОБЫЧНЫЙ ХЛАМ",
 	"csr_item_scrap_uncommon_desc": "Ничего не делает. Принтеры расходуют его в первую очередь.",
 	"csr_logbook_scrap_rare_name": "РЕДКИЙ ХЛАМ",
-	"csr_item_scrap_rare_desc": "Ничего не делает. Принтеры расходуют его в первую очередь."
+	"csr_item_scrap_rare_desc": "Ничего не делает. Принтеры расходуют его в первую очередь.",
+
+	"csr_interact_copier": "Удерживайте $BTN_INTERACT;, чтобы использовать принтер",
+	"csr_interact_copier_action": "Использует принтер",
+	"csr_copier_no_item": "Нет предмета подходящей редкости для обмена",
+
+	"csr_interact_scrapper": "Удерживайте $BTN_INTERACT;, чтобы использовать утилизатор",
+	"csr_interact_scrapper_action": "Использует утилизатор",
+	"csr_scrapper_no_items": "Нет предметов для переработки",
+	"csr_scrapper_pick_title": "Утилизатор",
+	"csr_scrapper_pick_text": "Выберите предмет, чтобы превратить его в хлам.",
+
+	"csr_scrapper_cancel_hint": "Клавиши движения или клик вне окна, чтобы закрыть.",
+
+	"csr_chat_sacrificed": "пожертвован!",
+	"csr_chat_printed": "напечатан!",
+	"csr_chat_scrapped": "переработан (x$count)",
+
+	"csr_reward_loot_label": "Добыча",
+	"csr_reward_rank_label": "Ранг",
+	"csr_reward_tokens_label": "Токены Гейджа",
+
+	"csr_reroll_confirm_title": "СМЕНИТЬ ОГРАБЛЕНИЯ",
+	"csr_reroll_confirm_text": "Сменить набор ограблений за $BTN_CONTINENTAL_COINS;$cost монет?",
+	"csr_reroll_confirm_cant_afford": "Смена набора ограблений стоит $BTN_CONTINENTAL_COINS;$cost монет, но у вас их недостаточно.",
+
+	"csr_contract_difficulty": "Сложность",
+
+	"csr_contract_in_progress_title": "Игра в Crime Spree Roguelike по сети.",
+	"csr_contract_in_progress_desc": "Деньги, опыт, монеты и карты добычи, заработанные по сети, копятся в вашем прогрессе и выплачиваются, когда вы завершите свой забег Crime Spree Roguelike - даже если закончите на 1 ранге.",
+
+	"csr_lobby_rank": "РАНГ",
+	"csr_lobby_difficulty": "СЛОЖНОСТЬ",
+	"csr_lobby_missions_completed": "ОГРАБЛЕНИЙ ЗАВЕРШЕНО",
+	"csr_lobby_unselected_items": "Не выбрано предметов: $count",
+
+	"csr_dialog_end_spree": "Завершить забег Crime Spree Roguelike и забрать награды?",
+	"csr_dialog_start_new_while_active": "Вы на $rank ранге. Награды будут выплачены, после чего начнется новый забег. Продолжить?",
+	"csr_dialog_vanilla_rewards_title": "Неполученные награды Crime Spree",
+	"csr_dialog_vanilla_rewards_text": "Ванильная серия Crime Spree, начатая до установки мода, все еще активна. Ее награды не получены. Забрать их сейчас?",
+
+	"csr_current_spree": "Текущий забег: $status",
+	"csr_current_spree_active": "активен",
+	"csr_current_spree_none": "нет",
+	"csr_current_spree_rank": "Ранг: $rank",
+
+	"csr_black_market_title": "ЧЕРНЫЙ РЫНОК",
+	"csr_black_market_tab_shop": "МАГАЗИН",
+	"csr_black_market_reroll": "Сменить",
+	"csr_black_market_buy": "Купить",
+	"csr_black_market_sold": "ПРОДАНО",
+
+	"csr_diff_name_reward_normal": "НОРМАЛЬНО. НЕТ ДОПОЛНИТЕЛЬНОЙ НАГРАДЫ.",
+	"csr_diff_name_reward_hard": "СЛОЖНО. БОЛЬШЕ ОЧКОВ ОПЫТА И ДЕНЕГ.",
+	"csr_diff_name_reward_very_hard": "ОЧЕНЬ СЛОЖНО. ЗАМЕТНО БОЛЬШЕ ОЧКОВ ОПЫТА И ДЕНЕГ.",
+	"csr_diff_name_reward_overkill": "OVERKILL. МНОГОКРАТНО УВЕЛИЧЕНО КОЛИЧЕСТВО ОЧКОВ ОПЫТА И ДЕНЕГ.",
+	"csr_diff_name_reward_mayhem": "ХАОС. НЕВЕРОЯТНО УВЕЛИЧЕНЫ ОЧКИ ОПЫТА И НАЛИЧНЫЕ.",
+	"csr_diff_name_reward_death_wish": "ЖАЖДА СМЕРТИ. НЕВЕРОЯТНО УВЕЛИЧЕНЫ ОЧКИ ОПЫТА И НАЛИЧНЫЕ.",
+	"csr_diff_name_reward_death_sentence": "СМЕРТНЫЙ ПРИГОВОР. НЕВЕРОЯТНО УВЕЛИЧЕНЫ ОЧКИ ОПЫТА И НАЛИЧНЫЕ.",
+
+	"csr_end_spree": "Завершить забег",
+	"csr_return_to_lobby": "Вернуться в лобби",
+	"csr_start_new_spree": "Начать новый забег",
+	"csr_continue_spree": "Продолжить текущий забег",
+
+	"csr_join_blocked_title": "Ванильный Crime Spree",
+	"csr_join_blocked_text": "Это лобби ванильного Crime Spree. С установленным Crime Spree Roguelike вы можете играть только в лобби Roguelike. Отключите мод, чтобы играть в ванильный Crime Spree.",
+	"csr_kick_no_mod": "$name будет исключен: для игры в этом лобби нужен мод Crime Spree Roguelike.",
+
+	"csr_addon_gate_title": "ОТСУТСТВУЮТ АДДОНЫ",
+	"csr_addon_gate_text": "Хост использует аддоны Crime Spree Roguelike, которых у вас нет. Установите их и зайдите заново:",
+	"csr_menu_select_item": "ВЫБРАТЬ ПРЕДМЕТ",
+
+	"csr_wildcard_replace_title": "ЗАМЕНИТЬ КОЗЫРЬ?",
+	"csr_wildcard_replace_text": "У вас уже есть $OLD. Выбор $NEW навсегда удалит $OLD. Продолжить?",
+
+	"csr_item_selection_none_name": "НЕТ ПРЕДМЕТОВ",
+	"csr_item_selection_none_desc": "Сейчас нет доступных предметов.",
+
+	"csr_briefing_bm_affordable": "ПОСЕТИТЕ ЧЕРНЫЙ РЫНОК, ЧТОБЫ ПОТРАТИТЬ ТОКЕНЫ",
+
+	"csr_crime_spree_brief": "Crime Spree Roguelike - это бесконечная череда случайно выбранных ограблений, идущих одно за другим. С каждым завершенным ограблением растут ваш Ранг и Награда. С каждым Рангом враги становятся сильнее, но и вы тоже - за счет бесконечно складывающихся Предметов, которые повышают здоровье, урон или даже дают уникальные способности.\n\nЗа завершенные ограбления и вынесенную добычу вы получаете новую валюту - Токены Гейджа. Старый добрый приятель Гейдж предложит за них свой товар. Не забывайте иногда заглядывать на Черный рынок.\n\nВ остальном разберетесь сами. Удачи!",
+
+	"csr_gage_line_greeting_1": "Здравствуй, незнакомец.",
+	"csr_gage_line_greeting_2": "\"Что ты покупаешь?\" Хех, всегда хотел это сказать.",
+	"csr_gage_line_greeting_3": "Уже вернулся? Посмотрим, что у меня есть.",
+	"csr_gage_line_greeting_4": "Подкати ящик и присаживайся, друг.",
+	"csr_gage_line_greeting_5": "Не торопись. Я никуда не денусь.",
+	"csr_gage_line_greeting_6": "А, ты вернулся.",
+	"csr_gage_line_greeting_7": "За тобой не следили? Надеюсь, что нет...",
+	"csr_gage_line_greeting_8": "Слышал, ты там времени зря не терял.",
+	"csr_gage_line_greeting_9": "Масло для ламп, веревка, бомбы... А, стоп, забудь.",
+	"csr_gage_line_greeting_10": "Мне снилось странное синее существо с трясущейся рукой... Ты давно тут стоишь?",
+	"csr_gage_line_greeting_11": "Здравствуй, дорогой покупатель... Добро пожаловать в мой магазин! Купи что-нибудь, пожалуйста!",
+	"csr_gage_line_greeting_12": "Конничиваззап...! Не спрашивай, зачем я это сказал...",
+
+	"csr_gage_line_reroll_1": "Не нравятся? Схожу гляну на складе.",
+	"csr_gage_line_reroll_2": "Привередливый, а? Попробуй эти.",
+	"csr_gage_line_reroll_3": "Свежая партия, сейчас будет.",
+	"csr_gage_line_reroll_4": "Взгляни еще раз.",
+	"csr_gage_line_reroll_5": "Нет? Ладно.",
+	"csr_gage_line_reroll_6": "Там, откуда это, есть еще.",
+
+	"csr_gage_line_purchase_1": "Приятно иметь с тобой дело.",
+	"csr_gage_line_purchase_2": "Хороший выбор. Пользуйся с умом.",
+	"csr_gage_line_purchase_3": "Не потеряй это там.",
+	"csr_gage_line_purchase_4": "Продано.",
+	"csr_gage_line_purchase_5": "Еще один довольный клиент.",
+
+	"csr_gage_line_purchase_contraband": "Не думал, что это кто-то и правда купит...",
+	"csr_gage_line_purchase_crooked_badge": "Похоже, этот парень люто ненавидел свою работу. Быть копом, когда ты существуешь, наверное, нелегко.",
+	"csr_gage_line_purchase_dead_mans_trigger": "С этой штукой я был бы ОЧЕНЬ осторожен. Неизвестно, когда она рванет.",
+	"csr_gage_line_purchase_dozer_guide": "Теперь тебя ничто не тронет.",
+	"csr_gage_line_purchase_equalizer": "До сих пор не пойму, что это за штука. Что-то связанное с музыкой, кажется. Никогда ею особо не интересовался.",
+	"csr_gage_line_purchase_glass_pistol": "Не сжимай слишком сильно. Он довольно хрупкий.",
+
+	"csr_logbook_col_items": "ПРЕДМЕТЫ",
+	"csr_logbook_col_records": "РЕКОРДЫ",
+	"csr_logbook_col_totals": "ВСЕГО",
+	"csr_logbook_community_item": "ПРЕДМЕТ ОТ СООБЩЕСТВА",
+	"csr_logbook_achievements_placeholder": "ДОСТИЖЕНИЯ ПОЯВЯТСЯ В БУДУЩИХ ОБНОВЛЕНИЯХ",
+	"csr_logbook_none": "Нет",
+	"csr_logbook_effect_sealed": "Подробные эффекты скрыты во время активного забега Crime Spree Roguelike. Завершите забег, чтобы прочитать их.",
+
+	"csr_logbook_stat_rank": "Наивысший ранг:",
+	"csr_logbook_stat_longest_spree": "Самый долгий забег:",
+	"csr_logbook_stat_most_purchases": "Больше всего покупок:",
+	"csr_logbook_stat_most_items": "Больше всего собрано предметов:",
+	"csr_logbook_stat_most_damage_hit": "Больше всего урона нанесено:",
+	"csr_logbook_unit_missions": "ограблений",
+
+	"csr_logbook_stat_missions": "Ограблений завершено:",
+	"csr_logbook_stat_kills": "Убийств:",
+	"csr_logbook_stat_specials": "Спец-юнитов убито:",
+	"csr_logbook_stat_damage_dealt": "Урона нанесено:",
+	"csr_logbook_stat_damage_taken": "Урона получено:",
+	"csr_logbook_stat_bags": "Сумок унесено:",
+	"csr_logbook_stat_cash": "Заработано денег:",
+	"csr_logbook_stat_experience": "Заработано очков опыта:",
+	"csr_logbook_stat_coins": "Заработано монет:",
+	"csr_logbook_stat_loot": "Получено карт добычи:",
+	"csr_logbook_stat_purchases": "Покупок:",
+	"csr_logbook_stat_unlocked": "Предметов открыто:",
+	"csr_logbook_stat_level": "Наивысший уровень:",
+	"csr_logbook_stat_favorite_wildcard": "Любимый Козырь:"
 }

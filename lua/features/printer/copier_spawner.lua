@@ -307,8 +307,9 @@ end
 
 -- Exchange: sacrifice removed immediately, lid reopens + offer awarded after REOPEN_DELAY.
 local function use_copier(c)
+	-- Defensive: a client copy can land without an offer if the host's type failed to resolve.
 	if not c.offer_type or not c.tier then
-		hint(managers.localization:text("csr_copier_no_offer"), 2)
+		csr_log("[CSR Copier] use_copier: no offer on this printer, ignoring")
 		return
 	end
 	if c.cycling then
@@ -317,13 +318,14 @@ local function use_copier(c)
 
 	local mgr = managers.csr
 	if not (mgr and mgr.add_item and mgr.remove_item) then
-		hint("Item store unavailable", 5)
+		csr_log("[CSR Copier] use_copier: item store unavailable, ignoring")
 		return
 	end
 
+	-- Unreachable in normal play: _interact_blocked already gates on having a same-tier item.
 	local sacrifice = pick_sacrifice(c.tier, c.offer_type)
 	if not sacrifice then
-		hint(managers.localization:text("csr_copier_no_sacrifice", { tier = tostring(c.tier) }), 4)
+		csr_log("[CSR Copier] use_copier: no sacrifice of tier " .. tostring(c.tier) .. ", ignoring")
 		return
 	end
 
@@ -348,7 +350,7 @@ local function use_copier(c)
 	-- Remove sacrifice immediately on interact.
 	local removed = mgr:remove_item(pid, sacrifice.type)
 	if not removed then
-		hint("Failed to remove sacrifice item " .. tostring(sacrifice.type), 5)
+		csr_log("[CSR Copier] use_copier: failed to remove sacrifice " .. tostring(sacrifice.type) .. ", aborting")
 		DelayedCalls:Add("CSR_CopierReopen_" .. tostring(unit_ref:key()), REOPEN_DELAY, function()
 			c.cycling = false
 			if alive(unit_ref) then
