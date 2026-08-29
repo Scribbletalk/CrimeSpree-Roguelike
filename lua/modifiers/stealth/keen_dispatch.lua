@@ -44,7 +44,6 @@ _G.CSR.register_modifier({
 			ModifierCSRPagerResponse = class(BaseModifier)
 			ModifierCSRPagerResponse._type = "ModifierCSRPagerResponse"
 			ModifierCSRPagerResponse.name_id = "none"
-			ModifierCSRPagerResponse.desc_id = "menu_cs_modifier_pagers"
 			ModifierCSRPagerResponse.default_value = "count"
 			ModifierCSRPagerResponse.stealth = true
 
