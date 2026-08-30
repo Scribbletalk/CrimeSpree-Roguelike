@@ -1,6 +1,7 @@
 -- Wolf's Toolbox (uncommon) — kills cut drill/saw timers.
--- Two timer surfaces: TimerGui devices (HOST authoritative; client kills RPC the host)
--- and saw INTERACTIONS (local PlayerStandard; each peer reduces its own).
+-- Two timer surfaces: TimerGui devices (HOST authoritative; client kills RPC the host,
+-- host mirrors the cut back to every peer) and saw INTERACTIONS (local PlayerStandard;
+-- each peer reduces its own).
 
 if not (_G.CSR and _G.CSR.register_item) then
 	return
@@ -10,7 +11,8 @@ local NORMAL_BASE = 0.2
 local NORMAL_EXTRA = 0.1
 local SPECIAL_BASE = 1.0
 local SPECIAL_EXTRA = 0.5
-local WOLF_KILL_RPC = "CSR_WolfKill"
+local WOLF_KILL_RPC = "CSR_WolfKill" -- client -> host: my kill
+local WOLF_SYNC_RPC = "CSR_WolfSync" -- host -> all: apply this cut locally
 
 -- Saw INTERACTIONS (InteractionExt timers, not TimerGui devices).
 local SAW_INTERACTIONS = {
@@ -80,11 +82,25 @@ local function apply_drill_reduction(seconds)
 		if alive(unit) then
 			local tg = unit:timer_gui()
 			if tg and not tg._jammed and tg._current_timer and tg._current_timer > 0 then
-				tg._current_timer = math.max(0, tg._current_timer - seconds)
+				-- _current_timer is pre-multiplier: update() ticks it by dt/multiplier, so real
+				-- seconds left = _current_timer * multiplier. Divide to always cut exactly `seconds`
+				-- regardless of drill-speed skills or the Piggy Revenge mutator.
+				local mult = tg.get_timer_multiplier and tg:get_timer_multiplier() or 1
+				tg._current_timer = math.max(0, tg._current_timer - seconds / mult)
 			end
 		else
 			tracked_drills[unit] = nil
 		end
+	end
+end
+
+-- Host authority: cut locally, then mirror the same delta to every client. Vanilla stops
+-- syncing a drill after "start_timer_gui", so without this a guest's timer never moves.
+local function host_apply_and_sync(seconds)
+	apply_drill_reduction(seconds)
+	local mp = _G.CSR_MP
+	if seconds > 0 and mp and mp.is_multiplayer and mp.is_multiplayer() and mp.is_host and mp.is_host() then
+		LuaNetworking:SendToPeers(WOLF_SYNC_RPC, string.format("%.4f", seconds))
 	end
 end
 
@@ -128,7 +144,7 @@ local function wolfs_on_kill(self, attack_data)
 			mgr:debug_log(string.format("wolfs_toolbox client kill -> RPC host -%.2fs", reduction))
 		end
 	else
-		apply_drill_reduction(reduction)
+		host_apply_and_sync(reduction)
 		if mgr:debug_enabled() then
 			mgr:debug_log(string.format("wolfs_toolbox drill -%.2fs (special=%s)", reduction, tostring(is_special)))
 		end
@@ -164,6 +180,14 @@ _G.CSR.register_item({
 			if _G.CSR_MP and _G.CSR_MP.register_handler then
 				_G.CSR_MP.register_handler(WOLF_KILL_RPC, function(sender, data)
 					if not Network:is_server() then
+						return
+					end
+					host_apply_and_sync(tonumber(data) or 0)
+				end)
+
+				-- Host mirror of a cut it already applied; clients only replay it locally.
+				_G.CSR_MP.register_handler(WOLF_SYNC_RPC, function(sender, data, sender_num, is_from_host)
+					if Network:is_server() or not is_from_host then
 						return
 					end
 					apply_drill_reduction(tonumber(data) or 0)

@@ -32,7 +32,8 @@ CSR_MP.MSG = {
 -- Combat-item RPC ids — handlers registered from each item file via register_handler.
 CSR_MP.ITEM_MSG = {
 	CHIP_KILL = "CSR_ChipKill",
-	WOLF_KILL = "CSR_WolfKill",
+	WOLF_KILL = "CSR_WolfKill", -- wolfs_toolbox: client -> host: my kill, cut the drill timers
+	WOLF_SYNC = "CSR_WolfSync", -- wolfs_toolbox: host -> all: apply this drill-timer cut locally
 	SHOCK = "CSR_ShockingSurprise",
 	OATH_HEAL = "CSR_OathHeal", -- host -> remote oath owner: heal your own player (aura tick)
 	BADGE_REVIVE = "CSR_BadgeRevive", -- host -> remote crooked_badge owner: roll your own assault-end revive
