@@ -7,7 +7,7 @@ end
 _G.CSR.register_modifier({
 	id = "cloaker_arrest",
 	category = "loud",
-	loc = "menu_cs_modifier_cloaker_arrest",
+	loc = "csr_modifier_cloaker_arrest",
 	icon = "crime_spree_cloaker_arrest",
 	class = "ModifierCloakerArrest",
 	data = {},

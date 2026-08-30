@@ -6,7 +6,7 @@ end
 _G.CSR.register_modifier({
 	id = "dozer_minigun",
 	category = "loud",
-	loc = "menu_cs_modifier_dozer_minigun",
+	loc = "csr_modifier_dozer_minigun",
 	icon = "crime_spree_more_dozers",
 	class = "ModifierDozerMinigun",
 	data = {},

@@ -8,7 +8,7 @@ local HEAL_SPEED_PCT = 20
 _G.CSR.register_modifier({
 	id = "heal_speed",
 	category = "loud",
-	loc = "menu_cs_modifier_heal_speed",
+	loc = "csr_modifier_heal_speed",
 	icon = "crime_spree_medic_speed",
 	class = "ModifierHealSpeed",
 	data = { speed = { HEAL_SPEED_PCT, "add" } },

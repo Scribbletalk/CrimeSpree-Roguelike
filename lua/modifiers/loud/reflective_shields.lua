@@ -6,7 +6,7 @@ end
 _G.CSR.register_modifier({
 	id = "shield_reflect",
 	category = "loud",
-	loc = "menu_cs_modifier_shield_reflect",
+	loc = "csr_modifier_shield_reflect",
 	icon = "crime_spree_shield_reflect",
 	class = "ModifierShieldReflect",
 	data = {},

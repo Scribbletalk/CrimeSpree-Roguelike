@@ -12,7 +12,7 @@ local MAX_HOSTAGES = 4
 _G.CSR.register_modifier({
 	id = "assault_extender",
 	category = "loud",
-	loc = "menu_cs_modifier_assault_extender",
+	loc = "csr_modifier_assault_extender",
 	icon = "crime_spree_heavies",
 	class = "ModifierAssaultExtender",
 	data = {

@@ -2003,6 +2003,7 @@ function CSRSidebar:init(parent, top, bottom, owner)
 				callback = item.callback,
 			})
 			btn._feature_key = item.key -- nil for non-feature rows (Black Market, Logbook)
+			btn._loc_key = item.text -- kept so refresh_labels can re-localize in place
 		end
 
 		next_position = next_position + btn:panel():height() + item_margin
@@ -2052,6 +2053,18 @@ function CSRSidebar:set_collapsed(collapsed)
 	end
 
 	self._toggle:set_text(managers.localization:text(self._collapsed and "csr_sidebar_show" or "csr_sidebar_hide"))
+end
+
+-- Row labels are localized once at build time, so a mod-language switch re-resolves them here
+-- instead of rebuilding the sidebar. Separators carry no label and are skipped.
+function CSRSidebar:refresh_labels()
+	for _, btn in ipairs(self._buttons) do
+		if btn == self._toggle then
+			btn:set_text(managers.localization:text(self._collapsed and "csr_sidebar_show" or "csr_sidebar_hide"))
+		elseif btn._loc_key and btn.set_text then
+			btn:set_text(managers.localization:text(btn._loc_key))
+		end
+	end
 end
 
 function CSRSidebar:panel()

@@ -401,7 +401,7 @@ function MenuCallbackHandler:return_to_csr_lobby()
 
 	local dialog_data = {
 		title = managers.localization:text("dialog_warning_title"),
-		text = managers.localization:text("dialog_return_to_cs_lobby"),
+		text = managers.localization:text("csr_dialog_return_to_cs_lobby"),
 	}
 	local yes_button = {
 		text = managers.localization:text("dialog_yes"),

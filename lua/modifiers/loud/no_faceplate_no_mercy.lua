@@ -8,7 +8,7 @@ local RAGE_DAMAGE_PCT = 100
 _G.CSR.register_modifier({
 	id = "dozer_rage",
 	category = "loud",
-	loc = "menu_cs_modifier_dozer_rage",
+	loc = "csr_modifier_dozer_rage",
 	icon = "crime_spree_dozer_rage",
 	class = "ModifierDozerRage",
 	data = { damage = { RAGE_DAMAGE_PCT, "add" } },

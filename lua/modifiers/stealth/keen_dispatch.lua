@@ -29,10 +29,10 @@ _G.CSR.register_modifier({
 	icon = "crime_spree_pager",
 	class = "ModifierCSRPagerResponse",
 	tiers = {
-		{ loc = "menu_cs_modifier_less_pagers_1", data = { count = { T1, "max" } }, loc_macros = { n = T1 * 2 } },
-		{ loc = "menu_cs_modifier_less_pagers_2", data = { count = { T2, "max" } }, loc_macros = { n = T2 * 2 } },
-		{ loc = "menu_cs_modifier_less_pagers_3", data = { count = { T3, "max" } }, loc_macros = { n = T3 * 2 } },
-		{ loc = "menu_cs_modifier_less_pagers_4", data = { count = { T4, "max" } }, loc_macros = { n = T4 * 2 } },
+		{ loc = "csr_modifier_less_pagers_1", data = { count = { T1, "max" } }, loc_macros = { n = T1 * 2 } },
+		{ loc = "csr_modifier_less_pagers_2", data = { count = { T2, "max" } }, loc_macros = { n = T2 * 2 } },
+		{ loc = "csr_modifier_less_pagers_3", data = { count = { T3, "max" } }, loc_macros = { n = T3 * 2 } },
+		{ loc = "csr_modifier_less_pagers_4", data = { count = { T4, "max" } }, loc_macros = { n = T4 * 2 } },
 	},
 	hooks = {
 		-- Define the custom class after vanilla modifier file loads (BaseModifier exists).

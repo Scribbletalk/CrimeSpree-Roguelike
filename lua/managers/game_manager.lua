@@ -803,6 +803,22 @@ function CSRGameManager:save()
 	return true
 end
 
+-- CSR's modifier strings moved off the vanilla menu_cs_modifier_* namespace, which it used to
+-- overwrite globally. The frozen stealth sequence stores whole entries (loc key included), so a
+-- spree started before the move carries the old keys and would fall back to the vanilla wording.
+local function migrate_modifier_loc_keys(state)
+	local seq = state.modifier_seq
+	local stealth = seq and seq.stealth
+	if type(stealth) ~= "table" then
+		return
+	end
+	for _, entry in ipairs(stealth) do
+		if type(entry) == "table" and type(entry.loc) == "string" then
+			entry.loc = entry.loc:gsub("^menu_cs_modifier_", "csr_modifier_")
+		end
+	end
+end
+
 function CSRGameManager:load()
 	local path = save_path(SAVE_FILE)
 	local f = io.open(path, "r")
@@ -829,6 +845,7 @@ function CSRGameManager:load()
 			self._state[k] = v
 		end
 	end
+	migrate_modifier_loc_keys(self._state)
 	log_csr("load ok <- " .. path .. " (saved_version=" .. tostring(decoded.version) .. ")")
 	return true
 end

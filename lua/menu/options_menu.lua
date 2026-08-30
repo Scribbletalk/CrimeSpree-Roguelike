@@ -26,7 +26,25 @@ Hooks:Add("LocalizationManagerPostInit", "CSR_OptionsLocalization", function(loc
 	})
 end)
 
+-- The language entry, kept so a switch made in the CSR Preferences panel can resync it. Rebuilt
+-- on every populate pass, which is also when the listener below is (re)registered.
+local csr_language_item
+
 Hooks:Add("MenuManagerInitialize", "CSR_OptionsCallbacks", function(menu_manager)
+	MenuCallbackHandler.csr_language_changed = function(self, item)
+		local mgr = managers.csr
+		if mgr and mgr.set_setting then
+			mgr:set_setting("language", item:value())
+		end
+		if _G.CSR_Loc then
+			_G.CSR_Loc.apply()
+		end
+		-- This node localized its text when it was rendered; re-render it in the new language.
+		if MenuCallbackHandler.refresh_node then
+			MenuCallbackHandler:refresh_node(item)
+		end
+	end
+
 	MenuCallbackHandler.csr_debug_mode_changed = function(self, item)
 		local mgr = managers.csr
 		if mgr and mgr.set_setting then
@@ -47,6 +65,36 @@ Hooks:Add("MenuManagerBuildCustomMenus", "CSR_OptionsBuild", function(menu_manag
 end)
 
 Hooks:Add("MenuManagerPopulateCustomMenus", "CSR_OptionsPopulate", function(menu_manager, nodes)
+	-- Same list the CSR Preferences row cycles, so a new language shows up in both from one place.
+	local languages = _G.CSR_Loc and _G.CSR_Loc.LANGUAGES
+	if languages then
+		local items, values = {}, {}
+		for i, lang in ipairs(languages) do
+			items[i] = lang.text_key
+			values[i] = lang.id
+		end
+		csr_language_item = MenuHelper:AddMultipleChoice({
+			id = "language",
+			title = "csr_pref_language_label",
+			callback = "csr_language_changed",
+			items = items,
+			item_values = values,
+			localized = true,
+			localized_items = true,
+			value = csr_read_setting("language", "auto"),
+			menu_id = "csr_options_menu",
+			priority = 10,
+		})
+		if not _G.CSR_Loc._options_listener then
+			_G.CSR_Loc._options_listener = true
+			_G.CSR_Loc.add_listener(function(_, selected)
+				if csr_language_item then
+					csr_language_item:set_value(selected)
+				end
+			end)
+		end
+	end
+
 	MenuHelper:AddToggle({
 		id = "debug_mode",
 		title = "csr_debug_mode_title",

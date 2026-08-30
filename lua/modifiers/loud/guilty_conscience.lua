@@ -105,7 +105,7 @@ end
 _G.CSR.register_modifier({
 	id = "civilian_guilt",
 	category = "loud",
-	loc = "menu_cs_modifier_civilian_guilt",
+	loc = "csr_modifier_civilian_guilt",
 	icon = "csr_guilty_conscience",
 	data = {},
 	loc_macros = { pct = HP_PENALTY_PCT, max_pct = MAX_PENALTY_PCT },

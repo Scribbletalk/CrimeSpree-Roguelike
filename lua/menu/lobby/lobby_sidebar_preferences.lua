@@ -74,6 +74,32 @@ local function set_bind_value(btn, glyph_text, value_text)
 	btn.val:set_right(right)
 end
 
+-- Rebuilt after a language switch, preferences last -- it owns the row that triggered the switch.
+-- Surfaces that borrow only part of this list skip what they don't have; they relocalize on reopen.
+local RELOCALIZED_PANELS = {
+	"_populate_items_panel",
+	"_populate_modifiers_panel",
+	"_populate_rewards_panel",
+	"_populate_heister_panel",
+	"_populate_preferences_panel",
+}
+
+-- Language row callback: reload the loc files, then rebuild everything that baked its text in.
+local function on_language_changed(component)
+	if _G.CSR_Loc then
+		_G.CSR_Loc.apply()
+	end
+	local sidebar = component._sidebar
+	if sidebar and sidebar.refresh_labels then
+		sidebar:refresh_labels()
+	end
+	for _, name in ipairs(RELOCALIZED_PANELS) do
+		if component[name] then
+			component[name](component)
+		end
+	end
+end
+
 function CSRMissionsMenuComponent:_populate_preferences_panel()
 	if not self._feature_panels or not alive(self._feature_panels.preferences) then
 		return
@@ -86,6 +112,7 @@ function CSRMissionsMenuComponent:_populate_preferences_panel()
 	self._preferences_content = nil
 	self._preferences_buttons = {}
 	self._pref_dragging = nil
+	self._pref_hovered = nil
 
 	local content = panel:panel({ layer = 5 })
 	self._preferences_content = content
@@ -136,6 +163,72 @@ function CSRMissionsMenuComponent:_populate_preferences_panel()
 		y = y + pref_row_h + pref_row_gap
 
 		return { kind = "toggle", panel = row, hl = hl, cb = cb, checked = checked, setting_key = setting_key }
+	end
+
+	-- Multi-value row: label left, current value right, clicking advances and wraps. `values` is a
+	-- list of { id = <stored setting value>, text_key = <loc key> }; an unknown stored value picks
+	-- the first entry. `on_change` runs after the setting is written and may rebuild this panel.
+	local function make_cycle(label, setting_key, values, on_change)
+		local cur = managers.csr and managers.csr:setting(setting_key)
+		local idx = 1
+		for i, v in ipairs(values) do
+			if v.id == cur then
+				idx = i
+				break
+			end
+		end
+
+		local row = content:panel({ x = pad, y = y, w = row_w, h = pref_row_h, layer = 5 })
+
+		row:rect({ name = "bg", color = Color.black, alpha = 0.4, layer = 0 })
+		local hl = row:rect({
+			name = "hl",
+			blend_mode = "add",
+			color = tweak_data.screen_colors.button_stage_3,
+			layer = 0,
+		})
+		hl:set_visible(false)
+
+		BoxGuiObject:new(row:panel({ layer = 2 }), { sides = { 1, 1, 1, 1 } })
+
+		row:text({
+			text = label,
+			font = tweak_data.menu.pd2_small_font,
+			font_size = tweak_data.menu.pd2_small_font_size,
+			color = tweak_data.screen_colors.text,
+			x = 8,
+			w = row_w * 0.45 - 8,
+			h = pref_row_h,
+			align = "left",
+			vertical = "center",
+			layer = 2,
+		})
+
+		local val = row:text({
+			text = managers.localization:text(values[idx].text_key),
+			font = tweak_data.menu.pd2_small_font,
+			font_size = tweak_data.menu.pd2_small_font_size,
+			color = tweak_data.screen_colors.button_stage_3,
+			w = row_w * 0.55 - 8,
+			h = pref_row_h,
+			align = "right",
+			vertical = "center",
+			layer = 2,
+		})
+		val:set_right(row_w - 8)
+
+		y = y + pref_row_h + pref_row_gap
+
+		return {
+			kind = "cycle",
+			panel = row,
+			hl = hl,
+			val = val,
+			setting_key = setting_key,
+			values = values,
+			index = idx,
+			on_change = on_change,
+		}
 	end
 
 	-- Draggable volume slider. Label + value on the top line, track/fill/handle on the bottom line.
@@ -298,6 +391,16 @@ function CSRMissionsMenuComponent:_populate_preferences_panel()
 		return btn
 	end
 
+	if _G.CSR_Loc and _G.CSR_Loc.LANGUAGES then
+		local lang = make_cycle(
+			managers.localization:text("csr_pref_language_label"),
+			_G.CSR_Loc.SETTING_KEY,
+			_G.CSR_Loc.LANGUAGES,
+			on_language_changed
+		)
+		table.insert(self._preferences_buttons, lang)
+	end
+
 	local skip_bs = make_toggle(managers.localization:text("csr_pref_skip_blackscreen"), "skip_blackscreen")
 	table.insert(self._preferences_buttons, skip_bs)
 
@@ -326,6 +429,8 @@ function CSRMissionsMenuComponent:_preferences_panel_mouse_moved(x, y)
 		return false
 	end
 	if not self._feature_panels.preferences:visible() then
+		-- Panel hidden: drop the hover memory so reopening under the cursor still plays the sound.
+		self._pref_hovered = nil
 		return false
 	end
 	-- An active slider drag follows the cursor anywhere, even outside its row.
@@ -336,6 +441,7 @@ function CSRMissionsMenuComponent:_preferences_panel_mouse_moved(x, y)
 		return true
 	end
 	local hit = false
+	local hovered = nil
 	for _, btn in ipairs(self._preferences_buttons) do
 		if alive(btn.panel) then
 			local inside = btn.panel:inside(x, y)
@@ -345,7 +451,15 @@ function CSRMissionsMenuComponent:_preferences_panel_mouse_moved(x, y)
 			end
 			if inside then
 				hit = true
+				hovered = btn
 			end
+		end
+	end
+	-- Vanilla fires "highlight" once when the selection moves onto a new row, not every frame.
+	if hovered ~= self._pref_hovered then
+		self._pref_hovered = hovered
+		if hovered then
+			managers.menu_component:post_event("highlight")
 		end
 	end
 	return hit
@@ -364,6 +478,7 @@ function CSRMissionsMenuComponent:_preferences_panel_mouse_pressed(x, y)
 	for _, btn in ipairs(self._preferences_buttons) do
 		if alive(btn.panel) and btn.panel:inside(x, y) then
 			if btn.kind == "slider" then
+				managers.menu_component:post_event("slider_grab")
 				self._pref_dragging = btn
 				local wx = btn.panel:world_position()
 				csr_apply_slider(btn, (x - wx - btn.track_x) / btn.track_w)
@@ -371,15 +486,30 @@ function CSRMissionsMenuComponent:_preferences_panel_mouse_pressed(x, y)
 				-- Second click while listening cancels; the callback restores the row text either way.
 				local bind_api = _G.CSR_WildcardBind
 				if bind_api and bind_api.listening() then
+					managers.menu_component:post_event("menu_back")
 					bind_api.cancel_listen()
 				elseif bind_api then
+					managers.menu_component:post_event("menu_enter")
 					set_bind_value(btn, nil, managers.localization:text("csr_pref_bind_listening"))
 					bind_api.begin_listen(function()
 						set_bind_value(btn, bind_value_parts())
 					end)
 				end
+			elseif btn.kind == "cycle" then
+				managers.menu_component:post_event("selection_next")
+				btn.index = btn.index % #btn.values + 1
+				local choice = btn.values[btn.index]
+				btn.val:set_text(managers.localization:text(choice.text_key))
+				if btn.setting_key and managers.csr then
+					managers.csr:set_setting(btn.setting_key, choice.id)
+				end
+				-- Rebuilds this panel, so nothing past here may touch btn or _preferences_buttons.
+				if btn.on_change then
+					btn.on_change(self)
+				end
 			else
 				btn.checked = not btn.checked
+				managers.menu_component:post_event(btn.checked and "box_tick" or "box_untick")
 				btn.cb:set_texture_rect(unpack(tickbox_rect(btn.checked, true)))
 				if btn.setting_key and managers.csr then
 					managers.csr:set_setting(btn.setting_key, btn.checked)
@@ -397,6 +527,7 @@ function CSRMissionsMenuComponent:_preferences_panel_mouse_released(button, x, y
 	local drag = self._pref_dragging
 	if drag then
 		self._pref_dragging = nil
+		managers.menu_component:post_event("slider_release")
 		if drag.setting_key and managers.csr then
 			managers.csr:set_setting(drag.setting_key, drag.value)
 		end

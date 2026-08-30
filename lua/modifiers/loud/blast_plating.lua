@@ -6,7 +6,7 @@ end
 _G.CSR.register_modifier({
 	id = "explosion_immunity",
 	category = "loud",
-	loc = "menu_cs_modifier_explosion_immunity",
+	loc = "csr_modifier_explosion_immunity",
 	icon = "crime_spree_dozer_explosion",
 	class = "ModifierExplosionImmunity",
 	data = {},

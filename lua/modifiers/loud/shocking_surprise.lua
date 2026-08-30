@@ -108,7 +108,7 @@ end
 _G.CSR.register_modifier({
 	id = "shocking_surprise",
 	category = "loud",
-	loc = "menu_cs_modifier_shocking_surprise",
+	loc = "csr_modifier_shocking_surprise",
 	icon = "csr_shocking_surprise",
 	data = {},
 	loc_macros = { dur = DURATION },
