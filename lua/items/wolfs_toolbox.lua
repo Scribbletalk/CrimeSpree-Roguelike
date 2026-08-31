@@ -31,6 +31,13 @@ local SAW_INTERACTIONS = {
 -- TimerGui devices the session has seen start. Tracked on every peer (synced).
 local tracked_drills = {}
 
+-- Debug tracing, gated by the mod-wide _G.CSR_DEBUG toggle.
+local function dbg(fmt, ...)
+	if _G.CSR_DEBUG and csr_log then
+		csr_log("[WT] " .. string.format(fmt, ...))
+	end
+end
+
 local function wolfs_active(mgr)
 	if not mgr or not mgr.in_csr_heist or not mgr:in_csr_heist() then
 		return false
@@ -78,6 +85,7 @@ local function apply_drill_reduction(seconds)
 	if seconds <= 0 then
 		return
 	end
+	local hits = 0
 	for unit in pairs(tracked_drills) do
 		if alive(unit) then
 			local tg = unit:timer_gui()
@@ -86,11 +94,32 @@ local function apply_drill_reduction(seconds)
 				-- seconds left = _current_timer * multiplier. Divide to always cut exactly `seconds`
 				-- regardless of drill-speed skills or the Piggy Revenge mutator.
 				local mult = tg.get_timer_multiplier and tg:get_timer_multiplier() or 1
-				tg._current_timer = math.max(0, tg._current_timer - seconds / mult)
+				local before = tg._current_timer
+				tg._current_timer = math.max(0, before - seconds / mult)
+				hits = hits + 1
+				dbg(
+					"cut drill id=%s mult=%.3f real_left %.2fs -> %.2fs (asked -%.2fs)",
+					tostring(unit:id()),
+					mult,
+					before * mult,
+					tg._current_timer * mult,
+					seconds
+				)
+			elseif tg then
+				dbg(
+					"skip drill id=%s (jammed=%s current=%s)",
+					tostring(unit:id()),
+					tostring(tg._jammed),
+					tostring(tg._current_timer)
+				)
 			end
 		else
 			tracked_drills[unit] = nil
+			dbg("dropped dead drill from tracking")
 		end
+	end
+	if hits == 0 then
+		dbg("apply_drill_reduction(-%.2fs): no eligible drill", seconds)
 	end
 end
 
@@ -101,6 +130,7 @@ local function host_apply_and_sync(seconds)
 	local mp = _G.CSR_MP
 	if seconds > 0 and mp and mp.is_multiplayer and mp.is_multiplayer() and mp.is_host and mp.is_host() then
 		LuaNetworking:SendToPeers(WOLF_SYNC_RPC, string.format("%.4f", seconds))
+		dbg("host mirrored -%.2fs to all peers", seconds)
 	end
 end
 
@@ -118,36 +148,35 @@ local function wolfs_on_kill(self, attack_data)
 	end
 
 	local is_special = (self._char_tweak and self._char_tweak.priority_shout) and true or false
-	local reduction = wolfs_reduction(mgr:owned("wolfs_toolbox"), is_special)
+	local stacks = mgr:owned("wolfs_toolbox")
+	local reduction = wolfs_reduction(stacks, is_special)
 	if reduction <= 0 then
 		return
 	end
 
+	dbg("kill: stacks=%d special=%s reduction=%.2fs", stacks, is_special and "y" or "n", reduction)
+
 	-- Saw interactions — local, reduce directly.
 	local saw_state = local_saw_state()
 	if saw_state then
-		saw_state._interact_expire_t = math.max(0, saw_state._interact_expire_t - reduction)
-		if mgr:debug_enabled() then
-			mgr:debug_log(
-				string.format("wolfs_toolbox saw interaction -%.2fs (special=%s)", reduction, tostring(is_special))
-			)
-		end
+		local before = saw_state._interact_expire_t
+		saw_state._interact_expire_t = math.max(0, before - reduction)
+		dbg("saw interaction %.2fs -> %.2fs", before, saw_state._interact_expire_t)
 	end
 
 	-- TimerGui drills — host-authoritative.
 	if not has_active_drill() then
+		-- table.size walk stays behind the toggle; this branch is the common case.
+		if _G.CSR_DEBUG then
+			dbg("no active drill tracked (%d in table) - drill cut skipped", table.size(tracked_drills))
+		end
 		return
 	end
 	if Network:is_client() then
 		LuaNetworking:SendToPeer(1, WOLF_KILL_RPC, string.format("%.4f", reduction))
-		if mgr:debug_enabled() then
-			mgr:debug_log(string.format("wolfs_toolbox client kill -> RPC host -%.2fs", reduction))
-		end
+		dbg("client kill -> RPC host -%.2fs", reduction)
 	else
 		host_apply_and_sync(reduction)
-		if mgr:debug_enabled() then
-			mgr:debug_log(string.format("wolfs_toolbox drill -%.2fs (special=%s)", reduction, tostring(is_special)))
-		end
 	end
 end
 
@@ -178,10 +207,11 @@ _G.CSR.register_item({
 			Hooks:PostHook(CopDamage, "die", "CSR_WolfsToolbox_Kill", wolfs_on_kill)
 
 			if _G.CSR_MP and _G.CSR_MP.register_handler then
-				_G.CSR_MP.register_handler(WOLF_KILL_RPC, function(sender, data)
+				_G.CSR_MP.register_handler(WOLF_KILL_RPC, function(sender, data, sender_num)
 					if not Network:is_server() then
 						return
 					end
+					dbg("host got client kill from peer %s: -%ss", tostring(sender_num), tostring(data))
 					host_apply_and_sync(tonumber(data) or 0)
 				end)
 
@@ -190,6 +220,7 @@ _G.CSR.register_item({
 					if Network:is_server() or not is_from_host then
 						return
 					end
+					dbg("client got host mirror: -%ss", tostring(data))
 					apply_drill_reduction(tonumber(data) or 0)
 				end)
 			end
@@ -229,13 +260,31 @@ _G.CSR.register_item({
 				-- overdrill / special drills missing the boolean flag.
 				local is_valid = base.is_drill or base.is_saw or (not base.is_hacking_device and unit:timer_gui())
 				if not is_valid then
+					dbg(
+						"TimerGui _start IGNORED id=%s (drill=%s saw=%s hack=%s)",
+						tostring(unit:id()),
+						tostring(base.is_drill),
+						tostring(base.is_saw),
+						tostring(base.is_hacking_device)
+					)
 					return
 				end
 				tracked_drills[unit] = true
+				dbg(
+					"TimerGui _start TRACKED id=%s timer=%.1fs mult=%.3f (drill=%s saw=%s)",
+					tostring(unit:id()),
+					tonumber(self._current_timer) or -1,
+					(self.get_timer_multiplier and self:get_timer_multiplier()) or 1,
+					tostring(base.is_drill),
+					tostring(base.is_saw)
+				)
 			end)
 
 			Hooks:PostHook(TimerGui, "done", "CSR_WolfsToolbox_TimerDone", function(self)
 				if self._unit then
+					if tracked_drills[self._unit] then
+						dbg("TimerGui done - untracked id=%s", tostring(self._unit:id()))
+					end
 					tracked_drills[self._unit] = nil
 				end
 			end)
