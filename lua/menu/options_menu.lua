@@ -16,16 +16,6 @@ local function csr_read_setting(key, default)
 	return v
 end
 
-Hooks:Add("LocalizationManagerPostInit", "CSR_OptionsLocalization", function(loc)
-	loc:add_localized_strings({
-		csr_options_menu_title = "Crime Spree Roguelike",
-		csr_options_menu_desc = "Settings for the Crime Spree Roguelike mod.",
-		csr_debug_mode_title = "Debug Logging",
-		csr_debug_mode_desc = "Writes verbose CSR diagnostics to the BLT log (mods/logs). "
-			.. "Use it to verify items are working. No gameplay effect.",
-	})
-end)
-
 -- The language entry, kept so a switch made in the CSR Preferences panel can resync it. Rebuilt
 -- on every populate pass, which is also when the listener below is (re)registered.
 local csr_language_item
@@ -61,7 +51,7 @@ end)
 
 Hooks:Add("MenuManagerBuildCustomMenus", "CSR_OptionsBuild", function(menu_manager, nodes)
 	nodes.csr_options_menu = MenuHelper:BuildMenu("csr_options_menu", { back_callback = "csr_options_back" })
-	MenuHelper:AddMenuItem(nodes.blt_options, "csr_options_menu", "csr_options_menu_title", "csr_options_menu_desc")
+	MenuHelper:AddMenuItem(nodes.blt_options, "csr_options_menu", "csr_header_title")
 end)
 
 Hooks:Add("MenuManagerPopulateCustomMenus", "CSR_OptionsPopulate", function(menu_manager, nodes)
