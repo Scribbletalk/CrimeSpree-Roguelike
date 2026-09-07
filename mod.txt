@@ -481,8 +481,9 @@
 	"keybinds": [
 		{
 			"keybind_id": "csr_activate_wildcard",
-			"name": "Activate Wildcard Item",
-			"description": "Activates an owned wildcard active item.",
+			"name": "csr_keybind_wildcard",
+			"description": "csr_keybind_wildcard_desc",
+			"localized": true,
 			"run_in_menu": false,
 			"run_in_game": true,
 			"script_path": "lua/features/wildcard/activate_wildcard.lua"

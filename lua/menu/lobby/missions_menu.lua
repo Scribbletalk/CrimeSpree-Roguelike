@@ -2003,6 +2003,7 @@ function CSRSidebar:init(parent, top, bottom, owner)
 				callback = item.callback,
 			})
 			btn._feature_key = item.key -- nil for non-feature rows (Black Market, Logbook)
+			btn._loc_key = item.text -- kept so refresh_labels can re-localize in place
 		end
 
 		next_position = next_position + btn:panel():height() + item_margin
@@ -2052,6 +2053,18 @@ function CSRSidebar:set_collapsed(collapsed)
 	end
 
 	self._toggle:set_text(managers.localization:text(self._collapsed and "csr_sidebar_show" or "csr_sidebar_hide"))
+end
+
+-- Row labels are localized once at build time, so a mod-language switch re-resolves them here
+-- instead of rebuilding the sidebar. Separators carry no label and are skipped.
+function CSRSidebar:refresh_labels()
+	for _, btn in ipairs(self._buttons) do
+		if btn == self._toggle then
+			btn:set_text(managers.localization:text(self._collapsed and "csr_sidebar_show" or "csr_sidebar_hide"))
+		elseif btn._loc_key and btn.set_text then
+			btn:set_text(managers.localization:text(btn._loc_key))
+		end
+	end
 end
 
 function CSRSidebar:panel()
@@ -2160,6 +2173,9 @@ local sidebar_siren_duration = 3 -- seconds the strobe plays
 local sidebar_siren_glow_size = 56 -- glow diameter behind the 24px icon
 local sidebar_siren_red = Color(255, 255, 0, 0) / 255 -- a, r, g, b
 local sidebar_siren_blue = Color(255, 0, 180, 255) / 255
+
+-- Floor for the label auto-fitter in CSRSidebarItem:set_text.
+local sidebar_label_min_font_size = 14
 
 CSRSidebarItem = CSRSidebarItem or class()
 CSRSidebarItem._type = "CSRSidebarItem"
@@ -2293,6 +2309,20 @@ function CSRSidebarItem:set_text(text)
 	text = text:gsub(" ", "_")
 
 	self._text:set_text(text)
+
+	-- Translated labels run longer than the English ones and would spill past the sidebar's backing,
+	-- so the font steps down until the label fits the row, then re-centres against the 24px icon.
+	local max_w = self._panel:w() - self._text:x()
+	local label_size = math.ceil(tweak_data.menu.pd2_small_font_size)
+	self._text:set_font_size(label_size)
+	local _, _, tw = self._text:text_rect()
+	while max_w < tw and sidebar_label_min_font_size < label_size do
+		label_size = label_size - 1
+		self._text:set_font_size(label_size)
+		_, _, tw = self._text:text_rect()
+	end
+	self._text:set_h(label_size)
+	self._text:set_y(math.floor((self._panel:h() - label_size) / 2))
 end
 
 -- Arm a one-shot ~3s red/blue siren behind this row's icon. Lazily builds the two additive glow

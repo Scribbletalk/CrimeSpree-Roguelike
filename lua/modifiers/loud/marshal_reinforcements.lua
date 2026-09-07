@@ -11,7 +11,7 @@ local AMOUNT = 2
 _G.CSR.register_modifier({
 	id = "heavy_sniper",
 	category = "loud",
-	loc = "menu_cs_modifier_heavy_sniper",
+	loc = "csr_modifier_heavy_sniper",
 	icon = "crime_spree_heavy_sniper",
 	class = "ModifierHeavySniper",
 	data = { amount = { AMOUNT, "add" } },

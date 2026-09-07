@@ -45,12 +45,18 @@ local GLYPH_TYPES = {
 local DEFAULT_GLYPH_TYPE = "xb1"
 
 -- Vanilla maps all four d-pad directions onto one glyph, so the direction is spelled out next to it.
+-- Loc keys, not literals: the label is resolved at render time so a mod-language switch updates it.
 local DPAD_SUFFIX = {
-	d_up = "D-PAD UP",
-	d_down = "D-PAD DOWN",
-	d_left = "D-PAD LEFT",
-	d_right = "D-PAD RIGHT",
+	d_up = "csr_bind_dpad_up",
+	d_down = "csr_bind_dpad_down",
+	d_left = "csr_bind_dpad_left",
+	d_right = "csr_bind_dpad_right",
 }
+
+local function dpad_suffix_text(name)
+	local key = DPAD_SUFFIX[name]
+	return key and managers.localization:to_upper_text(key) or nil
+end
 
 -- Not bindable: the menu buttons (Back/Start, Share/Options on a DualShock). PS names are listed
 -- alongside the Xbox ones because a natively wrapped DualShock reports its own.
@@ -299,7 +305,7 @@ function CSR_WildcardBind.label(bind)
 	if bind.kind == "gamepad" and bind.name then
 		local glyph = pad_glyph(bind)
 		if glyph then
-			local suffix = DPAD_SUFFIX[bind.name]
+			local suffix = dpad_suffix_text(bind.name)
 			return suffix and (glyph .. " " .. suffix) or glyph
 		end
 	end
@@ -307,7 +313,7 @@ function CSR_WildcardBind.label(bind)
 		return utf8.to_upper((bind.name:gsub("_", " ")))
 	end
 	if bind.index then
-		return "BUTTON " .. tostring(bind.index)
+		return managers.localization:to_upper_text("csr_bind_button", { n = tostring(bind.index) })
 	end
 	return nil
 end
@@ -318,7 +324,7 @@ function CSR_WildcardBind.display(bind)
 	if bind and bind.kind == "gamepad" and bind.name then
 		local glyph = pad_glyph(bind)
 		if glyph then
-			return glyph, DPAD_SUFFIX[bind.name]
+			return glyph, dpad_suffix_text(bind.name)
 		end
 	end
 	return nil, CSR_WildcardBind.label(bind)

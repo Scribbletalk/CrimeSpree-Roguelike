@@ -139,11 +139,18 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 	local pad = items_panel_padding
 	local section_w = panel:w() - pad * 2
 	local btn_w = math.floor((section_w - modifiers_subtab_gap) / 2)
-	local b_loud = csr_build_modifier_subtab(content, "Loud", pad, pad, btn_w, not is_stealth)
+	local b_loud = csr_build_modifier_subtab(
+		content,
+		managers.localization:text("csr_modifiers_tab_loud"),
+		pad,
+		pad,
+		btn_w,
+		not is_stealth
+	)
 	-- Stealth takes the remainder so odd-pixel widths still tile flush to the gap.
 	local b_stealth = csr_build_modifier_subtab(
 		content,
-		"Stealth",
+		managers.localization:text("csr_modifiers_tab_stealth"),
 		pad + btn_w + modifiers_subtab_gap,
 		pad,
 		section_w - btn_w - modifiers_subtab_gap,
@@ -166,8 +173,9 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 		end
 		if hp_pct > 0 then
 			-- Yellow accent on the trailing value via set_range_color (same pattern as _create_status_bar).
-			local prefix = "Enemy's base health and damage increased by "
-			local full = prefix .. math.floor(hp_pct) .. "%"
+			-- The loc string ends on $pct in every language, so the accent range is the last N chars.
+			local pct_str = math.floor(hp_pct) .. "%"
+			local full = managers.localization:text("csr_modifiers_enemy_scaling", { pct = pct_str })
 			local header = content:text({
 				name = "enemy_scaling_header",
 				text = full,
@@ -182,7 +190,7 @@ function CSRMissionsMenuComponent:_populate_modifiers_panel()
 				word_wrap = true,
 				layer = 10,
 			})
-			header:set_range_color(utf8.len(prefix), utf8.len(full), Color(1, 1, 1, 0))
+			header:set_range_color(utf8.len(full) - utf8.len(pct_str), utf8.len(full), Color(1, 1, 1, 0))
 			local _, _, _, lh = header:text_rect()
 			header:set_h(lh)
 			header_h = lh + modifiers_grid_top_gap

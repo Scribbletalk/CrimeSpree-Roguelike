@@ -12,8 +12,8 @@ _G.CSR.register_modifier({
 	icon = "crime_spree_civs_killed",
 	class = "ModifierCivilianAlarm",
 	tiers = {
-		{ loc = "menu_cs_modifier_civilian_alarm_1", data = { count = { T1, "min" } }, loc_macros = { n = T1 } },
-		{ loc = "menu_cs_modifier_civilian_alarm_2", data = { count = { T2, "min" } }, loc_macros = { n = T2 } },
-		{ loc = "menu_cs_modifier_civilian_alarm_3", data = { count = { T3, "min" } }, loc_macros = { n = T3 } },
+		{ loc = "csr_modifier_civilian_alarm_1", data = { count = { T1, "min" } }, loc_macros = { n = T1 } },
+		{ loc = "csr_modifier_civilian_alarm_2", data = { count = { T2, "min" } }, loc_macros = { n = T2 } },
+		{ loc = "csr_modifier_civilian_alarm_3", data = { count = { T3, "min" } }, loc_macros = { n = T3 } },
 	},
 })

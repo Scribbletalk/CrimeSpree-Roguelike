@@ -12,7 +12,7 @@ local STINKBUG_HEALTH_PCT = 0.10
 _G.CSR.register_modifier({
 	id = "cloaker_tear_gas",
 	category = "loud",
-	loc = "menu_cs_modifier_cloaker_tear_gas",
+	loc = "csr_modifier_cloaker_tear_gas",
 	icon = "crime_spree_cloaker_tear_gas",
 	class = "ModifierCloakerTearGas",
 	data = { diameter = { 4, "none" }, damage = { 30, "none" }, duration = { 10, "none" } },

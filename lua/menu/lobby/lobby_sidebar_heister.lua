@@ -113,19 +113,26 @@ local function csr_collect_heister_stats()
 		detection_risk = math.round(dr * 100)
 	end)
 
+	-- Own loc keys, not the vanilla bm_menu_* ones: those follow the GAME language, which would
+	-- split this panel between two languages whenever the mod language differs from the game's.
 	local defs = {
-		{ key = "armor", loc = "bm_menu_armor", pct = false, fallback = (pd.damage.ARMOR_INIT or 0) * mult },
-		{ key = "health", loc = "bm_menu_health", pct = false, fallback = (pd.damage.HEALTH_INIT or 0) * mult },
+		{ key = "armor", loc = "csr_heister_stat_armor", pct = false, fallback = (pd.damage.ARMOR_INIT or 0) * mult },
+		{
+			key = "health",
+			loc = "csr_heister_stat_health",
+			pct = false,
+			fallback = (pd.damage.HEALTH_INIT or 0) * mult,
+		},
 		{
 			key = "movement",
-			loc = "bm_menu_movement",
+			loc = "csr_heister_stat_movement",
 			pct = false,
 			fallback = (pd.movement_state.standard.movement.speed.STANDARD_MAX or 0) / 100 * mult,
 		},
-		{ key = "dodge", loc = "bm_menu_dodge", pct = true, fallback = 0 },
+		{ key = "dodge", loc = "csr_heister_stat_dodge", pct = true, fallback = 0 },
 		{
 			key = "stamina",
-			loc = "bm_menu_stamina",
+			loc = "csr_heister_stat_stamina",
 			pct = false,
 			fallback = pd.movement_state.stamina.STAMINA_INIT or 0,
 		},
@@ -248,7 +255,7 @@ local function csr_collect_weapon_rows(mgr, rank)
 	end
 
 	local function gun_row(category, slot_label)
-		local out = { slot = slot_label, name = "—", dmg = nil, color = Color.white }
+		local out = { slot = slot_label, name = "-", dmg = nil, color = Color.white }
 		pcall(function()
 			local name, slot = csr_weapon_display_name(category)
 			if not name then
@@ -271,11 +278,12 @@ local function csr_collect_weapon_rows(mgr, rank)
 		rows[#rows + 1] = out
 	end
 
-	gun_row("primaries", "PRIMARY")
-	gun_row("secondaries", "SECONDARY")
+	local loc = managers.localization
+	gun_row("primaries", loc:to_upper_text("csr_heister_primary"))
+	gun_row("secondaries", loc:to_upper_text("csr_heister_secondary"))
 
 	-- Melee exposes min..max; mirror the BM menu min-max display.
-	local melee = { slot = "MELEE", name = "—", dmg = nil, color = Color.white }
+	local melee = { slot = loc:to_upper_text("csr_heister_melee"), name = "-", dmg = nil, color = Color.white }
 	pcall(function()
 		local id = bm:equipped_melee_weapon()
 		local tw = id and tweak_data.blackmarket.melee_weapons[id]
@@ -297,7 +305,7 @@ local function csr_collect_weapon_rows(mgr, rank)
 
 	-- Throwable damage is in tweak_data.projectiles (NOT .blackmarket.projectiles).
 	-- Grenade dmg is host-sim'd for the whole crew; evidence_rounds/jiro don't apply to throwables.
-	local throwable = { slot = "THROWABLE", name = "—", dmg = nil, color = Color.white }
+	local throwable = { slot = loc:to_upper_text("csr_heister_throwable"), name = "-", dmg = nil, color = Color.white }
 	pcall(function()
 		local id, amount = bm:equipped_grenade()
 		local bmtw = id and tweak_data.blackmarket.projectiles[id]
@@ -447,7 +455,7 @@ function CSRMissionsMenuComponent:_populate_heister_panel()
 			layer = 2,
 		})
 		row:text({
-			text = value or "—",
+			text = value or "-",
 			font = tweak_data.menu.pd2_medium_font,
 			font_size = tweak_data.menu.pd2_medium_font_size,
 			color = value_color or Color.white,
@@ -461,14 +469,16 @@ function CSRMissionsMenuComponent:_populate_heister_panel()
 		y = y + line_h + row_gap
 	end
 
-	header("PLAYER STATS")
+	local loc = managers.localization
+	header(loc:to_upper_text("csr_heister_player_stats"))
 	for i, s in ipairs(stats) do
 		value_row(s.label, s.value, i % 2 == 1, 0, s.color)
 	end
 
+	local dmg_label = loc:to_upper_text("csr_heister_damage")
 	for _, w in ipairs(weapons) do
 		y = y + section_gap
 		header(w.slot .. ": " .. w.name)
-		value_row("DAMAGE", w.dmg, false, 12, w.color)
+		value_row(dmg_label, w.dmg, false, 12, w.color)
 	end
 end

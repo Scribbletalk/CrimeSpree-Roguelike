@@ -6,7 +6,7 @@ end
 _G.CSR.register_modifier({
 	id = "dozer_medic",
 	category = "loud",
-	loc = "menu_cs_modifier_dozer_medic",
+	loc = "csr_modifier_dozer_medic",
 	icon = "crime_spree_dozer_medic",
 	class = "ModifierDozerMedic",
 	data = {},

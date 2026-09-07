@@ -96,7 +96,7 @@ _G.CSR.register_item({
 
 	-- $radius / $pct fill csr_logbook_tactical_pen_effect.
 	loc_macros = {
-		radius = string.format("%gm", RADIUS / 100),
+		radius = string.format("%g", RADIUS / 100),
 		pct = string.format("%g", BONUS * 100),
 	},
 

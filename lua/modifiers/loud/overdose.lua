@@ -9,7 +9,7 @@ local DAMAGE_PER_KILL = 20
 _G.CSR.register_modifier({
 	id = "medic_rage",
 	category = "loud",
-	loc = "menu_cs_modifier_medic_rage",
+	loc = "csr_modifier_medic_rage",
 	loc_macros = { pct = DAMAGE_PER_KILL },
 	icon = "crime_spree_medic_rage",
 	class = "ModifierMedicRage",

@@ -671,7 +671,7 @@ _G.CSR.register_item({
 
 	-- $aura_radius / $tick_s / $heal_pct / $respawn_min fill csr_logbook_hippocratic_oath_effect.
 	loc_macros = {
-		aura_radius = string.format("%gm", AURA_RADIUS / 100),
+		aura_radius = string.format("%g", AURA_RADIUS / 100),
 		tick_s = string.format("%g", AURA_TICK),
 		heal_pct = string.format("%g", HEAL_PCT * 100),
 		respawn_min = string.format("%g", RESPAWN_DELAY / 60),

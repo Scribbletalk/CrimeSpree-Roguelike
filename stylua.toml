@@ -1,0 +1,3 @@
+# StyLua config for the CSR tree. The whole tree is CRLF, so pin line endings;
+# everything else stays on StyLua defaults (tabs, 120 columns).
+line_endings = "Windows"

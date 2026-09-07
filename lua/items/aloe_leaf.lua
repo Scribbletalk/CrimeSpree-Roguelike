@@ -415,7 +415,7 @@ _G.CSR.register_item({
 	-- $still_s / $aura_radius / $heal_pct / $per_stack_pct / $cap_pct fill csr_logbook_aloe_leaf_effect.
 	loc_macros = {
 		still_s = string.format("%g", STILL_THRESHOLD),
-		aura_radius = string.format("%gm", AURA_RADIUS / 100),
+		aura_radius = string.format("%g", AURA_RADIUS / 100),
 		heal_pct = string.format("%g", HEAL_BASE * 100),
 		per_stack_pct = string.format("%g", HEAL_PER_STACK * 100),
 		cap_pct = string.format("%g", HEAL_CAP * 100),

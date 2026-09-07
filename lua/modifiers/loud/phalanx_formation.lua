@@ -20,7 +20,7 @@ end
 _G.CSR.register_modifier({
 	id = "shield_phalanx",
 	category = "loud",
-	loc = "menu_cs_modifier_shield_phalanx",
+	loc = "csr_modifier_shield_phalanx",
 	icon = "crime_spree_shield_phalanx",
 	class = "ModifierShieldPhalanx",
 	data = {},

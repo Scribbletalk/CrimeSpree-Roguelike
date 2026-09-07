@@ -74,8 +74,8 @@ _G.CSR.register_item({
 		heal_pct = string.format("%g", HEAL_PCT * 100),
 		heal_flat = HEAL_FLAT,
 		heal_flat_extra = HEAL_FLAT_EXTRA,
-		invuln_s = string.format("%gs", INVULN),
-		cooldown_s = COOLDOWN .. "s",
+		invuln_s = string.format("%g", INVULN),
+		cooldown_s = string.format("%g", COOLDOWN),
 	},
 
 	hooks = {

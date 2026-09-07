@@ -8,7 +8,7 @@ local DAMAGE_BONUS = 100
 _G.CSR.register_modifier({
 	id = "medic_adrenaline",
 	category = "loud",
-	loc = "menu_cs_modifier_medic_adrenaline",
+	loc = "csr_modifier_medic_adrenaline",
 	loc_macros = { pct = DAMAGE_BONUS },
 	icon = "crime_spree_medic_adrenaline",
 	class = "ModifierMedicAdrenaline",

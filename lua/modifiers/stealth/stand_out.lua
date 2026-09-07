@@ -10,7 +10,7 @@ local SPEED = { 1.25, 1.5, 1.75, 2.0 }
 
 local function tier(i)
 	return {
-		loc = "menu_cs_modifier_less_concealment_" .. i,
+		loc = "csr_modifier_less_concealment_" .. i,
 		data = { delay_mul = 1 / SPEED[i] },
 		loc_macros = { n = math.floor((SPEED[i] - 1) * 100 + 0.5) },
 	}
