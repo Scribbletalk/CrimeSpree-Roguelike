@@ -26,6 +26,22 @@ local function tickbox_rect(checked, hover)
 	return { checked and 24 or 0, hover and 24 or 0, 24, 24 }
 end
 
+-- Translated labels run longer than the English originals; step the font down until the label fits
+-- its column instead of running under the tickbox/value on the right. text_rect() reports the
+-- natural width of a non-wrapping text object, so it stays truthful past the object's own w.
+local pref_label_min_font_size = 13
+
+local function fit_label(t)
+	local max_w = t:w()
+	local size = tweak_data.menu.pd2_small_font_size
+	local _, _, tw = t:text_rect()
+	while max_w < tw and pref_label_min_font_size < size do
+		size = size - 1
+		t:set_font_size(size)
+		_, _, tw = t:text_rect()
+	end
+end
+
 -- Apply a 0..1 fraction to a slider btn: snap to 5% (matches the Mod Options slider step), redraw
 -- fill/handle/value, and update the setting IN MEMORY (defer_save) -- sound.lua master_volume()
 -- reads it live so the change is audible immediately, but we don't write csr_save.json on every
@@ -136,18 +152,19 @@ function CSRMissionsMenuComponent:_populate_preferences_panel()
 
 		BoxGuiObject:new(row:panel({ layer = 2 }), { sides = { 1, 1, 1, 1 } })
 
-		row:text({
+		local label_text = row:text({
 			text = label,
 			font = tweak_data.menu.pd2_small_font,
 			font_size = tweak_data.menu.pd2_small_font_size,
 			color = tweak_data.screen_colors.text,
 			x = 8,
-			w = row_w - 64,
+			w = row_w - 48,
 			h = pref_row_h,
 			align = "left",
 			vertical = "center",
 			layer = 2,
 		})
+		fit_label(label_text)
 
 		local cb = row:bitmap({
 			name = "cb",
@@ -191,7 +208,7 @@ function CSRMissionsMenuComponent:_populate_preferences_panel()
 
 		BoxGuiObject:new(row:panel({ layer = 2 }), { sides = { 1, 1, 1, 1 } })
 
-		row:text({
+		local label_text = row:text({
 			text = label,
 			font = tweak_data.menu.pd2_small_font,
 			font_size = tweak_data.menu.pd2_small_font_size,
@@ -203,6 +220,7 @@ function CSRMissionsMenuComponent:_populate_preferences_panel()
 			vertical = "center",
 			layer = 2,
 		})
+		fit_label(label_text)
 
 		local val = row:text({
 			text = managers.localization:text(values[idx].text_key),
@@ -252,7 +270,7 @@ function CSRMissionsMenuComponent:_populate_preferences_panel()
 
 		BoxGuiObject:new(row:panel({ layer = 2 }), { sides = { 1, 1, 1, 1 } })
 
-		row:text({
+		local label_text = row:text({
 			text = label,
 			font = tweak_data.menu.pd2_small_font,
 			font_size = tweak_data.menu.pd2_small_font_size,
@@ -265,6 +283,7 @@ function CSRMissionsMenuComponent:_populate_preferences_panel()
 			vertical = "center",
 			layer = 2,
 		})
+		fit_label(label_text)
 
 		local val = row:text({
 			text = math.floor(cur * 100 + 0.5) .. "%",
@@ -344,7 +363,7 @@ function CSRMissionsMenuComponent:_populate_preferences_panel()
 
 		BoxGuiObject:new(row:panel({ layer = 2 }), { sides = { 1, 1, 1, 1 } })
 
-		row:text({
+		local label_text = row:text({
 			text = label,
 			font = tweak_data.menu.pd2_small_font,
 			font_size = tweak_data.menu.pd2_small_font_size,
@@ -356,6 +375,7 @@ function CSRMissionsMenuComponent:_populate_preferences_panel()
 			vertical = "center",
 			layer = 2,
 		})
+		fit_label(label_text)
 
 		local glyph = row:text({
 			text = "",

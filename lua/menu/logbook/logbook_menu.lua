@@ -600,7 +600,10 @@ function CrimeSpreeLogbookMenuComponent:_create_page_nav(total_pages)
 
 	panel:text({
 		name = "page_indicator",
-		text = string.format("PAGE %d / %d", page, total_pages),
+		text = managers.localization:to_upper_text(
+			"csr_logbook_page",
+			{ cur = tostring(page), total = tostring(total_pages) }
+		),
 		font = tweak_data.menu.pd2_medium_font,
 		font_size = tweak_data.menu.pd2_medium_font_size,
 		color = Color.white,
@@ -1210,6 +1213,9 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 		local TAG_COLORS = { g = COLOR_POS, r = COLOR_NEG, b = COLOR_INFO }
 		local ranges = {}
 		local clean = ""
+		-- set_range_color indexes characters, not bytes, so the length is counted in characters:
+		-- Cyrillic is multi-byte and byte offsets would drift the ranges off the tagged words.
+		local clean_len = 0
 		local i = 1
 		local current_color = nil
 		local color_start = nil
@@ -1218,17 +1224,22 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 			if tag then
 				if tag == "/" then
 					if current_color and color_start then
-						table.insert(ranges, { s = color_start, e = #clean, color = current_color })
+						table.insert(ranges, { s = color_start, e = clean_len, color = current_color })
 					end
 					current_color = nil
 					color_start = nil
 				else
 					current_color = TAG_COLORS[tag]
-					color_start = #clean
+					color_start = clean_len
 				end
 				i = i + #tag + 2
 			else
+				local b = effect_text:byte(i)
 				clean = clean .. effect_text:sub(i, i)
+				-- 0x80..0xBF are UTF-8 continuation bytes; they carry no character of their own.
+				if b < 0x80 or b > 0xBF then
+					clean_len = clean_len + 1
+				end
 				i = i + 1
 			end
 		end
@@ -1238,8 +1249,9 @@ function CrimeSpreeLogbookMenuComponent:_show_item_details(item_data)
 		end
 		local COLOR_DIM = Color(0.55, 0.55, 0.55)
 		local depth = 0
-		for ci = 1, #clean do
-			local ch = clean:sub(ci, ci)
+		-- Character iteration for the same reason as above: parenthesised asides in translated
+		-- text sit at character offsets, not byte offsets.
+		for ci, ch in ipairs(utf8.characters(clean)) do
 			if ch == "(" then
 				depth = depth + 1
 			end

@@ -473,6 +473,7 @@ function CSRMissionsMenuComponent:_show_items_tooltip(target)
 	local resolved_desc = def.desc_text
 		or (def.desc and managers.localization and _G.CSR.item_text(def.desc, def))
 		or ""
+	-- Wrapped: translated names run far longer than the English ones and would clip on one line.
 	local name_text = tip:text({
 		name = "tooltip_name",
 		text = resolved_name,
@@ -483,8 +484,13 @@ function CSRMissionsMenuComponent:_show_items_tooltip(target)
 		y = pad,
 		w = tip_w - pad * 2,
 		h = name_h,
+		wrap = true,
+		wrap_word = true,
 		layer = 5,
 	})
+	local _, _, _, nh = name_text:text_rect()
+	name_h = math.max(name_h, nh)
+	name_text:set_h(name_h)
 
 	local desc_text = tip:text({
 		name = "tooltip_desc",
