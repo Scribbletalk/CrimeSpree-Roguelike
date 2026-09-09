@@ -144,7 +144,8 @@ end
 
 -- Status header row: MISSIONS COMPLETED | RANK | DIFFICULTY. Mirrors lobby _create_status_bar.
 -- Reuses lobby loc keys and getters; guest sees host figures. Returns bottom y.
-local function csr_render_status_header(parent, top, w)
+-- `gui` only receives the cached text objects for later re-localization.
+local function csr_render_status_header(gui, parent, top, w)
 	local mgr = managers.csr
 	local highlight = Color(1, 1, 1, 0)
 	local cs_glyph = utf8.char(0xE018)
@@ -208,6 +209,14 @@ local function csr_render_status_header(parent, top, w)
 		layer = 1,
 	})
 	diff_label:set_range_color(utf8.len(diff_prefix), utf8.len(diff_full), highlight)
+
+	gui._csr_status_fields = {
+		missions = missions_text,
+		rank = rank_text,
+		diff = diff_label,
+	}
+	gui._csr_status_highlight = highlight
+	gui._csr_status_glyph = cs_glyph
 
 	return top + row_h
 end
@@ -588,6 +597,52 @@ function IngameContractGui:_csr_set_pause_tab(key)
 	end
 end
 
+-- Rewrite the status row and the tab strip in place (labels included) after a mod-language
+-- switch; both are built once in the init PostHook, so nothing else re-localizes them.
+function IngameContractGui:refresh_localized_text()
+	for _, tab in ipairs(PAUSE_TABS) do
+		local item = self._csr_sidebar_items and self._csr_sidebar_items[tab.key]
+		if item and item.set_text then
+			item:set_text(managers.localization:text(tab.text))
+		end
+	end
+
+	local fields = self._csr_status_fields
+	local mgr = managers.csr
+	if not fields or not mgr then
+		return
+	end
+	local highlight = self._csr_status_highlight or Color(1, 1, 1, 0)
+
+	local function set(text_obj, prefix, value)
+		if not (text_obj and alive(text_obj)) then
+			return
+		end
+		local str = prefix .. value
+		text_obj:set_text(str)
+		text_obj:set_range_color(utf8.len(prefix), utf8.len(str), highlight)
+	end
+
+	local missions_done = (mgr.mp_host_missions_completed and mgr:mp_host_missions_completed())
+		or mgr:missions_completed()
+	set(
+		fields.missions,
+		managers.localization:to_upper_text("csr_lobby_missions_completed") .. ": ",
+		tostring(missions_done)
+	)
+
+	set(
+		fields.rank,
+		managers.localization:to_upper_text("csr_lobby_rank") .. ": ",
+		tostring(mgr:host_rank()) .. " " .. (self._csr_status_glyph or "")
+	)
+
+	local diff_id = (mgr.mp_host_difficulty and mgr:mp_host_difficulty()) or mgr:difficulty()
+	local diff_name_id = tweak_data.difficulty_name_ids[diff_id]
+	local diff_text = diff_name_id and managers.localization:to_upper_text(diff_name_id) or tostring(diff_id)
+	set(fields.diff, managers.localization:to_upper_text("csr_lobby_difficulty") .. ": ", diff_text)
+end
+
 Hooks:PostHook(IngameContractGui, "init", "CSR_IngameContract_Relayout", function(self, ws, node)
 	if not csr_heist_active() then
 		return
@@ -645,7 +700,7 @@ Hooks:PostHook(IngameContractGui, "init", "CSR_IngameContract_Relayout", functio
 
 	-- Status header: MISSIONS COMPLETED | RANK | DIFFICULTY, identical to the lobby's row
 	-- above the mission cards. Anchored at the panel top (the briefing block is gone).
-	local header_bottom = csr_render_status_header(text_panel, 0, text_panel:w())
+	local header_bottom = csr_render_status_header(self, text_panel, 0, text_panel:w())
 
 	-- Mini sidebar (left) + tabbed content (right). Items has its own per-peer grid; Modifiers/Preferences
 	-- borrow CSRMissionsMenuComponent renderers. Only drawn when there's room for at least one peer section.

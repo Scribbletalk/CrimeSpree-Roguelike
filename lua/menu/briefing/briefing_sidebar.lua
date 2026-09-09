@@ -107,6 +107,21 @@ end
 if MissionBriefingGui and not _G._CSR_BRIEFING_SIDEBAR_HOOKED then
 	_G._CSR_BRIEFING_SIDEBAR_HOOKED = true
 
+	-- Called by the Preferences language row: re-localize the surfaces built once at open time.
+	-- The run-progress strip lives on the HUD-side briefing, the reminders on this one.
+	function MissionBriefingGui:refresh_localized_text()
+		local hud_b = managers and managers.hud and managers.hud._hud_mission_briefing
+		if hud_b and hud_b._csr_relocalize_progress_header then
+			hud_b:_csr_relocalize_progress_header()
+		end
+		if self._csr_refresh_reminder then
+			self:_csr_refresh_reminder()
+		end
+		if self._csr_bm_refresh then
+			self:_csr_bm_refresh()
+		end
+	end
+
 	function MissionBriefingGui:_csr_build_sidebar()
 		if self._sidebar then
 			return

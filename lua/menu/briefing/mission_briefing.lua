@@ -732,9 +732,14 @@ function CSRMissionBriefing:init(hud, workspace)
 			t:set_range_color(prefix_len, full_len, hl)
 			return t
 		end
-		field(missions_s, "left", utf8.len(missions_p), utf8.len(missions_s))
-		field(rank_s, "center", utf8.len(rank_p), utf8.len(rank_s))
-		field(diff_s, "right", utf8.len(diff_p), utf8.len(diff_s))
+		-- Cached so _csr_relocalize_progress_header can rewrite them after a mod-language switch.
+		self._csr_progress_fields = {
+			missions = field(missions_s, "left", utf8.len(missions_p), utf8.len(missions_s)),
+			rank = field(rank_s, "center", utf8.len(rank_p), utf8.len(rank_s)),
+			diff = field(diff_s, "right", utf8.len(diff_p), utf8.len(diff_s)),
+		}
+		self._csr_progress_highlight = hl
+		self._csr_progress_glyph = glyph
 
 		-- Exposed so briefing_reminder_input.lua can read world coords for positioning below the difficulty column.
 		self._csr_progress_header = hdr
@@ -750,6 +755,47 @@ function CSRMissionBriefing:init(hud, workspace)
 			h = self._job_schedule_panel:height(),
 		})
 	end
+end
+
+-- Rewrite the run-progress strip in place (labels included) after a mod-language switch;
+-- the strip is built once in init, so nothing else re-localizes it.
+function CSRMissionBriefing:_csr_relocalize_progress_header()
+	local fields = self._csr_progress_fields
+	local C = managers.csr
+	if not fields or not C then
+		return
+	end
+	local highlight = self._csr_progress_highlight or Color(1, 1, 1, 0)
+
+	local function set(text_obj, prefix, value)
+		if not (text_obj and alive(text_obj)) then
+			return
+		end
+		local str = prefix .. value
+		text_obj:set_text(str)
+		text_obj:set_range_color(utf8.len(prefix), utf8.len(str), highlight)
+	end
+
+	local missions_done = (C.mp_host_missions_completed and C:mp_host_missions_completed())
+		or (C.missions_completed and C:missions_completed())
+		or 0
+	set(
+		fields.missions,
+		managers.localization:to_upper_text("csr_lobby_missions_completed") .. ": ",
+		tostring(missions_done)
+	)
+
+	local rank = (C.host_rank and C:host_rank()) or (C.rank and C:rank()) or 0
+	set(
+		fields.rank,
+		managers.localization:to_upper_text("csr_lobby_rank") .. ": ",
+		tostring(rank) .. " " .. (self._csr_progress_glyph or "")
+	)
+
+	local diff_id = (C.mp_host_difficulty and C:mp_host_difficulty()) or (C.difficulty and C:difficulty())
+	local diff_name_id = diff_id and tweak_data.difficulty_name_ids and tweak_data.difficulty_name_ids[diff_id]
+	local diff_str = diff_name_id and managers.localization:to_upper_text(diff_name_id) or tostring(diff_id)
+	set(fields.diff, managers.localization:to_upper_text("csr_lobby_difficulty") .. ": ", diff_str)
 end
 
 function CSRMissionBriefing:_apply_ghost_color(ghost, i, is_unknown)

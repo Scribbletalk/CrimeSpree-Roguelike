@@ -114,6 +114,11 @@ local function on_language_changed(component)
 			component[name](component)
 		end
 	end
+	-- Surfaces outside the feature panels (status row, pick reminder, action buttons); each
+	-- host screen -- lobby, briefing, pause contract -- provides its own implementation.
+	if component.refresh_localized_text then
+		component:refresh_localized_text()
+	end
 end
 
 function CSRMissionsMenuComponent:_populate_preferences_panel()

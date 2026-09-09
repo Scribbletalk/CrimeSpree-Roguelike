@@ -301,6 +301,53 @@ function CSRMissionsMenuComponent:_refresh_rank_display()
 	t:set_range_color(utf8.len(prefix), utf8.len(str), self._status_rank_highlight or Color(1, 1, 1, 0))
 end
 
+-- Rebuild the whole status row, prefixes included. _refresh_rank_display reuses the cached
+-- prefix, so a mod-language switch needs this instead to re-localize the labels themselves.
+function CSRMissionsMenuComponent:_relocalize_status_bar()
+	local mgr = managers.csr
+	if not mgr then
+		return
+	end
+	local highlight = self._status_rank_highlight or Color(1, 1, 1, 0)
+
+	local function set(text_obj, prefix, value)
+		if not (text_obj and alive(text_obj)) then
+			return
+		end
+		local str = prefix .. value
+		text_obj:set_text(str)
+		text_obj:set_range_color(utf8.len(prefix), utf8.len(str), highlight)
+	end
+
+	local missions_done = (mgr.mp_host_missions_completed and mgr:mp_host_missions_completed())
+		or mgr:missions_completed()
+	self._status_missions_prefix = managers.localization:to_upper_text("csr_lobby_missions_completed") .. ": "
+	set(self._status_missions_text, self._status_missions_prefix, tostring(missions_done))
+
+	self._status_rank_prefix = managers.localization:to_upper_text("csr_lobby_rank") .. ": "
+	set(
+		self._status_rank_text,
+		self._status_rank_prefix,
+		tostring(mgr:host_rank()) .. " " .. (self._status_rank_glyph or "")
+	)
+
+	local diff_id = (mgr.mp_host_difficulty and mgr:mp_host_difficulty()) or mgr:difficulty()
+	local diff_name_id = tweak_data.difficulty_name_ids[diff_id]
+	local diff_text = diff_name_id and managers.localization:to_upper_text(diff_name_id) or tostring(diff_id)
+	self._status_diff_prefix = managers.localization:to_upper_text("csr_lobby_difficulty") .. ": "
+	set(self._status_diff_text, self._status_diff_prefix, diff_text)
+end
+
+-- Re-localize everything this component baked at build time; called after a mod-language switch.
+function CSRMissionsMenuComponent:refresh_localized_text()
+	if not alive(self._panel) then
+		return
+	end
+	self:_relocalize_status_bar()
+	self:_refresh_unselected_items()
+	self:_refresh_action_buttons()
+end
+
 function CSRMissionsMenuComponent:_create_title()
 	-- Branded header: crisp foreground on safe-ws + faded ghost on fullscreen-ws (vanilla contractboxgui style).
 	local title = self._panel:text({
@@ -608,7 +655,9 @@ function CSRMissionsMenuComponent:_create_status_bar(w)
 
 	rank_text:set_range_color(utf8.len(rank_prefix), utf8.len(rank_str), highlight)
 
-	-- Cached for in-place update by _refresh_rank_display.
+	-- Cached for in-place update by _refresh_rank_display / _relocalize_status_bar.
+	self._status_missions_text = missions_text
+	self._status_missions_prefix = missions_prefix
 	self._status_rank_text = rank_text
 	self._status_rank_prefix = rank_prefix
 	self._status_rank_glyph = cs_glyph
@@ -634,6 +683,9 @@ function CSRMissionsMenuComponent:_create_status_bar(w)
 	})
 
 	diff_label:set_range_color(utf8.len(diff_prefix), utf8.len(diff_full), highlight)
+
+	self._status_diff_text = diff_label
+	self._status_diff_prefix = diff_prefix
 
 	-- Clickable item-pick reminder, right-aligned above the status row; dim yellow, brightens on hover.
 	self._unselected_color_dim = Color(1, 0.85, 0.78, 0)
@@ -792,7 +844,13 @@ function CSRMissionsMenuComponent:_refresh_action_buttons()
 			self._action_button:set_callback(callback(self, self, "_action_return_to_lobby"))
 		end
 
-		self._action_button:shrink_wrap_button()
+		-- Fixed-width backing plate: a longer translation must shrink to fit the gap left
+		-- between the plate's left edge and Reroll, not spill out of the plate.
+		local avail = nil
+		if self._actions_bg and alive(self._actions_bg) then
+			avail = self._reroll_button:panel():left() - large_padding - self._actions_bg:left()
+		end
+		self._action_button:shrink_wrap_button_to_width(avail)
 
 		self._action_button:panel():set_right(self._reroll_button:panel():left() - large_padding)
 		self._action_button:panel():set_bottom(self._reroll_button:panel():bottom())
@@ -1760,8 +1818,11 @@ end
 CSRStartButton = CSRStartButton or class(MenuGuiItem)
 CSRStartButton._type = "CSRStartButton"
 
+local action_label_min_font_size = 14
+
 function CSRStartButton:init(parent, font, font_size)
 	self._w = 0.35
+	self._font_size = font_size or tweak_data.menu.pd2_medium_font_size
 	self._color = tweak_data.screen_colors.button_stage_3
 	self._selected_color = tweak_data.screen_colors.button_stage_2
 	self._links = {}
@@ -1847,6 +1908,24 @@ function CSRStartButton:shrink_wrap_button(w_padding, h_padding)
 	local _, _, w, h = self._text:text_rect()
 
 	self._panel:set_size(w + (w_padding or 0), h + (h_padding or 0))
+end
+
+-- Shrink-wrap, but step the font down first so a translated label stays inside max_w.
+-- Always restarts from the button's build font, so switching back to a short label restores it.
+function CSRStartButton:shrink_wrap_button_to_width(max_w)
+	local label_size = math.ceil(self._font_size)
+	self._text:set_font_size(label_size)
+
+	if max_w then
+		local _, _, tw = self._text:text_rect()
+		while max_w < tw and action_label_min_font_size < label_size do
+			label_size = label_size - 1
+			self._text:set_font_size(label_size)
+			_, _, tw = self._text:text_rect()
+		end
+	end
+
+	self:shrink_wrap_button()
 end
 
 -- CSRSidebar / CSRSidebarItem — fork of vanilla CrimeNetSidebarGui (visual recipe 1:1; collapse/expand etc. dropped).
